@@ -11,7 +11,10 @@
       "Bash(npm uninstall:*)",
       "Bash(npx tailwindcss init)",
       "Bash(dir /b)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(for i in {1..11})",
+      "Bash(do touch /Users/yuki_hamuro/Documents/GitHub/ikomasai-erp-2026/src/features/item$i/components/.gitkeep /Users/yuki_hamuro/Documents/GitHub/ikomasai-erp-2026/src/features/item$i/hooks/.gitkeep)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []
