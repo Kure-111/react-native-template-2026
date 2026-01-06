@@ -14,6 +14,8 @@ import {
 } from 'react-native';
 import { DrawerContentScrollView } from '@react-navigation/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../../shared/contexts/AuthContext';
+import { canAccessScreen } from '../../services/supabase/permissionService';
 
 /**
  * ドロワーアイテムコンポーネント
@@ -49,6 +51,8 @@ const CustomDrawerContent = (props) => {
   const insets = useSafeAreaInsets();
   /** 現在のルート名 */
   const currentRouteName = props.state.routeNames[props.state.index];
+  /** 認証コンテキスト */
+  const { userInfo, logout } = useAuth();
 
   /**
    * 画面遷移処理
@@ -58,12 +62,53 @@ const CustomDrawerContent = (props) => {
     props.navigation.navigate(screenName);
   };
 
+  /**
+   * ログアウト処理
+   */
+  const handleLogout = async () => {
+    // Web版での確認ダイアログ
+    const confirmed = window.confirm('ログアウトしますか？');
+
+    if (!confirmed) {
+      return;
+    }
+
+    const { success, error } = await logout();
+    if (!success) {
+      window.alert('ログアウトに失敗しました');
+    }
+  };
+
+  /**
+   * アクセス可能な項目をフィルタリング
+   */
+  const accessibleItems = Array.from({ length: 11 }, (_, index) => {
+    const itemNumber = index + 1;
+    const screenName = `item${itemNumber}`;
+    const isAccessible = canAccessScreen(userInfo?.roles || [], screenName);
+
+    return {
+      number: itemNumber,
+      label: `項目${itemNumber}`,
+      screenName: `Item${itemNumber}`,
+      isAccessible,
+    };
+  }).filter((item) => item.isAccessible);
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* ヘッダー */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>生駒祭 ERP</Text>
         <Text style={styles.headerSubtitle}>2026</Text>
+        {userInfo && (
+          <View style={styles.userInfo}>
+            <Text style={styles.userName}>{userInfo.name}</Text>
+            {userInfo.organization && (
+              <Text style={styles.userOrganization}>{userInfo.organization}</Text>
+            )}
+          </View>
+        )}
       </View>
 
       {/* メニューアイテム */}
@@ -72,19 +117,31 @@ const CustomDrawerContent = (props) => {
         contentContainerStyle={styles.menuContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* 項目1〜11 */}
-        {Array.from({ length: 11 }, (_, index) => (
-          <DrawerItem
-            key={`Item${index + 1}`}
-            label={`項目${index + 1}`}
-            isActive={currentRouteName === `Item${index + 1}`}
-            onPress={() => navigateTo(`Item${index + 1}`)}
-          />
-        ))}
+        {/* アクセス可能な項目のみ表示 */}
+        {accessibleItems.length > 0 ? (
+          accessibleItems.map((item) => (
+            <DrawerItem
+              key={item.screenName}
+              label={item.label}
+              isActive={currentRouteName === item.screenName}
+              onPress={() => navigateTo(item.screenName)}
+            />
+          ))
+        ) : (
+          <View style={styles.noAccessContainer}>
+            <Text style={styles.noAccessText}>
+              アクセス可能な項目がありません
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       {/* フッター */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+        {/* ログアウトボタン */}
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Text style={styles.logoutButtonText}>ログアウト</Text>
+        </TouchableOpacity>
         <Text style={styles.footerText}>v1.0.0</Text>
       </View>
     </View>
@@ -112,6 +169,22 @@ const styles = StyleSheet.create({
     color: '#888899',
     marginTop: 4,
   },
+  userInfo: {
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#2d2d44',
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  userOrganization: {
+    fontSize: 12,
+    color: '#888899',
+    marginTop: 4,
+  },
   menuContainer: {
     flex: 1,
   },
@@ -136,11 +209,33 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
   },
+  noAccessContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 32,
+    alignItems: 'center',
+  },
+  noAccessText: {
+    fontSize: 14,
+    color: '#888899',
+    textAlign: 'center',
+  },
   footer: {
     paddingHorizontal: 20,
     paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: '#2d2d44',
+  },
+  logoutButton: {
+    backgroundColor: '#ff3b30',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  logoutButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   footerText: {
     fontSize: 12,
