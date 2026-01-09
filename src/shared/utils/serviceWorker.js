@@ -1,6 +1,7 @@
 /**
  * Service Workerユーティリティ
  * PWAの登録と開放を制御します
+ * 
  */
 
 import { Platform } from 'react-native';
