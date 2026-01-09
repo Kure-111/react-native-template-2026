@@ -3,7 +3,7 @@
  * Supabase Authを使用したユーザー認証機能を提供します
  */
 
-import { supabase } from './client.js';
+import { getSupabaseClient } from './client.js';
 
 /**
  * メールアドレスとパスワードでログイン
@@ -13,7 +13,7 @@ import { supabase } from './client.js';
  */
 export const signIn = async (email, password) => {
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await getSupabaseClient().auth.signInWithPassword({
       email,
       password,
     });
@@ -36,7 +36,7 @@ export const signIn = async (email, password) => {
  */
 export const signOut = async () => {
   try {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await getSupabaseClient().auth.signOut();
 
     if (error) {
       console.error('ログアウトエラー:', error.message);
@@ -56,7 +56,7 @@ export const signOut = async () => {
  */
 export const getSession = async () => {
   try {
-    const { data, error } = await supabase.auth.getSession();
+    const { data, error } = await getSupabaseClient().auth.getSession();
 
     if (error) {
       console.error('セッション取得エラー:', error.message);
@@ -76,7 +76,7 @@ export const getSession = async () => {
  */
 export const getCurrentUser = async () => {
   try {
-    const { data, error } = await supabase.auth.getUser();
+    const { data, error } = await getSupabaseClient().auth.getUser();
 
     if (error) {
       console.error('ユーザー情報取得エラー:', error.message);
@@ -97,7 +97,7 @@ export const getCurrentUser = async () => {
  */
 export const updatePassword = async (newPassword) => {
   try {
-    const { data, error } = await supabase.auth.updateUser({
+    const { data, error } = await getSupabaseClient().auth.updateUser({
       password: newPassword,
     });
 
@@ -119,11 +119,16 @@ export const updatePassword = async (newPassword) => {
  * @returns {Object} サブスクリプション（解除用）
  */
 export const onAuthStateChange = (callback) => {
-  const { data: subscription } = supabase.auth.onAuthStateChange(
-    (event, session) => {
-      callback(event, session);
-    }
-  );
+  try {
+    const { data: subscription } = getSupabaseClient().auth.onAuthStateChange(
+      (event, session) => {
+        callback(event, session);
+      }
+    );
 
-  return subscription;
+    return subscription;
+  } catch (error) {
+    console.error('認証状態監視初期化エラー:', error);
+    return null;
+  }
 };
