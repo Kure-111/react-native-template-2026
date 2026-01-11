@@ -27,24 +27,12 @@ export const registerServiceWorker = () => {
     return;
   }
 
+  // localhost または HTTPS でない場合は登録しない
   if (!isSecureContext && !isLocalhost) {
     return;
   }
 
-  if (isLocalhost) {
-    navigator.serviceWorker
-      .getRegistrations()
-      .then((registrations) => {
-        registrations.forEach((registration) => {
-          registration.unregister();
-        });
-      })
-      .catch((error) => {
-        console.error('Service Worker unregister error:', error);
-      });
-    return;
-  }
-
+  // localhost でも Service Worker を登録（開発時の PWA テスト用）
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('/service-worker.js')
