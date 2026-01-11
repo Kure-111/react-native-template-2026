@@ -24,7 +24,22 @@
     },
     "web": {
       "bundler": "metro",
-      "favicon": "./assets/icon.png"
+      "favicon": "./assets/favicon.png",
+      "name": "Ikoma Festival ERP 2026",
+      "shortName": "Ikoma ERP",
+      "description": "ERP system for Ikoma Festival 2026.",
+      "lang": "ja",
+      "scope": "/",
+      "startUrl": "/",
+      "display": "standalone",
+      "orientation": "portrait",
+      "themeColor": "#1a1a2e",
+      "backgroundColor": "#ffffff",
+      "splash": {
+        "image": "./assets/splash-icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#ffffff"
+      }
     }
   }
 }

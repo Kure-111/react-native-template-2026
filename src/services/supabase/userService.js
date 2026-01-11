@@ -3,7 +3,7 @@
  * ユーザープロフィールと役職情報を取得します
  */
 
-import { supabase } from './client.js';
+import { getSupabaseClient } from './client.js';
 
 /**
  * ユーザーのプロフィール情報を取得
@@ -12,7 +12,7 @@ import { supabase } from './client.js';
  */
 export const selectUserProfile = async (userId) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await getSupabaseClient()
       .from('user_profiles')
       .select('*')
       .eq('user_id', userId)
@@ -37,7 +37,7 @@ export const selectUserProfile = async (userId) => {
  */
 export const selectUserRoles = async (userId) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await getSupabaseClient()
       .from('user_roles')
       .select(`
         *,
@@ -109,7 +109,7 @@ export const selectUserInfo = async (userId) => {
  */
 export const updateUserProfile = async (userId, updates) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await getSupabaseClient()
       .from('user_profiles')
       .update({
         ...updates,

@@ -18,17 +18,46 @@ const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 /**
+ * Supabase設定が揃っているか
+ */
+const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+
+/**
+ * 設定不足エラーを生成する
+ * @returns {Error} 設定不足エラー
+ */
+const createMissingConfigError = () => {
+  return new Error(
+    'Supabaseの環境変数が未設定です。.env で EXPO_PUBLIC_SUPABASE_URL と EXPO_PUBLIC_SUPABASE_ANON_KEY を設定してください。'
+  );
+};
+
+/**
  * Supabaseクライアントインスタンス
  * アプリケーション全体で共有されます
  */
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    // 認証設定
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+export const supabase = isSupabaseConfigured
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        // 認証設定
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false,
+      },
+    })
+  : null;
+
+/**
+ * Supabaseクライアントを取得する
+ * @returns {Object} Supabaseクライアント
+ */
+export const getSupabaseClient = () => {
+  if (!isSupabaseConfigured || !supabase) {
+    throw createMissingConfigError();
+  }
+
+  return supabase;
+};
 
 /**
  * 接続テスト関数
@@ -37,7 +66,10 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
  */
 export const testConnection = async () => {
   try {
-    const { error } = await supabase.from('_test').select('*').limit(1);
+    const { error } = await getSupabaseClient()
+      .from('_test')
+      .select('*')
+      .limit(1);
     // テーブルが存在しない場合もエラーが返るが、接続自体は成功している
     if (error && !error.message.includes('does not exist')) {
       console.error('Supabase接続エラー:', error);
