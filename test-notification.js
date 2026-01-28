@@ -20,7 +20,7 @@ async function testNotification() {
   try {
     console.log('📝 通知テストを開始します...\n');
 
-    // 1. ログインユーザーを確認
+    // 1. ログインユーザーを確認中
     console.log('1️⃣ 認証状態を確認中...');
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
