@@ -22,7 +22,7 @@ import Item7Screen from '../features/item7/screens/Item7Screen';
 import Item8Screen from '../features/item8/screens/Item8Screen';
 import Item9Screen from '../features/item9/screens/Item9Screen';
 import Item10Screen from '../features/item10/screens/Item10Screen';
-import Item11Screen from '../features/item11/screens/Item11Screen';
+import JimuShiftScreen from '../features/jimu-shift/screens/JimuShiftScreen';
 
 /** Drawerナビゲーター */
 const Drawer = createDrawerNavigator();
@@ -67,7 +67,7 @@ const WrappedItem7Screen = createWrappedScreen(Item7Screen, '項目7');
 const WrappedItem8Screen = createWrappedScreen(Item8Screen, '項目8');
 const WrappedItem9Screen = createWrappedScreen(Item9Screen, '項目9');
 const WrappedItem10Screen = createWrappedScreen(Item10Screen, '項目10');
-const WrappedItem11Screen = createWrappedScreen(Item11Screen, '項目11');
+const WrappedJimuShiftScreen = createWrappedScreen(JimuShiftScreen, '当日部員');
 
 /**
  * Drawerナビゲーターコンポーネント
@@ -94,7 +94,7 @@ const DrawerNavigator = () => {
         swipeEnabled: isMobile,
       }}
     >
-      {/* 項目1〜11（Error Boundaryでラップ済み） */}
+      {/* 項目1〜10、事務シフト（Error Boundaryでラップ済み） */}
       <Drawer.Screen name="Item1" component={WrappedItem1Screen} />
       <Drawer.Screen name="Item2" component={WrappedItem2Screen} />
       <Drawer.Screen name="Item3" component={WrappedItem3Screen} />
@@ -105,7 +105,7 @@ const DrawerNavigator = () => {
       <Drawer.Screen name="Item8" component={WrappedItem8Screen} />
       <Drawer.Screen name="Item9" component={WrappedItem9Screen} />
       <Drawer.Screen name="Item10" component={WrappedItem10Screen} />
-      <Drawer.Screen name="Item11" component={WrappedItem11Screen} />
+      <Drawer.Screen name="JimuShift" component={WrappedJimuShiftScreen} />
     </Drawer.Navigator>
   );
 };

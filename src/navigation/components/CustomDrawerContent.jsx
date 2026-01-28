@@ -80,17 +80,46 @@ const CustomDrawerContent = (props) => {
   };
 
   /**
+   * 項目ラベルのマッピング
+   * 項目番号に対応する表示名を定義
+   */
+  const ITEM_LABELS = {
+    11: '当日部員',
+  };
+
+  /**
    * アクセス可能な項目をフィルタリング
    */
+  /**
+   * 画面名のマッピング
+   * 項目番号に対応するナビゲーション画面名を定義
+   */
+  const SCREEN_NAME_MAP = {
+    11: 'JimuShift',
+  };
+
+  /**
+   * 権限チェック用のスクリーン名マッピング
+   * Supabaseのpermissions.screensに格納されている名前と対応
+   */
+  const PERMISSION_NAME_MAP = {
+    11: '当日部員',
+  };
+
   const accessibleItems = Array.from({ length: 11 }, (_, index) => {
     const itemNumber = index + 1;
-    const screenName = `item${itemNumber}`;
-    const isAccessible = canAccessScreen(userInfo?.roles || [], screenName);
+    // カスタム権限名があればそれを使用、なければデフォルト
+    const permissionName = PERMISSION_NAME_MAP[itemNumber] || `item${itemNumber}`;
+    const isAccessible = canAccessScreen(userInfo?.roles || [], permissionName);
+    // カスタムラベルがあればそれを使用、なければデフォルト
+    const label = ITEM_LABELS[itemNumber] || `項目${itemNumber}`;
+    // カスタム画面名があればそれを使用、なければデフォルト
+    const navigationName = SCREEN_NAME_MAP[itemNumber] || `Item${itemNumber}`;
 
     return {
       number: itemNumber,
-      label: `項目${itemNumber}`,
-      screenName: `Item${itemNumber}`,
+      label: label,
+      screenName: navigationName,
       isAccessible,
     };
   }).filter((item) => item.isAccessible);
@@ -104,8 +133,10 @@ const CustomDrawerContent = (props) => {
         {userInfo && (
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{userInfo.name}</Text>
-            {userInfo.organization && (
-              <Text style={styles.userOrganization}>{userInfo.organization}</Text>
+            {userInfo.roles && userInfo.roles.length > 0 && (
+              <Text style={styles.userOrganization}>
+                {userInfo.roles.map((role) => role.name).join(', ')}
+              </Text>
             )}
           </View>
         )}
