@@ -13,6 +13,8 @@ import {
   useWindowDimensions,
   ActivityIndicator,
   ScrollView,
+  Modal,
+  Image,
 } from 'react-native';
 import { useAuth } from '../../../shared/contexts/AuthContext.js';
 import { fetchShiftData } from '../../../services/gas/gasApi.js';
@@ -24,6 +26,7 @@ import {
 import {
   getFestivalStartDate,
   getFestivalEndDate,
+  AREA_IMAGE_MAP,
 } from '../constants.js';
 
 /** ブレークポイント（スマホ/PC切り替え） */
@@ -71,6 +74,10 @@ const JimuShiftScreen = ({ navigation }) => {
   const [isLoading, setIsLoading] = useState(false);
   /** エラーメッセージ */
   const [errorMessage, setErrorMessage] = useState('');
+  /** 画像モーダルの表示状態 */
+  const [isImageModalVisible, setIsImageModalVisible] = useState(false);
+  /** 選択されたエリア名 */
+  const [selectedAreaName, setSelectedAreaName] = useState('');
 
   /**
    * ユーザーの所属団体リストを取得
@@ -184,6 +191,38 @@ const JimuShiftScreen = ({ navigation }) => {
     return `${month}月${day}日（${dayOfWeek}）`;
   };
 
+  /**
+   * シフトカードをタップした時の処理
+   * エリアの場所を示す画像をモーダルで表示
+   * @param {string} areaName - エリア名
+   */
+  const handleShiftCardPress = (areaName) => {
+    setSelectedAreaName(areaName);
+    setIsImageModalVisible(true);
+  };
+
+  /**
+   * 画像モーダルを閉じる
+   * モーダルのアニメーションが完了するまで、エリア名はクリアしない
+   */
+  const closeImageModal = () => {
+    setIsImageModalVisible(false);
+  };
+
+  /**
+   * モーダルの表示状態が変わったら、閉じた後にエリア名をクリア
+   */
+  useEffect(() => {
+    if (!isImageModalVisible && selectedAreaName) {
+      // フェードアニメーション完了を待つ（300ms）
+      const timer = setTimeout(() => {
+        setSelectedAreaName('');
+      }, 300);
+
+      return () => clearTimeout(timer);
+    }
+  }, [isImageModalVisible, selectedAreaName]);
+
   return (
     <SafeAreaView style={styles.container}>
       {/* ヘッダー */}
@@ -263,7 +302,7 @@ const JimuShiftScreen = ({ navigation }) => {
           {!isLoading &&
             errorMessage === '' &&
             shifts.map((shift, index) => (
-              <View
+              <TouchableOpacity
                 key={`${shift.timeSlot}-${shift.areaName}-${index}`}
                 style={[
                   styles.shiftCard,
@@ -272,15 +311,75 @@ const JimuShiftScreen = ({ navigation }) => {
                     borderLeftColor: shift.backgroundColor,
                   },
                 ]}
+                onPress={() => handleShiftCardPress(shift.areaName)}
+                activeOpacity={0.7}
               >
                 {/* 時間帯 */}
                 <Text style={styles.shiftTime}>{shift.timeSlot}</Text>
                 {/* エリア名 */}
                 <Text style={styles.shiftAreaName}>{shift.areaName}</Text>
-              </View>
+              </TouchableOpacity>
             ))}
         </View>
       </ScrollView>
+
+      {/* エリア画像表示モーダル */}
+      <Modal
+        visible={isImageModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeImageModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContainer,
+              { maxWidth: isMobile ? 600 : 800 },
+            ]}
+          >
+            {/* モーダルヘッダー */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{selectedAreaName}</Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={closeImageModal}
+              >
+                <Text style={styles.modalCloseButtonText}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 画像表示エリア */}
+            <View style={styles.modalImageContainer}>
+              {AREA_IMAGE_MAP[selectedAreaName] ? (
+                <Image
+                  source={AREA_IMAGE_MAP[selectedAreaName]}
+                  style={[
+                    styles.modalImage,
+                    { height: isMobile ? 400 : 600 },
+                  ]}
+                  resizeMode="contain"
+                />
+              ) : (
+                <View style={styles.noImageContainer}>
+                  <Text style={styles.noImageText}>📷</Text>
+                  <Text style={styles.noImageDescription}>
+                    エリア場所の画像が登録されていないか、
+                  </Text>
+                  <Text style={styles.noImageDescription}>
+                    正常に読み込めませんでした。
+                  </Text>
+                  <Text style={styles.noImageHint}>
+                    リロードしても改善されない場合は、
+                  </Text>
+                  <Text style={styles.noImageHint}>
+                    システム部または事務部までお問い合わせください。
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -444,6 +543,82 @@ const styles = StyleSheet.create({
   shiftAreaName: {
     fontSize: 15,
     color: '#333333',
+  },
+  /* モーダル */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    width: '100%',
+    maxWidth: 600,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333333',
+    flex: 1,
+  },
+  modalCloseButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+    backgroundColor: '#f5f5f7',
+  },
+  modalCloseButtonText: {
+    fontSize: 28,
+    color: '#666666',
+    lineHeight: 32,
+  },
+  modalImageContainer: {
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 300,
+  },
+  modalImage: {
+    width: '100%',
+    height: 400,
+  },
+  noImageContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+  },
+  noImageText: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  noImageDescription: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666666',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  noImageHint: {
+    fontSize: 14,
+    color: '#999999',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginTop: 8,
   },
 });
 
