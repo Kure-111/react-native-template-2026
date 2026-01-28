@@ -1,17 +1,38 @@
-# React Native Expo Template 2026
+# 生駒祭 ERP 2026
 
-React Native + Expo + Supabase のテンプレートプロジェクトです。
-このテンプレートをフォークして、新しいプロジェクトを始めることができます。
+生駒祭 2026 で使用する ERP（Enterprise Resource Planning）システム。
+Web アプリケーションとして動作し、PC とスマートフォンの両方に対応する。
 
 ## 特徴
 
-- React Native (Expo) ベース
-- **Tailwind CSS (NativeWind)** でスタイリング
-- Supabase 統合
-- Google Apps Script API 統合（オプション）
+- React Native (Expo) Web ベース
+- Supabase でバックエンド統合
+- レスポンシブデザイン（PC/スマホ対応）
+- 通知機能（リアルタイム・プッシュ通知）
+- PWA対応（予定）
+- ロールベースのアクセス制御
 - JavaScript（TypeScript ではない）
-- AI 開発フレンドリーな構成
-- カウンターデモアプリ付き
+
+## 主要機能
+
+### ✅ 実装済み
+
+- **認証システム**: Supabaseによるユーザー認証
+- **ナビゲーション**: Drawer（サイドバー）ナビゲーション
+- **通知機能**: 
+  - リアルタイム通知受信
+  - プッシュ通知（ブラウザ通知）
+  - 未読バッジ表示
+  - 通知センター
+  - ロールベースの通知送信
+- **エラーハンドリング**: Error Boundary による画面単位のエラー処理
+- **レスポンシブ対応**: PC（768px以上）とスマホ（768px未満）の自動切り替え
+
+### 🚧 開発予定
+
+- 項目1〜11の各機能実装
+- PWA対応
+- オフライン機能
 
 ## プロジェクト構造
 
@@ -21,29 +42,42 @@ project-root/
 │   ├── プロジェクト仕様書.md
 │   ├── 開発ルール.md
 │   ├── GitHubルール.md
+│   ├── 通知機能の使い方.md            # NEW: 通知機能のドキュメント
+│   ├── database-setup-notifications.sql # NEW: データベースセットアップSQL
 │   └── AI用プロンプト/
 │
 ├── src/
 │   ├── features/                        # 機能ごとにまとめる
-│   │   └── counter/                     # カウンター機能（デモ）
+│   │   ├── auth/                        # 認証機能
+│   │   ├── notifications/               # NEW: 通知機能
+│   │   │   ├── components/             # 通知コンポーネント
+│   │   │   ├── hooks/                  # 通知フック
+│   │   │   ├── screens/                # 通知画面
+│   │   │   └── constants/              # 通知定数
+│   │   ├── item1/ 〜 item11/           # 各項目機能
 │   │
 │   ├── shared/                         # 共通で使うもの
 │   │   ├── components/                # 汎用コンポーネント
+│   │   │   └── AppHeader.jsx          # NEW: ヘッダー（通知ベル含む）
 │   │   ├── hooks/                     # 汎用フック
-│   │   ├── utils/                     # ユーティリティ関数
+│   │   │   └── useNotificationSubscription.js # NEW: 通知購読フック
+│   │   ├── services/                  # NEW: 共通サービス
+│   │   │   ├── sendNotification.js    # 通知送信API
+│   │   │   ├── notificationService.js # 通知CRUD操作
+│   │   │   └── notificationManager.js # 通知ビジネスロジック
+│   │   ├── workers/                   # NEW: Service Worker
+│   │   │   └── notification-service-worker.js
 │   │   ├── constants/                 # 全体の定数
+│   │   │   └── userRoles.js           # NEW: ユーザーロール定義
 │   │   └── contexts/                  # Context API
+│   │       └── AuthContext.js
 │   │
 │   ├── navigation/                     # ナビゲーション
-│   └── services/                       # 共通サービス
+│   └── services/                       # 外部サービス
 │       ├── supabase/
 │       └── gas/
 │
-├── .claude/                            # Claude Code設定
-│   └── CLAUDE.md
 ├── .env.example
-├── .gitignore
-├── app.json
 ├── package.json
 └── README.md
 ```
@@ -53,8 +87,8 @@ project-root/
 ### 1. リポジトリをクローン
 
 ```bash
-git clone https://github.com/your-username/react-native-expo-template-2026.git
-cd react-native-expo-template-2026
+git clone https://github.com/your-username/ikomasai-erp-2026.git
+cd ikomasai-erp-2026
 ```
 
 ### 2. 依存関係をインストール
@@ -76,28 +110,76 @@ EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-### 4. アプリを起動
+### 4. データベースをセットアップ
+
+Supabaseのダッシュボードで、以下のSQLを実行してください：
+
+```bash
+# docs/database-setup-notifications.sql の内容をSupabaseで実行
+```
+
+このSQLファイルには以下が含まれます：
+- `notifications` テーブルの作成
+- `notification_reads` テーブルの作成
+- `notification_types` テーブルの作成
+- インデックスの作成
+- Row Level Security (RLS) の設定
+- リアルタイム更新の有効化
+
+### 5. アプリを起動
 
 ```bash
 npm start
+# または
+npm run web
 ```
 
-- **iOS シミュレータ:** `i` キーを押す
-- **Android エミュレータ:** `a` キーを押す
-- **Web ブラウザ:** `w` キーを押す
+ブラウザで `http://localhost:8081` を開く
+
+## 通知機能の使い方
+
+詳細は [docs/通知機能の使い方.md](docs/通知機能の使い方.md) を参照してください。
+
+### 基本的な使い方
+
+```javascript
+import { sendNotification } from '@shared/services/sendNotification';
+
+// 通知を送信
+await sendNotification({
+  type: 'info',
+  message: 'データが更新されました',
+  recipientRoles: 'staff',
+  title: 'お知らせ',
+  deepLink: '/item1'
+});
+```
+
+### 利用可能な通知タイプ
+
+- `info` - 一般的な情報通知
+- `success` - 処理成功時の通知
+- `warning` - 注意が必要な内容
+- `error` - エラー発生時の通知
+- `vendor_stop` - 屋台停止通知
+- `schedule_change` - スケジュール変更通知
+- `inventory_alert` - 在庫アラート
+- `user_action` - ユーザーアクション通知
+
+### 利用可能なロール
+
+- `admin` - システム管理者
+- `operator` - オペレーター
+- `staff` - スタッフ
+- `vendor_manager` - 屋台担当マネージャー
+- `inventory_manager` - 在庫管理者
+- `accountant` - 会計担当者
+- `schedule_manager` - スケジュール管理者
+- `circle_leader` - サークル責任者
+- `circle_member` - サークルメンバー
+- `manager` - 総合マネージャー
 
 ## 開発の始め方
-
-### デモアプリを削除して新しいプロジェクトを始める
-
-1. `src/features/counter/` ディレクトリを削除
-2. `src/navigation/AppNavigator.jsx` を編集して、独自の画面を追加
-3. `docs/プロジェクト仕様書.md` を編集して、新しいプロジェクトの仕様を記述
-
-### 新しい機能を追加する
-
-1. `src/features/` に新しい機能ディレクトリを作成
-2. 以下のサブディレクトリを作成：
    - `components/` - UI コンポーネント
    - `screens/` - 画面
    - `hooks/` - カスタムフック
