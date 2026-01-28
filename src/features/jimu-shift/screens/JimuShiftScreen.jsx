@@ -100,27 +100,18 @@ const JimuShiftScreen = ({ navigation }) => {
     try {
       // 日付をシート名形式に変換
       const sheetName = formatDateToSheetName(selectedDate);
-      console.log('🔍 デバッグ: シート名', sheetName);
 
       // GAS APIからシフトデータを取得
       const shiftData = await fetchShiftData(sheetName);
-      console.log('🔍 デバッグ: 取得したシフトデータ', {
-        exists: shiftData.exists,
-        rowCount: shiftData.values.length,
-        firstRow: shiftData.values[0],
-      });
 
       // ユーザーの所属団体を取得
       const organizations = getUserOrganizations();
-      console.log('🔍 デバッグ: ユーザーの所属団体', organizations);
 
       // ユーザー名を取得
       const userName = userInfo.name || '';
-      console.log('🔍 デバッグ: ユーザー名', userName);
 
       // シフトを抽出
       const userShifts = getUserShifts(shiftData, userName, organizations);
-      console.log('🔍 デバッグ: 抽出されたシフト', userShifts);
       setShifts(userShifts);
     } catch (error) {
       console.error('シフトデータの取得に失敗:', error);
@@ -285,7 +276,7 @@ const JimuShiftScreen = ({ navigation }) => {
                 {/* 時間帯 */}
                 <Text style={styles.shiftTime}>{shift.timeSlot}</Text>
                 {/* エリア名 */}
-                <Text style={styles.shiftArea_name}>{shift.areaName}</Text>
+                <Text style={styles.shiftAreaName}>{shift.areaName}</Text>
               </View>
             ))}
         </View>
@@ -450,7 +441,7 @@ const styles = StyleSheet.create({
     color: '#333333',
     marginBottom: 4,
   },
-  shiftArea_name: {
+  shiftAreaName: {
     fontSize: 15,
     color: '#333333',
   },
