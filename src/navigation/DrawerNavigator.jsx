@@ -25,6 +25,7 @@ import Item9Screen from '../features/item9/screens/Item9Screen';
 import Item10Screen from '../features/item10/screens/Item10Screen';
 import Item11Screen from '../features/item11/screens/Item11Screen';
 import NotificationScreen from '../features/notifications/screens/NotificationScreen';
+import NotificationTestScreen from '../features/notifications/screens/NotificationTestScreen';
 
 /** Drawerナビゲーター */
 const Drawer = createDrawerNavigator();
@@ -71,6 +72,7 @@ const WrappedItem9Screen = createWrappedScreen(Item9Screen, '項目9');
 const WrappedItem10Screen = createWrappedScreen(Item10Screen, '項目10');
 const WrappedItem11Screen = createWrappedScreen(Item11Screen, '項目11');
 const WrappedNotificationScreen = createWrappedScreen(NotificationScreen, '通知');
+const WrappedNotificationTestScreen = createWrappedScreen(NotificationTestScreen, '通知テスト');
 
 /**
  * Drawerナビゲーターコンポーネント
@@ -111,6 +113,7 @@ const DrawerNavigator = () => {
       <Drawer.Screen name="Item10" component={WrappedItem10Screen} />
       <Drawer.Screen name="Item11" component={WrappedItem11Screen} />
       <Drawer.Screen name="Notifications" component={WrappedNotificationScreen} />
+      <Drawer.Screen name="NotificationTest" component={WrappedNotificationTestScreen} />
     </Drawer.Navigator>
   );
 };

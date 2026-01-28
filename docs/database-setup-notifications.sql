@@ -2,6 +2,20 @@
 -- Supabaseで実行してください
 
 -- ========================================
+-- 0. usersテーブルの作成（存在しない場合）
+-- ========================================
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT,
+  roles JSONB DEFAULT '[]',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- rolesカラムにインデックスを作成
+CREATE INDEX IF NOT EXISTS idx_users_roles ON users USING GIN (roles);
+
+-- ========================================
 -- 1. notifications テーブル
 -- ========================================
 CREATE TABLE IF NOT EXISTS notifications (
@@ -75,16 +89,7 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- ========================================
--- 4. usersテーブルの拡張（既存テーブルがある場合）
--- ========================================
--- rolesカラムを追加（既にある場合はスキップされます）
-ALTER TABLE users ADD COLUMN IF NOT EXISTS roles JSONB DEFAULT '[]';
-
--- rolesカラムにインデックスを作成
-CREATE INDEX IF NOT EXISTS idx_users_roles ON users USING GIN (roles);
-
--- ========================================
--- 5. Row Level Security (RLS) の設定
+-- 4. Row Level Security (RLS) の設定
 -- ========================================
 
 -- notificationsテーブルのRLSを有効化
@@ -138,7 +143,7 @@ CREATE POLICY "Users can mark notifications as read" ON notification_reads
   WITH CHECK (user_id = auth.uid());
 
 -- ========================================
--- 6. 自動削除トリガー（有効期限切れ通知）
+-- 5. 自動削除トリガー（有効期限切れ通知）
 -- ========================================
 
 -- 有効期限切れの通知を削除する関数
@@ -154,7 +159,7 @@ $$ LANGUAGE plpgsql;
 -- または、アプリケーション側で定期的に実行
 
 -- ========================================
--- 7. リアルタイム更新の有効化
+-- 6. リアルタイム更新の有効化
 -- ========================================
 
 -- notificationsテーブルのリアルタイム更新を有効化

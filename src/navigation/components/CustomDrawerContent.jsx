@@ -134,6 +134,20 @@ const CustomDrawerContent = (props) => {
             </Text>
           </View>
         )}
+
+        {/* 開発用: 通知テスト画面 */}
+        <View style={styles.divider} />
+        <Text style={styles.sectionTitle}>開発用</Text>
+        <DrawerItem
+          label="通知テスト"
+          isActive={currentRouteName === 'NotificationTest'}
+          onPress={() => navigateTo('NotificationTest')}
+        />
+        <DrawerItem
+          label="通知履歴"
+          isActive={currentRouteName === 'Notifications'}
+          onPress={() => navigateTo('Notifications')}
+        />
       </ScrollView>
 
       {/* フッター */}
@@ -208,6 +222,21 @@ const styles = StyleSheet.create({
   drawerItemTextActive: {
     color: '#FFFFFF',
     fontWeight: '600',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#2d2d44',
+    marginVertical: 12,
+    marginHorizontal: 20,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#888899',
+    paddingHorizontal: 20,
+    marginTop: 8,
+    marginBottom: 8,
+    textTransform: 'uppercase',
   },
   noAccessContainer: {
     paddingHorizontal: 20,

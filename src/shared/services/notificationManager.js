@@ -15,14 +15,20 @@ export async function getUserIdsByRoles(roles) {
   try {
     const roleArray = Array.isArray(roles) ? roles : [roles];
 
+    // すべてのユーザーを取得してから、クライアント側でフィルタリング
     const { data, error } = await supabase
       .from('users')
-      .select('id')
-      .or(roleArray.map(role => `roles.cs.{${role}}`).join(','));
+      .select('id, roles');
 
     if (error) throw error;
 
-    return data?.map(user => user.id) || [];
+    // rolesフィールドが指定されたロールを含むユーザーをフィルタリング
+    const matchedUsers = data.filter(user => {
+      const userRoles = user.roles || [];
+      return roleArray.some(role => userRoles.includes(role));
+    });
+
+    return matchedUsers.map(user => user.id);
   } catch (error) {
     console.error('ロールによるユーザーID取得エラー:', error);
     return [];

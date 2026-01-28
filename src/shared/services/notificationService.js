@@ -53,7 +53,6 @@ export async function getUserNotifications(userId, options = {}) {
         *,
         notification_reads!left(read_at, user_id)
       `)
-      .contains('target_user_ids', [userId])
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -85,11 +84,10 @@ export async function getUserNotifications(userId, options = {}) {
  */
 export async function getUnreadNotificationCount(userId) {
   try {
-    // 自分宛の通知を取得
+    // 自分宛の通知を取得（RLSで自動フィルタリング）
     const { data: notifications, error: notificationsError } = await supabase
       .from('notifications')
       .select('id')
-      .contains('target_user_ids', [userId])
       .gt('expires_at', new Date().toISOString());
 
     if (notificationsError) throw notificationsError;
