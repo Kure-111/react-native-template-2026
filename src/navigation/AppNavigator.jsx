@@ -4,38 +4,60 @@
  */
 
 import React from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import CounterScreen from '../features/counter/screens/CounterScreen';
+import { useAuth } from '../shared/contexts/AuthContext';
+import DrawerNavigator from './DrawerNavigator';
+import LoginScreen from '../features/auth/screens/LoginScreen';
 
-/** ネイティブスタックナビゲーター */
+/**
+ * スタックナビゲーター
+ */
 const Stack = createNativeStackNavigator();
 
 /**
  * アプリケーションナビゲーター
+ * 認証状態に応じてログイン画面またはメイン画面を表示します
  * @returns {JSX.Element} ナビゲーターコンポーネント
  */
 const AppNavigator = () => {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  // ローディング中の表示
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
+
   return (
     <NavigationContainer>
-      <Stack.Navigator
-        initialRouteName="Counter"
-        screenOptions={{
-          headerShown: false,
-        }}
-      >
-        {/* カウンター画面（デモ） */}
-        <Stack.Screen name="Counter" component={CounterScreen} />
-
-        {/*
-          ここに新しい画面を追加できます
-          例：
-          <Stack.Screen name="Profile" component={ProfileScreen} />
-          <Stack.Screen name="Settings" component={SettingsScreen} />
-        */}
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {isAuthenticated ? (
+          // ログイン済み: メイン画面を表示
+          <Stack.Screen name="Main" component={DrawerNavigator} />
+        ) : (
+          // 未ログイン: ログイン画面を表示
+          <Stack.Screen name="Login" component={LoginScreen} />
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );
 };
+
+/**
+ * スタイル定義
+ */
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#1a1a2e',
+  },
+});
 
 export default AppNavigator;
