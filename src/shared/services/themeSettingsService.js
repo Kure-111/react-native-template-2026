@@ -9,7 +9,7 @@ export const themeSettingsService = {
   async getThemeSettings(userId) {
     try {
       const { data, error } = await supabase
-        .from('user_settings')
+        .from('user_profiles')
         .select('theme_mode')
         .eq('user_id', userId)
         .single();
@@ -29,12 +29,12 @@ export const themeSettingsService = {
   async saveThemeSettings(userId, themeMode) {
     try {
       const { error } = await supabase
-        .from('user_settings')
-        .upsert({
-          user_id: userId,
+        .from('user_profiles')
+        .update({
           theme_mode: themeMode,
           updated_at: new Date().toISOString(),
-        });
+        })
+        .eq('user_id', userId);
 
       if (error) {
         console.error('Failed to save theme settings:', error);
