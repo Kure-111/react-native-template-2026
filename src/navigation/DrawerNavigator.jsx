@@ -23,6 +23,7 @@ import Item8Screen from '../features/item8/screens/Item8Screen';
 import Item9Screen from '../features/item9/screens/Item9Screen';
 import Item10Screen from '../features/item10/screens/Item10Screen';
 import JimuShiftScreen from '../features/jimu-shift/screens/JimuShiftScreen';
+import SettingsThemeScreen from '../features/settings/screens/SettingsThemeScreen';
 
 /** Drawerナビゲーター */
 const Drawer = createDrawerNavigator();
@@ -68,6 +69,7 @@ const WrappedItem8Screen = createWrappedScreen(Item8Screen, '項目8');
 const WrappedItem9Screen = createWrappedScreen(Item9Screen, '項目9');
 const WrappedItem10Screen = createWrappedScreen(Item10Screen, '項目10');
 const WrappedJimuShiftScreen = createWrappedScreen(JimuShiftScreen, '当日部員');
+const WrappedSettingsThemeScreen = createWrappedScreen(SettingsThemeScreen, 'テーマ設定');
 
 /**
  * Drawerナビゲーターコンポーネント
@@ -106,6 +108,7 @@ const DrawerNavigator = () => {
       <Drawer.Screen name="Item9" component={WrappedItem9Screen} />
       <Drawer.Screen name="Item10" component={WrappedItem10Screen} />
       <Drawer.Screen name="JimuShift" component={WrappedJimuShiftScreen} />
+      <Drawer.Screen name="SettingsTheme" component={WrappedSettingsThemeScreen} />
     </Drawer.Navigator>
   );
 };
