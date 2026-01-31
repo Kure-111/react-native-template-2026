@@ -3,13 +3,17 @@
  * アプリ全体のナビゲーション構造を定義します
  */
 
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../shared/contexts/AuthContext';
 import DrawerNavigator from './DrawerNavigator';
 import LoginScreen from '../features/auth/screens/LoginScreen';
+import PasswordChangeModal from '../features/auth/components/PasswordChangeModal';
+import PasswordChangeForm from '../features/auth/components/PasswordChangeForm';
+import PasswordSuccessModal from '../features/auth/components/PasswordSuccessModal';
+import { usePasswordChange } from '../features/auth/hooks/usePasswordChange';
 
 /**
  * スタックナビゲーター
@@ -22,7 +26,76 @@ const Stack = createNativeStackNavigator();
  * @returns {JSX.Element} ナビゲーターコンポーネント
  */
 const AppNavigator = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const {
+    isAuthenticated,
+    isLoading,
+    isFirstLogin,
+    setFirstLoginHandled,
+    refreshUserInfo,
+  } = useAuth();
+
+  // パスワード変更フック
+  const passwordChange = usePasswordChange();
+
+  // ナビゲーション参照（パスワード変更後の画面遷移用）
+  const navigationRef = useRef(null);
+
+  // パスワード変更フォーム表示状態
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+
+  // パスワード変更成功モーダル表示状態
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+  /**
+   * 「今すぐ変更」ボタン押下時の処理
+   */
+  const handleChangeNow = () => {
+    setShowPasswordForm(true);
+  };
+
+  /**
+   * 「後で変更」ボタン押下時の処理
+   */
+  const handleChangeLater = () => {
+    setFirstLoginHandled(true);
+  };
+
+  /**
+   * パスワード変更フォームのキャンセル
+   */
+  const handlePasswordFormCancel = () => {
+    setShowPasswordForm(false);
+    passwordChange.resetForm();
+  };
+
+  /**
+   * パスワード変更の実行
+   */
+  const handlePasswordSubmit = async () => {
+    const result = await passwordChange.handleChangePassword();
+
+    if (result.success) {
+      setShowPasswordForm(false);
+      setShowSuccessModal(true);
+      // ユーザー情報を再取得してpassword_changed_atを更新
+      await refreshUserInfo();
+    }
+  };
+
+  /**
+   * パスワード変更成功モーダルを閉じる
+   */
+  const handleSuccessModalClose = () => {
+    setShowSuccessModal(false);
+    setFirstLoginHandled(true);
+    passwordChange.resetForm();
+
+    // 当日部員シフト確認画面（jimu-shift）に遷移
+    // ネストされたナビゲーターなので、Main -> JimuShift の順で遷移
+    if (navigationRef.current) {
+      navigationRef.current.navigate('Main', { screen: 'JimuShift' });
+    }
+  };
 
   // ローディング中の表示
   if (isLoading) {
@@ -33,8 +106,27 @@ const AppNavigator = () => {
     );
   }
 
+  // パスワード変更フォーム表示中
+  if (showPasswordForm) {
+    return (
+      <PasswordChangeForm
+        currentPassword={passwordChange.currentPassword}
+        onCurrentPasswordChange={passwordChange.setCurrentPassword}
+        newPassword={passwordChange.newPassword}
+        onNewPasswordChange={passwordChange.setNewPassword}
+        confirmPassword={passwordChange.confirmPassword}
+        onConfirmPasswordChange={passwordChange.setConfirmPassword}
+        errors={passwordChange.errors}
+        onClearError={passwordChange.clearError}
+        isSubmitting={passwordChange.isSubmitting}
+        onSubmit={handlePasswordSubmit}
+        onCancel={handlePasswordFormCancel}
+      />
+    );
+  }
+
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {isAuthenticated ? (
           // ログイン済み: メイン画面を表示
@@ -44,6 +136,19 @@ const AppNavigator = () => {
           <Stack.Screen name="Login" component={LoginScreen} />
         )}
       </Stack.Navigator>
+
+      {/* 初回ログイン時のパスワード変更推奨モーダル */}
+      <PasswordChangeModal
+        visible={isAuthenticated && isFirstLogin && !showPasswordForm}
+        onChangeNow={handleChangeNow}
+        onChangeLater={handleChangeLater}
+      />
+
+      {/* パスワード変更成功モーダル */}
+      <PasswordSuccessModal
+        visible={showSuccessModal}
+        onClose={handleSuccessModalClose}
+      />
     </NavigationContainer>
   );
 };
