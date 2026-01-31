@@ -5,10 +5,10 @@
 -- theme_mode カラムを追加
 ALTER TABLE public.user_profiles 
 ADD COLUMN IF NOT EXISTS theme_mode text NOT NULL DEFAULT 'light' 
-CHECK (theme_mode IN ('light', 'dark', 'joshi', 'world_trigger', 'eva'));
+CHECK (theme_mode IN ('light', 'dark', 'joshi', 'cyber', 'neon'));
 
 -- インデックスを作成（検索パフォーマンス向上）
 CREATE INDEX IF NOT EXISTS idx_user_profiles_theme_mode ON public.user_profiles(theme_mode);
 
 -- コメントを追加
-COMMENT ON COLUMN public.user_profiles.theme_mode IS 'テーマモード (light/dark/joshi/world_trigger/eva)';
+COMMENT ON COLUMN public.user_profiles.theme_mode IS 'テーマモード (light/dark/joshi/cyber/neon)';

@@ -7,8 +7,8 @@ export const THEME_MODES = {
   LIGHT: 'light',
   DARK: 'dark',
   JOSHI: 'joshi',
-  WORLD_TRIGGER: 'world_trigger',
-  EVA: 'eva',
+  CYBER: 'cyber',
+  NEON: 'neon',
 };
 
 export const themeTokens = {
@@ -48,7 +48,7 @@ export const themeTokens = {
     error: '#DC143C',
     success: '#FF69B4',
   },
-  [THEME_MODES.WORLD_TRIGGER]: {
+  [THEME_MODES.CYBER]: {
     background: '#0A1929',
     surface: '#132F4C',
     primary: '#00D9FF',
@@ -60,17 +60,17 @@ export const themeTokens = {
     error: '#FF4842',
     success: '#00D9FF',
   },
-  [THEME_MODES.EVA]: {
-    background: '#1A0033',
-    surface: '#2D0052',
-    primary: '#9D4EDD',
-    primaryVariant: '#7B2CBF',
-    secondary: '#00FF41',
-    text: '#E0AAFF',
-    textSecondary: '#C77DFF',
-    border: '#5A189A',
-    error: '#FF006E',
-    success: '#00FF41',
+  [THEME_MODES.NEON]: {
+    background: '#000000',
+    surface: '#1A1A1A',
+    primary: '#FF6B00',
+    primaryVariant: '#E65100',
+    secondary: '#00FF00',
+    text: '#FFFFFF',
+    textSecondary: '#CCCCCC',
+    border: '#333333',
+    error: '#FF0000',
+    success: '#00FF00',
   },
 };
 
