@@ -189,6 +189,8 @@ export const AuthProvider = ({ children }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
+export { AuthContext };
+
 /**
  * 認証コンテキストを使用するカスタムフック
  * @returns {Object} 認証コンテキストの値

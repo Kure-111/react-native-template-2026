@@ -17,6 +17,7 @@ import {
   Image,
 } from 'react-native';
 import { useAuth } from '../../../shared/contexts/AuthContext.js';
+import { useTheme } from '../../../shared/hooks/useTheme';
 import { fetchShiftData } from '../../../services/gas/gasApi.js';
 import {
   getUserShifts,
@@ -48,6 +49,8 @@ const JimuShiftScreen = ({ navigation }) => {
   const isMobile = width < MOBILE_BREAKPOINT;
   /** 認証コンテキストからユーザー情報を取得 */
   const { userInfo } = useAuth();
+  /** テーマを取得 */
+  const { theme } = useTheme();
 
   /** 祭り開催期間 */
   const festivalStartDate = useMemo(() => getFestivalStartDate(), []);
@@ -224,15 +227,15 @@ const JimuShiftScreen = ({ navigation }) => {
   }, [isImageModalVisible, selectedAreaName]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       {/* ヘッダー */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
         {isMobile && (
           <TouchableOpacity style={styles.menuButton} onPress={openDrawer}>
-            <Text style={styles.menuButtonText}>☰</Text>
+            <Text style={[styles.menuButtonText, { color: theme.text }]}>☰</Text>
           </TouchableOpacity>
         )}
-        <Text style={styles.headerTitle}>{SCREEN_NAME}</Text>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>{SCREEN_NAME}</Text>
         {isMobile && <View style={styles.menuButton} />}
       </View>
 
@@ -242,17 +245,17 @@ const JimuShiftScreen = ({ navigation }) => {
         contentContainerStyle={styles.contentContainer}
       >
         {/* 日付選択（祭り期間内のみ移動可能） */}
-        <View style={styles.dateSelector}>
+        <View style={[styles.dateSelector, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <TouchableOpacity
             style={[styles.dateArrowButton, isFirstDay && styles.dateArrowButtonDisabled]}
             onPress={goToPreviousDay}
             disabled={isFirstDay}
           >
-            <Text style={[styles.dateArrowText, isFirstDay && styles.dateArrowTextDisabled]}>◀</Text>
+            <Text style={[styles.dateArrowText, { color: isFirstDay ? theme.textSecondary : theme.primary }]}>◀</Text>
           </TouchableOpacity>
 
           <View style={styles.dateDisplay}>
-            <Text style={styles.dateText}>{getDisplayDate()}</Text>
+            <Text style={[styles.dateText, { color: theme.text }]}>{getDisplayDate()}</Text>
           </View>
 
           <TouchableOpacity
@@ -260,28 +263,28 @@ const JimuShiftScreen = ({ navigation }) => {
             onPress={goToNextDay}
             disabled={isLastDay}
           >
-            <Text style={[styles.dateArrowText, isLastDay && styles.dateArrowTextDisabled]}>▶</Text>
+            <Text style={[styles.dateArrowText, { color: isLastDay ? theme.textSecondary : theme.primary }]}>▶</Text>
           </TouchableOpacity>
         </View>
 
         {/* シフト表示エリア */}
         <View style={styles.shiftArea}>
-          <Text style={styles.shiftAreaTitle}>あなたのシフト</Text>
+          <Text style={[styles.shiftAreaTitle, { color: theme.text }]}>あなたのシフト</Text>
 
           {/* ローディング中 */}
           {isLoading && (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#007AFF" />
-              <Text style={styles.loadingText}>読み込み中...</Text>
+              <ActivityIndicator size="large" color={theme.primary} />
+              <Text style={[styles.loadingText, { color: theme.textSecondary }]}>読み込み中...</Text>
             </View>
           )}
 
           {/* エラーメッセージ */}
           {!isLoading && errorMessage !== '' && (
             <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{errorMessage}</Text>
+              <Text style={[styles.errorText, { color: theme.error }]}>{errorMessage}</Text>
               <TouchableOpacity
-                style={styles.retryButton}
+                style={[styles.retryButton, { backgroundColor: theme.primary }]}
                 onPress={loadShifts}
               >
                 <Text style={styles.retryButtonText}>再試行</Text>
@@ -292,7 +295,7 @@ const JimuShiftScreen = ({ navigation }) => {
           {/* シフトなし */}
           {!isLoading && errorMessage === '' && shifts.length === 0 && (
             <View style={styles.noShiftContainer}>
-              <Text style={styles.noShiftText}>
+              <Text style={[styles.noShiftText, { color: theme.textSecondary }]}>
                 この日はシフトがありません
               </Text>
             </View>
@@ -315,9 +318,9 @@ const JimuShiftScreen = ({ navigation }) => {
                 activeOpacity={0.7}
               >
                 {/* 時間帯 */}
-                <Text style={styles.shiftTime}>{shift.timeSlot}</Text>
+                <Text style={[styles.shiftTime, { color: theme.text }]}>{shift.timeSlot}</Text>
                 {/* エリア名 */}
-                <Text style={styles.shiftAreaName}>{shift.areaName}</Text>
+                <Text style={[styles.shiftAreaName, { color: theme.text }]}>{shift.areaName}</Text>
               </TouchableOpacity>
             ))}
         </View>
@@ -334,17 +337,17 @@ const JimuShiftScreen = ({ navigation }) => {
           <View
             style={[
               styles.modalContainer,
-              { maxWidth: isMobile ? 600 : 800 },
+              { maxWidth: isMobile ? 600 : 800, backgroundColor: theme.surface },
             ]}
           >
             {/* モーダルヘッダー */}
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{selectedAreaName}</Text>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>{selectedAreaName}</Text>
               <TouchableOpacity
                 style={styles.modalCloseButton}
                 onPress={closeImageModal}
               >
-                <Text style={styles.modalCloseButtonText}>×</Text>
+                <Text style={[styles.modalCloseButtonText, { color: theme.text }]}>×</Text>
               </TouchableOpacity>
             </View>
 
@@ -362,16 +365,16 @@ const JimuShiftScreen = ({ navigation }) => {
               ) : (
                 <View style={styles.noImageContainer}>
                   <Text style={styles.noImageText}>📷</Text>
-                  <Text style={styles.noImageDescription}>
+                  <Text style={[styles.noImageDescription, { color: theme.textSecondary }]}>
                     エリア場所の画像が登録されていないか、
                   </Text>
-                  <Text style={styles.noImageDescription}>
+                  <Text style={[styles.noImageDescription, { color: theme.textSecondary }]}>
                     正常に読み込めませんでした。
                   </Text>
-                  <Text style={styles.noImageHint}>
+                  <Text style={[styles.noImageHint, { color: theme.textSecondary }]}>
                     リロードしても改善されない場合は、
                   </Text>
-                  <Text style={styles.noImageHint}>
+                  <Text style={[styles.noImageHint, { color: theme.textSecondary }]}>
                     システム部または事務部までお問い合わせください。
                   </Text>
                 </View>
@@ -390,7 +393,6 @@ const JimuShiftScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f7',
   },
   header: {
     flexDirection: 'row',
@@ -398,9 +400,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
   },
   menuButton: {
     width: 44,
@@ -410,12 +410,10 @@ const styles = StyleSheet.create({
   },
   menuButtonText: {
     fontSize: 24,
-    color: '#333333',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333333',
   },
   content: {
     flex: 1,
@@ -432,16 +430,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
   },
   dateArrowButton: {
     width: 44,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
   },
   dateArrowText: {
     fontSize: 16,
@@ -450,24 +448,16 @@ const styles = StyleSheet.create({
   dateArrowButtonDisabled: {
     opacity: 0.3,
   },
-  dateArrowTextDisabled: {
-    color: '#999999',
-  },
   dateDisplay: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 24,
     paddingVertical: 10,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
     marginHorizontal: 12,
   },
   dateText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333333',
   },
   /* シフト表示エリア */
   shiftArea: {
@@ -476,7 +466,6 @@ const styles = StyleSheet.create({
   shiftAreaTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333333',
     marginBottom: 12,
   },
   /* ローディング */
@@ -487,26 +476,20 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 14,
-    color: '#666666',
   },
   /* エラー */
   errorContainer: {
     alignItems: 'center',
     paddingVertical: 24,
-    backgroundColor: '#fff5f5',
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ffcccc',
   },
   errorText: {
     fontSize: 14,
-    color: '#ff3b30',
     marginBottom: 12,
   },
   retryButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: '#007AFF',
     borderRadius: 8,
   },
   retryButtonText: {
@@ -518,14 +501,10 @@ const styles = StyleSheet.create({
   noShiftContainer: {
     alignItems: 'center',
     paddingVertical: 32,
-    backgroundColor: '#FFFFFF',
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
   },
   noShiftText: {
     fontSize: 14,
-    color: '#999999',
   },
   /* シフトカード */
   shiftCard: {
@@ -537,12 +516,10 @@ const styles = StyleSheet.create({
   shiftTime: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333333',
     marginBottom: 4,
   },
   shiftAreaName: {
     fontSize: 15,
-    color: '#333333',
   },
   /* モーダル */
   modalOverlay: {
@@ -553,7 +530,6 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalContainer: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     width: '100%',
     maxWidth: 600,
@@ -566,12 +542,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333333',
     flex: 1,
   },
   modalCloseButton: {
@@ -580,11 +554,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 18,
-    backgroundColor: '#f5f5f7',
   },
   modalCloseButtonText: {
     fontSize: 28,
-    color: '#666666',
     lineHeight: 32,
   },
   modalImageContainer: {
@@ -609,13 +581,11 @@ const styles = StyleSheet.create({
   noImageDescription: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#666666',
     textAlign: 'center',
     marginBottom: 4,
   },
   noImageHint: {
     fontSize: 14,
-    color: '#999999',
     textAlign: 'center',
     lineHeight: 20,
     marginTop: 8,

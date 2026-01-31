@@ -15,6 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import { useAuth } from '../../../shared/contexts/AuthContext.js';
+import { useTheme } from '../../../shared/hooks/useTheme';
 
 /**
  * ログイン画面コンポーネント
@@ -28,6 +29,8 @@ const LoginScreen = () => {
 
   // 認証コンテキストから login 関数を取得
   const { login } = useAuth();
+  // テーマを取得
+  const { theme } = useTheme();
 
   /**
    * ログインボタン押下時の処理
@@ -63,32 +66,32 @@ const LoginScreen = () => {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: theme.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.inner}>
         {/* タイトル */}
         <View style={styles.header}>
-          <Text style={styles.title}>生駒祭 ERP</Text>
-          <Text style={styles.subtitle}>2026</Text>
+          <Text style={[styles.title, { color: theme.text }]}>生駒祭 ERP</Text>
+          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>2026</Text>
         </View>
 
         {/* ログインフォーム */}
         <View style={styles.form}>
           {/* エラーメッセージ */}
           {errorMessage ? (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{errorMessage}</Text>
+            <View style={[styles.errorContainer, { backgroundColor: theme.error + '20', borderColor: theme.error }]}>
+              <Text style={[styles.errorText, { color: theme.error }]}>{errorMessage}</Text>
             </View>
           ) : null}
 
           {/* メールアドレス入力 */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>メールアドレス</Text>
+            <Text style={[styles.label, { color: theme.text }]}>メールアドレス</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: theme.surface, color: theme.text, borderColor: theme.border }]}
               placeholder="example@example.com"
-              placeholderTextColor="#999"
+              placeholderTextColor={theme.textSecondary}
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -100,11 +103,11 @@ const LoginScreen = () => {
 
           {/* パスワード入力 */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>パスワード</Text>
+            <Text style={[styles.label, { color: theme.text }]}>パスワード</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: theme.surface, color: theme.text, borderColor: theme.border }]}
               placeholder="パスワードを入力"
-              placeholderTextColor="#999"
+              placeholderTextColor={theme.textSecondary}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -116,7 +119,7 @@ const LoginScreen = () => {
 
           {/* ログインボタン */}
           <TouchableOpacity
-            style={[styles.button, isSubmitting && styles.buttonDisabled]}
+            style={[styles.button, { backgroundColor: isSubmitting ? theme.textSecondary : theme.primary }]}
             onPress={handleLogin}
             disabled={isSubmitting}
           >
@@ -130,7 +133,7 @@ const LoginScreen = () => {
 
         {/* フッター */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>
+          <Text style={[styles.footerText, { color: theme.textSecondary }]}>
             アカウントをお持ちでない場合は、管理者にお問い合わせください
           </Text>
         </View>
@@ -145,7 +148,6 @@ const LoginScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a2e',
   },
   inner: {
     flex: 1,
@@ -160,12 +162,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#FFFFFF',
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 24,
-    color: '#007AFF',
     fontWeight: '600',
   },
   form: {
@@ -173,15 +173,12 @@ const styles = StyleSheet.create({
     maxWidth: 400,
   },
   errorContainer: {
-    backgroundColor: '#3a1a1a',
     borderWidth: 1,
-    borderColor: '#ff3b30',
     borderRadius: 8,
     padding: 12,
     marginBottom: 24,
   },
   errorText: {
-    color: '#ff3b30',
     fontSize: 14,
     textAlign: 'center',
   },
@@ -190,28 +187,20 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    color: '#FFFFFF',
     marginBottom: 8,
     fontWeight: '500',
   },
   input: {
-    backgroundColor: '#2a2a3e',
     borderWidth: 1,
-    borderColor: '#3a3a4e',
     borderRadius: 8,
     padding: 16,
     fontSize: 16,
-    color: '#FFFFFF',
   },
   button: {
-    backgroundColor: '#007AFF',
     borderRadius: 8,
     padding: 16,
     alignItems: 'center',
     marginTop: 16,
-  },
-  buttonDisabled: {
-    backgroundColor: '#555',
   },
   buttonText: {
     color: '#FFFFFF',
@@ -224,7 +213,6 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 12,
-    color: '#999',
     textAlign: 'center',
   },
 });
