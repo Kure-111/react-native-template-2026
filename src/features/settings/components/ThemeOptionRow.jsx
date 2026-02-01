@@ -12,7 +12,7 @@ const IconComponent = ({ iconFamily, iconName, color, size }) => {
   return <Icon name={iconName} size={size} color={color} />;
 };
 
-export const ThemeOptionRow = ({ option, isSelected, onSelect }) => {
+export const ThemeOptionRow = ({ option, isSelected, onSelect, disabled }) => {
   const { theme } = useTheme();
 
   return (
@@ -23,9 +23,11 @@ export const ThemeOptionRow = ({ option, isSelected, onSelect }) => {
           backgroundColor: theme.surface,
           borderColor: isSelected ? theme.primary : theme.border,
           borderWidth: isSelected ? 2 : 1,
+          opacity: disabled ? 0.5 : 1,
         }
       ]}
-      onPress={() => onSelect(option.value)}
+      onPress={() => !disabled && onSelect(option.value)}
+      disabled={disabled}
     >
       <View style={styles.content}>
         <View style={styles.iconContainer}>

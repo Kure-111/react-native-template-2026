@@ -11,7 +11,7 @@ import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 import { THEME_OPTIONS } from '../constants';
 
 export default function SettingsThemeScreen({ navigation }) {
-  const { themeMode, theme, changeTheme } = useTheme();
+  const { themeMode, theme, changeTheme, isTransitioning } = useTheme();
   const [status, setStatus] = useState(null);
 
   const handleThemeChange = async (newMode) => {
@@ -45,6 +45,7 @@ export default function SettingsThemeScreen({ navigation }) {
                 option={option}
                 isSelected={themeMode === option.value}
                 onSelect={handleThemeChange}
+                disabled={isTransitioning}
               />
             ))}
           </View>
