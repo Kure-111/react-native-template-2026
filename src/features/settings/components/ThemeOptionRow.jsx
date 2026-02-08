@@ -23,6 +23,7 @@ export const ThemeOptionRow = ({ option, isSelected, onSelect, disabled }) => {
           backgroundColor: theme.surface,
           borderColor: isSelected ? theme.primary : theme.border,
           borderWidth: isSelected ? 2 : 1,
+          borderRadius: theme.borderRadius,
           opacity: disabled ? 0.5 : 1,
         }
       ]}
@@ -31,14 +32,18 @@ export const ThemeOptionRow = ({ option, isSelected, onSelect, disabled }) => {
     >
       <View style={styles.content}>
         <View style={styles.iconContainer}>
-          <IconComponent 
-            iconFamily={option.iconFamily}
-            iconName={option.iconName}
-            color={isSelected ? theme.primary : theme.text}
-            size={24}
-          />
+          <Text style={styles.emoji}>{option.icon}</Text>
         </View>
-        <Text style={[styles.label, { color: theme.text }]}>{option.label}</Text>
+        <View style={styles.textContainer}>
+          <Text style={[styles.label, { color: theme.text, fontWeight: theme.fontWeight }]}>
+            {option.label}
+          </Text>
+          {option.description && (
+            <Text style={[styles.description, { color: theme.textSecondary, fontSize: theme.fontSize.small }]}>
+              {option.description}
+            </Text>
+          )}
+        </View>
       </View>
       {isSelected && (
         <Ionicons name="checkmark-circle" size={24} color={theme.primary} />
@@ -54,19 +59,27 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
     marginVertical: 6,
-    borderRadius: 8,
   },
   content: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
   },
   iconContainer: {
     marginRight: 12,
-    width: 28,
+    width: 32,
     alignItems: 'center',
+  },
+  emoji: {
+    fontSize: 24,
+  },
+  textContainer: {
+    flex: 1,
   },
   label: {
     fontSize: 16,
-    fontWeight: '500',
+  },
+  description: {
+    marginTop: 2,
   },
 });

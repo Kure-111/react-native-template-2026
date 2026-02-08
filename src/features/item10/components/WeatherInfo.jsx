@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../../shared/hooks/useTheme';
 
 // 天気アイコンを取得
 const getWeatherIcon = (description) => {
@@ -15,10 +16,15 @@ const getWeatherIcon = (description) => {
 
 // 天気情報表示（降水量mm/h含む）
 export const WeatherInfo = ({ weather, rainfall }) => {
+  const { theme } = useTheme();
+  
   if (!weather) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.loadingText}>天気データ取得中...</Text>
+      <View style={[styles.container, { 
+        backgroundColor: theme.surface,
+        borderColor: theme.border,
+      }]}>
+        <Text style={[styles.loadingText, { color: theme.textSecondary }]}>天気データ取得中...</Text>
       </View>
     );
   }
@@ -29,23 +35,26 @@ export const WeatherInfo = ({ weather, rainfall }) => {
   const weatherIcon = getWeatherIcon(weatherDescription);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { 
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+    }]}>
       <View style={styles.mainRow}>
-        <View style={styles.iconBox}>
+        <View style={[styles.iconBox, { backgroundColor: theme.name === 'dark' ? 'rgba(255, 193, 7, 0.1)' : '#FFF8E1' }]}>
           <MaterialCommunityIcons name={weatherIcon.name} size={56} color={weatherIcon.color} />
         </View>
         <View style={styles.tempBox}>
-          <Text style={styles.temp}>{temp}</Text>
-          <Text style={styles.tempUnit}>°C</Text>
+          <Text style={[styles.temp, { color: theme.name === 'dark' ? '#FFB74D' : '#FF6F00' }]}>{temp}</Text>
+          <Text style={[styles.tempUnit, { color: theme.name === 'dark' ? '#FFB74D' : '#FF6F00' }]}>°C</Text>
         </View>
         <View style={styles.detailsBox}>
           <View style={styles.detailRow}>
             <Ionicons name="water" size={20} color="#2196F3" />
-            <Text style={styles.detailText}>{humidity}%</Text>
+            <Text style={[styles.detailText, { color: theme.textSecondary }]}>{humidity}%</Text>
           </View>
           <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="weather-pouring" size={20} color={rainfall > 0 ? "#F44336" : "#999"} />
-            <Text style={[styles.detailText, rainfall > 0 && styles.rainfallAlert]}>
+            <MaterialCommunityIcons name="weather-pouring" size={20} color={rainfall > 0 ? "#F44336" : theme.textSecondary} />
+            <Text style={[styles.detailText, { color: theme.textSecondary }, rainfall > 0 && styles.rainfallAlert]}>
               {rainfall.toFixed(1)}mm
             </Text>
           </View>
@@ -57,7 +66,6 @@ export const WeatherInfo = ({ weather, rainfall }) => {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 24,
     shadowColor: '#000',
@@ -65,9 +73,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    borderWidth: 2,
   },
   loadingText: {
-    color: '#999',
     fontSize: 16,
     textAlign: 'center',
     paddingVertical: 20,
@@ -81,7 +89,6 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#FFF8E1',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -92,12 +99,10 @@ const styles = StyleSheet.create({
   temp: {
     fontSize: 48,
     fontWeight: 'bold',
-    color: '#FF6F00',
   },
   tempUnit: {
     fontSize: 24,
     fontWeight: '600',
-    color: '#FF6F00',
     marginTop: 6,
   },
   detailsBox: {
@@ -111,7 +116,6 @@ const styles = StyleSheet.create({
   detailText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#666',
   },
   rainfallAlert: {
     color: '#F44336',

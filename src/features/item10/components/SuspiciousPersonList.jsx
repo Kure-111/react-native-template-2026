@@ -2,27 +2,36 @@ import React from 'react';
 import { View, Text, StyleSheet, FlatList } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SuspiciousPersonCard } from './SuspiciousPersonCard';
+import { useTheme } from '../../../shared/hooks/useTheme';
 
 // 不審者リスト
 export const SuspiciousPersonList = ({ persons, onPersonPress }) => {
+  const { theme } = useTheme();
+  
   if (!persons || persons.length === 0) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { 
+        backgroundColor: theme.surface,
+        borderColor: theme.border,
+      }]}>
         <View style={styles.header}>
           <MaterialCommunityIcons name="alert-circle" size={20} color="#FF9800" />
-          <Text style={styles.title}>不審者情報</Text>
+          <Text style={[styles.title, { color: theme.text }]}>不審者情報</Text>
         </View>
-        <Text style={styles.noData}>情報がありません</Text>
+        <Text style={[styles.noData, { color: theme.textSecondary }]}>情報がありません</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { 
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+    }]}>
       <View style={styles.header}>
         <MaterialCommunityIcons name="alert-circle" size={20} color="#FF9800" />
-        <Text style={styles.title}>不審者情報</Text>
-        <View style={styles.badge}>
+        <Text style={[styles.title, { color: theme.text }]}>不審者情報</Text>
+        <View style={[styles.badge, { backgroundColor: theme.name === 'dark' ? '#3A2F0A' : '#FFF3E0' }]}>
           <Text style={styles.badgeText}>{persons.length}件</Text>
         </View>
       </View>
@@ -44,7 +53,6 @@ export const SuspiciousPersonList = ({ persons, onPersonPress }) => {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
     shadowColor: '#000',
@@ -52,6 +60,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    borderWidth: 2,
   },
   header: {
     flexDirection: 'row',
@@ -65,7 +74,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   badge: {
-    backgroundColor: '#FFF3E0',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
@@ -76,7 +84,6 @@ const styles = StyleSheet.create({
     color: '#FF9800',
   },
   noData: {
-    color: '#999',
     textAlign: 'center',
     paddingVertical: 16,
     fontSize: 12,

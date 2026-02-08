@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useTheme } from "../../../shared/hooks/useTheme";
 
 // デジタル時計
 export const DigitalClock = () => {
+  const { theme } = useTheme();
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -28,7 +30,7 @@ export const DigitalClock = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.primary }]}>
       <View style={styles.iconContainer}>
         <MaterialCommunityIcons name="clock-outline" size={28} color="#fff" />
       </View>
@@ -42,7 +44,6 @@ export const DigitalClock = () => {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#1976D2',
     borderRadius: 12,
     padding: 16,
     flexDirection: 'row',

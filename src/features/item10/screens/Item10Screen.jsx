@@ -177,7 +177,7 @@ const Item10Screen = ({ navigation }) => {
           {/* 右列 */}
           <View style={styles.column}>
             {/* 緊急モード */}
-            <View style={[styles.card, { marginBottom: 0 }]}>
+            <View style={[styles.card, { marginBottom: 0, backgroundColor: theme.card }]}>
               <EmergencyModeToggle
                 isEmergency={isEmergency}
                 onToggle={handleEmergencyToggle}
@@ -200,11 +200,14 @@ const Item10Screen = ({ navigation }) => {
               )}
 
               {isEmergency && (
-                <View style={styles.emergencyInfo}>
-                  <Text style={styles.emergencyInfoText}>
+                <View style={[styles.emergencyInfo, { 
+                  backgroundColor: theme.name === 'dark' ? '#4A1212' : '#FFEBEE',
+                  borderLeftColor: theme.name === 'dark' ? '#FF5252' : '#F44336'
+                }]}>
+                  <Text style={[styles.emergencyInfoText, { color: theme.text }]}>
                     災害: {DISASTER_TYPE_LABELS[disasterType]}
                   </Text>
-                  <Text style={styles.emergencyInfoText}>
+                  <Text style={[styles.emergencyInfoText, { color: theme.text }]}>
                     詳細: {message}
                   </Text>
                 </View>
@@ -212,7 +215,7 @@ const Item10Screen = ({ navigation }) => {
             </View>
 
             {/* 不審者情報 */}
-            <View style={[styles.card, { marginBottom: 0, marginTop: 12 }]}>
+            <View style={[styles.card, { marginBottom: 0, marginTop: 12, backgroundColor: theme.card }]}>
               <SuspiciousPersonList 
                 persons={persons} 
                 onPersonPress={(person) => {

@@ -1,25 +1,49 @@
 import React from 'react';
 import { View, Text, StyleSheet, Switch } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useTheme } from '../../../shared/hooks/useTheme';
 
 // 緊急モードスイッチ
 export const EmergencyModeToggle = ({ isEmergency, onToggle, disabled }) => {
+  const { theme } = useTheme();
+  
   return (
-    <View style={[styles.container, isEmergency && styles.emergencyActive]}>
+    <View style={[
+      styles.container, 
+      { backgroundColor: theme.surface, borderColor: theme.border },
+      isEmergency && { 
+        backgroundColor: theme.name === 'dark' ? '#4A1212' : '#FFEBEE',
+        borderColor: theme.name === 'dark' ? '#FF5252' : '#F44336'
+      }
+    ]}>
       <View style={styles.header}>
         <View style={styles.titleContainer}>
-          <View style={[styles.iconContainer, isEmergency && styles.iconEmergency]}>
+          <View style={[
+            styles.iconContainer, 
+            { backgroundColor: theme.name === 'dark' ? '#1B3A1B' : '#E8F5E9' },
+            isEmergency && { 
+              backgroundColor: theme.name === 'dark' ? '#4A1212' : '#FFEBEE' 
+            }
+          ]}>
             <MaterialCommunityIcons 
               name={isEmergency ? "alert-octagon" : "shield-check"} 
               size={24} 
-              color={isEmergency ? "#F44336" : "#4CAF50"} 
+              color={isEmergency ? (theme.name === 'dark' ? "#FF5252" : "#F44336") : "#4CAF50"} 
             />
           </View>
           <View>
-            <Text style={[styles.title, isEmergency && styles.emergencyText]}>
+            <Text style={[
+              styles.title, 
+              { color: theme.text },
+              isEmergency && { color: theme.name === 'dark' ? '#FF5252' : '#F44336' }
+            ]}>
               緊急モード
             </Text>
-            <Text style={[styles.status, isEmergency && styles.emergencyText]}>
+            <Text style={[
+              styles.status, 
+              { color: theme.textSecondary },
+              isEmergency && { color: theme.name === 'dark' ? '#FF5252' : '#F44336' }
+            ]}>
               {isEmergency ? '発動中' : '待機中'}
             </Text>
           </View>
@@ -28,8 +52,11 @@ export const EmergencyModeToggle = ({ isEmergency, onToggle, disabled }) => {
           value={isEmergency}
           onValueChange={onToggle}
           disabled={disabled}
-          trackColor={{ false: '#BDBDBD', true: '#F44336' }}
-          thumbColor={isEmergency ? '#fff' : '#f4f3f4'}
+          trackColor={{ 
+            false: theme.name === 'dark' ? '#555' : '#BDBDBD', 
+            true: theme.name === 'dark' ? '#FF5252' : '#F44336' 
+          }}
+          thumbColor={isEmergency ? '#fff' : (theme.name === 'dark' ? '#888' : '#f4f3f4')}
           style={styles.switch}
         />
       </View>
@@ -39,7 +66,6 @@ export const EmergencyModeToggle = ({ isEmergency, onToggle, disabled }) => {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
     shadowColor: '#000',
@@ -48,11 +74,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
     borderWidth: 2,
-    borderColor: '#E0E0E0',
-  },
-  emergencyActive: {
-    backgroundColor: '#FFEBEE',
-    borderColor: '#F44336',
   },
   header: {
     flexDirection: 'row',
@@ -68,27 +89,18 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#E8F5E9',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
-  iconEmergency: {
-    backgroundColor: '#FFEBEE',
-  },
   title: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333',
     marginBottom: 2,
-  },
-  emergencyText: {
-    color: '#F44336',
   },
   status: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#666',
   },
   switch: {
     transform: [{ scale: 1.2 }],

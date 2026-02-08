@@ -34,7 +34,13 @@ export default function SettingsThemeScreen({ navigation }) {
       <ThemedHeader title="テーマ設定" navigation={navigation} />
       <ScrollView style={styles.scrollView}>
         <View style={styles.content}>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+          <Text style={[
+            styles.subtitle, 
+            { 
+              color: theme.textSecondary,
+              fontSize: theme.fontSize.medium,
+            }
+          ]}>
             お好みのテーマを選択してください
           </Text>
 
