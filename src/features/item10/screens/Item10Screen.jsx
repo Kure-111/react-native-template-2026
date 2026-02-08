@@ -153,79 +153,81 @@ const Item10Screen = ({ navigation }) => {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <ThemedHeader title={SCREEN_NAME} navigation={navigation} />
       
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
-        {/* デジタル時計 */}
-        <DigitalClock />
-
-        {/* 来場者カウンター */}
-        <View style={styles.section}>
-          <VisitorCounter count={count} />
-          <CountHistoryChart history={history} />
+      <View style={styles.contentContainer}>
+        {/* 上部: デジタル時計 */}
+        <View style={styles.topRow}>
+          <DigitalClock />
         </View>
 
-        {/* 天気情報 */}
-        <View style={styles.section}>
-          <WeatherInfo weather={weather} rainfall={rainfall} />
-        </View>
-
-        {/* 不審者情報 */}
-        <View style={styles.section}>
-          <SuspiciousPersonList 
-            persons={persons} 
-            onPersonPress={(person) => {
-              // TODO: 詳細画面へ遷移
-              if (Platform.OS === 'web') {
-                alert(`詳細\n${person.location}の情報`);
-              } else {
-                const { Alert } = require('react-native');
-                Alert.alert('詳細', `${person.location}の情報`);
-              }
-            }}
-          />
-        </View>
-
-        {/* 緊急モード */}
-        <View style={styles.section}>
-          <EmergencyModeToggle
-            isEmergency={isEmergency}
-            onToggle={handleEmergencyToggle}
-            disabled={emergencyLoading}
-          />
-          
-          {!isEmergency && (
-            <>
-              <EmergencyTypeSelector
-                value={selectedDisasterType}
-                onValueChange={setSelectedDisasterType}
-                disabled={isEmergency}
-              />
-              <EmergencyMessageInput
-                value={emergencyMessage}
-                onChangeText={setEmergencyMessage}
-                disabled={isEmergency}
-              />
-            </>
-          )}
-
-          {isEmergency && (
-            <View style={styles.emergencyInfo}>
-              <Text style={styles.emergencyInfoText}>
-                発動中の災害: {DISASTER_TYPE_LABELS[disasterType]}
-              </Text>
-              <Text style={styles.emergencyInfoText}>
-                詳細: {message}
-              </Text>
+        {/* メインコンテンツ: 2列グリッド */}
+        <View style={styles.gridContainer}>
+          {/* 左列 */}
+          <View style={styles.column}>
+            {/* 来場者カウンター */}
+            <View style={[styles.leftCard, { marginBottom: 0 }]}>
+              <VisitorCounter count={count} />
             </View>
-          )}
-        </View>
 
-        {/* 警備配置情報（未実装） */}
-        <View style={styles.section}>
-          <View style={styles.placeholder}>
-            <Text style={styles.placeholderText}>警備配置情報（未実装）</Text>
+            {/* 天気情報 */}
+            <View style={[styles.leftCard, { marginBottom: 0, marginTop: 12 }]}>
+              <WeatherInfo weather={weather} rainfall={rainfall} />
+            </View>
+          </View>
+
+          {/* 右列 */}
+          <View style={styles.column}>
+            {/* 緊急モード */}
+            <View style={[styles.card, { marginBottom: 0 }]}>
+              <EmergencyModeToggle
+                isEmergency={isEmergency}
+                onToggle={handleEmergencyToggle}
+                disabled={emergencyLoading}
+              />
+              
+              {!isEmergency && (
+                <View style={styles.emergencyControls}>
+                  <EmergencyTypeSelector
+                    value={selectedDisasterType}
+                    onValueChange={setSelectedDisasterType}
+                    disabled={isEmergency}
+                  />
+                  <EmergencyMessageInput
+                    value={emergencyMessage}
+                    onChangeText={setEmergencyMessage}
+                    disabled={isEmergency}
+                  />
+                </View>
+              )}
+
+              {isEmergency && (
+                <View style={styles.emergencyInfo}>
+                  <Text style={styles.emergencyInfoText}>
+                    災害: {DISASTER_TYPE_LABELS[disasterType]}
+                  </Text>
+                  <Text style={styles.emergencyInfoText}>
+                    詳細: {message}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* 不審者情報 */}
+            <View style={[styles.card, { marginBottom: 0, marginTop: 12 }]}>
+              <SuspiciousPersonList 
+                persons={persons} 
+                onPersonPress={(person) => {
+                  if (Platform.OS === 'web') {
+                    alert(`詳細\n${person.location}の情報`);
+                  } else {
+                    const { Alert } = require('react-native');
+                    Alert.alert('詳細', `${person.location}の情報`);
+                  }
+                }}
+              />
+            </View>
           </View>
         </View>
-      </ScrollView>
+      </View>
 
       {/* 通知ポップアップ */}
       <NotificationPopup
@@ -242,40 +244,46 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  scrollView: {
+  contentContainer: {
+    flex: 1,
+    padding: 12,
+  },
+  topRow: {
+    marginBottom: 12,
+  },
+  gridContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 12,
+  },
+  column: {
     flex: 1,
   },
-  contentContainer: {
-    padding: 16,
+  card: {
+    flex: 1,
+    marginBottom: 12,
   },
-  section: {
-    marginBottom: 16,
+  leftCard: {
+    flex: 1,
+    marginBottom: 12,
+  },
+  emergencyControls: {
+    marginTop: 12,
+    gap: 8,
   },
   emergencyInfo: {
-    backgroundColor: '#FFF3E0',
-    borderRadius: 8,
-    padding: 12,
     marginTop: 12,
+    padding: 12,
+    backgroundColor: '#FFEBEE',
+    borderRadius: 8,
     borderLeftWidth: 4,
-    borderLeftColor: '#FF9800',
+    borderLeftColor: '#F44336',
   },
   emergencyInfoText: {
-    fontSize: 14,
-    color: '#E65100',
+    fontSize: 12,
+    color: '#F44336',
     marginBottom: 4,
-  },
-  placeholder: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#ddd',
-    borderStyle: 'dashed',
-  },
-  placeholderText: {
-    fontSize: 16,
-    color: '#999',
+    fontWeight: '600',
   },
 });
 

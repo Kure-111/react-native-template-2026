@@ -1,13 +1,24 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+
+// 天気アイコンを取得
+const getWeatherIcon = (description) => {
+  const desc = description.toLowerCase();
+  if (desc.includes('晴') || desc.includes('clear')) return { name: 'weather-sunny', color: '#FFA000' };
+  if (desc.includes('曇') || desc.includes('cloud')) return { name: 'weather-cloudy', color: '#757575' };
+  if (desc.includes('雨') || desc.includes('rain')) return { name: 'weather-rainy', color: '#2196F3' };
+  if (desc.includes('雪') || desc.includes('snow')) return { name: 'weather-snowy', color: '#81D4FA' };
+  if (desc.includes('雷') || desc.includes('thunder')) return { name: 'weather-lightning', color: '#FBC02D' };
+  return { name: 'weather-partly-cloudy', color: '#FFB74D' };
+};
 
 // 天気情報表示（降水量mm/h含む）
 export const WeatherInfo = ({ weather, rainfall }) => {
   if (!weather) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>天気情報</Text>
-        <Text style={styles.noData}>データ取得中...</Text>
+        <Text style={styles.loadingText}>天気データ取得中...</Text>
       </View>
     );
   }
@@ -15,27 +26,30 @@ export const WeatherInfo = ({ weather, rainfall }) => {
   const weatherDescription = weather.weather?.[0]?.description || '情報なし';
   const temp = weather.main?.temp?.toFixed(1) || '--';
   const humidity = weather.main?.humidity || '--';
+  const weatherIcon = getWeatherIcon(weatherDescription);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>天気情報</Text>
-      <View style={styles.infoRow}>
-        <Text style={styles.label}>天気:</Text>
-        <Text style={styles.value}>{weatherDescription}</Text>
-      </View>
-      <View style={styles.infoRow}>
-        <Text style={styles.label}>気温:</Text>
-        <Text style={styles.value}>{temp}°C</Text>
-      </View>
-      <View style={styles.infoRow}>
-        <Text style={styles.label}>湿度:</Text>
-        <Text style={styles.value}>{humidity}%</Text>
-      </View>
-      <View style={styles.infoRow}>
-        <Text style={styles.label}>降水量:</Text>
-        <Text style={[styles.value, rainfall > 0 && styles.rainfallAlert]}>
-          {rainfall.toFixed(1)} mm/h
-        </Text>
+      <View style={styles.mainRow}>
+        <View style={styles.iconBox}>
+          <MaterialCommunityIcons name={weatherIcon.name} size={56} color={weatherIcon.color} />
+        </View>
+        <View style={styles.tempBox}>
+          <Text style={styles.temp}>{temp}</Text>
+          <Text style={styles.tempUnit}>°C</Text>
+        </View>
+        <View style={styles.detailsBox}>
+          <View style={styles.detailRow}>
+            <Ionicons name="water" size={20} color="#2196F3" />
+            <Text style={styles.detailText}>{humidity}%</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <MaterialCommunityIcons name="weather-pouring" size={20} color={rainfall > 0 ? "#F44336" : "#999"} />
+            <Text style={[styles.detailText, rainfall > 0 && styles.rainfallAlert]}>
+              {rainfall.toFixed(1)}mm
+            </Text>
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -43,44 +57,63 @@ export const WeatherInfo = ({ weather, rainfall }) => {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 16,
-    marginTop: 16,
+    padding: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  title: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 12,
-  },
-  noData: {
+  loadingText: {
     color: '#999',
+    fontSize: 16,
     textAlign: 'center',
     paddingVertical: 20,
   },
-  infoRow: {
+  mainRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
   },
-  label: {
-    fontSize: 14,
+  iconBox: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FFF8E1',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tempBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  temp: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#FF6F00',
+  },
+  tempUnit: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#FF6F00',
+    marginTop: 6,
+  },
+  detailsBox: {
+    gap: 12,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailText: {
+    fontSize: 16,
+    fontWeight: '600',
     color: '#666',
   },
-  value: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#333',
-  },
   rainfallAlert: {
-    color: '#2196F3',
-    fontWeight: 'bold',
+    color: '#F44336',
   },
 });

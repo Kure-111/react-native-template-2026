@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // デジタル時計
 export const DigitalClock = () => {
@@ -28,29 +29,52 @@ export const DigitalClock = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.time}>{formatTime(time)}</Text>
-      <Text style={styles.date}>{formatDate(time)}</Text>
+      <View style={styles.iconContainer}>
+        <MaterialCommunityIcons name="clock-outline" size={28} color="#fff" />
+      </View>
+      <View style={styles.timeContainer}>
+        <Text style={styles.time}>{formatTime(time)}</Text>
+        <Text style={styles.date}>{formatDate(time)}</Text>
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#333',
+    backgroundColor: '#1976D2',
     borderRadius: 12,
-    padding: 20,
+    padding: 16,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  iconContainer: {
+    marginRight: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timeContainer: {
+    flex: 1,
   },
   time: {
-    fontSize: 48,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#fff',
     fontFamily: 'monospace',
+    letterSpacing: 2,
   },
   date: {
-    fontSize: 16,
-    color: '#aaa',
-    marginTop: 8,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
   },
 });
