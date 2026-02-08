@@ -29,7 +29,7 @@ import { useEmergencyMode } from '../hooks/useEmergencyMode';
 import { DEFAULT_LOCATION, DISASTER_TYPE_LABELS } from '../constants';
 
 /** 画面名 */
-const SCREEN_NAME = '実長システム';
+const SCREEN_NAME = '実長機能';
 
 /**
  * Item10 メイン画面コンポーネント

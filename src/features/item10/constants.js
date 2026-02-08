@@ -60,10 +60,12 @@ export const UPDATE_INTERVALS = {
   CLOCK: 1000,      // 1秒
 };
 
-// デフォルト位置（生駒市の座標）
+// デフォルト位置（近畿大学 東大阪キャンパス）
+// 〒577-8502 大阪府東大阪市小若江３丁目４−１
 export const DEFAULT_LOCATION = {
-  latitude: 34.6913,
-  longitude: 135.7005,
+  latitude: 34.6673,
+  longitude: 135.6041,
+  address: '大阪府東大阪市小若江３丁目４−１',
 };
 
 // 避難情報設定（自然災害のみ）
