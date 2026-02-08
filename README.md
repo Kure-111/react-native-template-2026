@@ -132,6 +132,24 @@ src/features/auth/
 - **React Navigation:** ナビゲーション管理
 - **Supabase:** バックエンド・データベース
 - **Google Apps Script:** 外部API（オプション）
+- **React Native Maps:** 地図表示（Item10用）
+- **OpenWeatherMap API:** 天気情報（Item10用）
+
+## 実装済み機能
+
+### Item10 - 実長システム
+
+大学祭の実長（現場責任者）向けの統合管理システムです。
+
+**主な機能:**
+- 来場者数のリアルタイム表示
+- 不審者情報管理（Google Drive連携予定）
+- 天気情報・降水量表示
+- デジタル時計
+- 緊急モード（自然災害対応）
+- 警備配置情報管理（詳細仕様未定）
+
+詳細は [src/features/item10/README.md](src/features/item10/README.md) を参照してください。
 
 ## ドキュメント
 
