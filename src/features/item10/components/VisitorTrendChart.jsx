@@ -14,7 +14,8 @@ export const VisitorTrendChart = ({ history }) => {
   const { width: windowWidth } = useWindowDimensions();
   
   // グラフの幅を画面幅から余白を引いたものに設定
-  const CHART_WIDTH = Math.max(windowWidth - 56, 300);
+  // 画面パディング(24) + コンテナパディング(32) + ボーダー(4) + グリッドラベル幅(48) = 108
+  const CHART_WIDTH = Math.max(windowWidth - 108, 300);
   
   if (!history || history.length === 0) {
     return (
@@ -44,8 +45,10 @@ export const VisitorTrendChart = ({ history }) => {
   const latestCount = history[history.length - 1]?.count || 0;
 
   // グラフのポイントを計算
+  // グリッドラベルの幅(48)を引いた実際の描画幅で計算
+  const drawableWidth = CHART_WIDTH - 48;
   const points = history.map((item, index) => {
-    const x = (index / (history.length - 1)) * CHART_WIDTH;
+    const x = (index / (history.length - 1)) * drawableWidth;
     const y = CHART_HEIGHT - ((item.count - minCount) / range) * (CHART_HEIGHT - 40);
     return { x, y, count: item.count, time: new Date(item.counted_at) };
   });
@@ -57,7 +60,7 @@ export const VisitorTrendChart = ({ history }) => {
   }).join(' ');
 
   // エリアパスを生成（塗りつぶし）
-  const areaPath = `${linePath} L ${CHART_WIDTH} ${CHART_HEIGHT} L 0 ${CHART_HEIGHT} Z`;
+  const areaPath = `${linePath} L ${drawableWidth} ${CHART_HEIGHT} L 0 ${CHART_HEIGHT} Z`;
 
   return (
     <View style={[styles.container, { 
@@ -92,7 +95,7 @@ export const VisitorTrendChart = ({ history }) => {
 
       {/* グラフエリア */}
       <View style={styles.chartContainer}>
-        <View style={[styles.chartArea, { height: CHART_HEIGHT, width: CHART_WIDTH }]}>
+        <View style={[styles.chartArea, { height: CHART_HEIGHT }]}>
           {/* グリッドライン */}
           {[0, 1, 2, 3, 4].map(i => {
             const y = (i / 4) * (CHART_HEIGHT - 40) + 20;
@@ -252,9 +255,11 @@ const styles = StyleSheet.create({
   chartContainer: {
     position: 'relative',
     alignSelf: 'stretch',
+    overflow: 'hidden',
   },
   chartArea: {
     position: 'relative',
+    alignSelf: 'stretch',
   },
   gridLine: {
     position: 'absolute',

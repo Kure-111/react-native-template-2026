@@ -110,13 +110,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'flex-end',
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
+    paddingRight: 8,
   },
   barContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'flex-end',
-    marginHorizontal: 2,
+    marginHorizontal: 1,
+    maxWidth: 60,
   },
   barValue: {
     fontSize: 11,
@@ -130,7 +132,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   bar: {
-    width: '80%',
+    width: '85%',
     borderTopLeftRadius: 4,
     borderTopRightRadius: 4,
     minHeight: 2,

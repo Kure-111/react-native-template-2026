@@ -39,7 +39,7 @@ const Item10Screen = ({ navigation }) => {
   const { theme } = useTheme();
   
   // Hooks
-  const { count, history, loading: visitorLoading, fetchHistory } = useVisitorCount();
+  const { count, history, loading: visitorLoading, fetchHistory, useMockData } = useVisitorCount();
   const { persons, loading: personsLoading } = useSuspiciousPersons();
   const { weather, rainfall, loading: weatherLoading } = useWeatherData(
     DEFAULT_LOCATION.latitude,
@@ -66,6 +66,7 @@ const Item10Screen = ({ navigation }) => {
   // 今日の日付で履歴を取得
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
+    console.log('Fetching visitor history for date:', today);
     fetchHistory(today);
   }, []);
 
@@ -237,6 +238,15 @@ const Item10Screen = ({ navigation }) => {
 
         {/* グラフエリア */}
         <View style={styles.chartSection}>
+          {/* モックデータ使用中の通知 */}
+          {useMockData && (
+            <View style={[styles.mockDataNotice, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <Text style={[styles.mockDataText, { color: theme.textSecondary }]}>
+                ℹ️ データベースにデータがないため、サンプルデータを表示しています
+              </Text>
+            </View>
+          )}
+          
           {/* 折れ線グラフ */}
           <VisitorTrendChart history={history} />
           
@@ -302,6 +312,16 @@ const styles = StyleSheet.create({
   chartSection: {
     marginTop: 12,
     paddingBottom: 20,
+  },
+  mockDataNotice: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  mockDataText: {
+    fontSize: 12,
+    textAlign: 'center',
   },
 });
 
