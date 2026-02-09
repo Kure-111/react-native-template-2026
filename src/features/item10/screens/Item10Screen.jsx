@@ -11,6 +11,7 @@ import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 // Components
 import { VisitorCounter } from '../components/VisitorCounter';
 import { CountHistoryChart } from '../components/CountHistoryChart';
+import { VisitorTrendChart } from '../components/VisitorTrendChart';
 import { SuspiciousPersonList } from '../components/SuspiciousPersonList';
 import { DigitalClock } from '../components/DigitalClock';
 import { WeatherInfo } from '../components/WeatherInfo';
@@ -153,7 +154,10 @@ const Item10Screen = ({ navigation }) => {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <ThemedHeader title={SCREEN_NAME} navigation={navigation} />
       
-      <View style={styles.contentContainer}>
+      <ScrollView 
+        style={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
         {/* 上部: デジタル時計 */}
         <View style={styles.topRow}>
           <DigitalClock />
@@ -164,12 +168,12 @@ const Item10Screen = ({ navigation }) => {
           {/* 左列 */}
           <View style={styles.column}>
             {/* 来場者カウンター */}
-            <View style={[styles.leftCard, { marginBottom: 0 }]}>
+            <View style={styles.leftCard}>
               <VisitorCounter count={count} />
             </View>
 
             {/* 天気情報 */}
-            <View style={[styles.leftCard, { marginBottom: 0, marginTop: 12 }]}>
+            <View style={styles.leftCard}>
               <WeatherInfo weather={weather} rainfall={rainfall} />
             </View>
           </View>
@@ -177,7 +181,7 @@ const Item10Screen = ({ navigation }) => {
           {/* 右列 */}
           <View style={styles.column}>
             {/* 緊急モード */}
-            <View style={[styles.card, { marginBottom: 0, backgroundColor: theme.card }]}>
+            <View style={styles.card}>
               <EmergencyModeToggle
                 isEmergency={isEmergency}
                 onToggle={handleEmergencyToggle}
@@ -215,7 +219,7 @@ const Item10Screen = ({ navigation }) => {
             </View>
 
             {/* 不審者情報 */}
-            <View style={[styles.card, { marginBottom: 0, marginTop: 12, backgroundColor: theme.card }]}>
+            <View style={styles.card}>
               <SuspiciousPersonList 
                 persons={persons} 
                 onPersonPress={(person) => {
@@ -230,7 +234,16 @@ const Item10Screen = ({ navigation }) => {
             </View>
           </View>
         </View>
-      </View>
+
+        {/* グラフエリア */}
+        <View style={styles.chartSection}>
+          {/* 折れ線グラフ */}
+          <VisitorTrendChart history={history} />
+          
+          {/* 棒グラフ */}
+          <CountHistoryChart history={history} />
+        </View>
+      </ScrollView>
 
       {/* 通知ポップアップ */}
       <NotificationPopup
@@ -255,19 +268,17 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   gridContainer: {
-    flex: 1,
     flexDirection: 'row',
     gap: 12,
+    minHeight: 400,
   },
   column: {
     flex: 1,
   },
   card: {
-    flex: 1,
     marginBottom: 12,
   },
   leftCard: {
-    flex: 1,
     marginBottom: 12,
   },
   emergencyControls: {
@@ -287,6 +298,10 @@ const styles = StyleSheet.create({
     color: '#F44336',
     marginBottom: 4,
     fontWeight: '600',
+  },
+  chartSection: {
+    marginTop: 12,
+    paddingBottom: 20,
   },
 });
 

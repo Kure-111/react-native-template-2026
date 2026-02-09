@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
 
-// 時間帯別グラフ（簡易版）
+// 時間帯別グラフ（棒グラフ版）
 export const CountHistoryChart = ({ history }) => {
   const { theme } = useTheme();
   
@@ -18,23 +18,61 @@ export const CountHistoryChart = ({ history }) => {
     );
   }
 
+  // 最大値を取得してスケーリング
+  const maxCount = Math.max(...history.map(item => item.count), 1);
+  const chartHeight = 150;
+
   return (
     <View style={[styles.container, { 
       backgroundColor: theme.surface,
       borderColor: theme.border,
     }]}>
       <Text style={[styles.title, { color: theme.text }]}>時間帯別来場者数</Text>
-      <View style={styles.chartArea}>
+      
+      {/* 最大値表示 */}
+      <View style={styles.maxValueContainer}>
+        <Text style={[styles.maxValue, { color: theme.textSecondary }]}>
+          最大: {maxCount}人
+        </Text>
+      </View>
+
+      {/* グラフエリア */}
+      <View style={[styles.chartArea, { height: chartHeight }]}>
         {history.map((item, index) => {
           const time = new Date(item.counted_at).getHours();
+          const barHeight = (item.count / maxCount) * (chartHeight - 30);
+          
           return (
-            <View key={index} style={styles.chartItem}>
-              <Text style={[styles.chartValue, { color: theme.primary }]}>{item.count}</Text>
-              <Text style={[styles.chartLabel, { color: theme.textSecondary }]}>{time}時</Text>
+            <View key={index} style={styles.barContainer}>
+              {/* 数値ラベル */}
+              <Text style={[styles.barValue, { color: theme.text }]}>
+                {item.count}
+              </Text>
+              
+              {/* 棒グラフ */}
+              <View style={styles.barWrapper}>
+                <View 
+                  style={[
+                    styles.bar, 
+                    { 
+                      height: Math.max(barHeight, 2),
+                      backgroundColor: theme.primary,
+                    }
+                  ]} 
+                />
+              </View>
+              
+              {/* 時間ラベル */}
+              <Text style={[styles.timeLabel, { color: theme.textSecondary }]}>
+                {time}時
+              </Text>
             </View>
           );
         })}
       </View>
+
+      {/* X軸の線 */}
+      <View style={[styles.xAxis, { backgroundColor: theme.border }]} />
     </View>
   );
 };
@@ -54,7 +92,15 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  maxValueContainer: {
+    alignItems: 'flex-end',
+    marginBottom: 8,
+  },
+  maxValue: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   noData: {
     textAlign: 'center',
@@ -63,16 +109,40 @@ const styles = StyleSheet.create({
   chartArea: {
     flexDirection: 'row',
     justifyContent: 'space-around',
+    alignItems: 'flex-end',
+    paddingHorizontal: 8,
   },
-  chartItem: {
+  barContainer: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginHorizontal: 2,
   },
-  chartValue: {
-    fontSize: 14,
-    fontWeight: 'bold',
+  barValue: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 4,
   },
-  chartLabel: {
-    fontSize: 12,
+  barWrapper: {
+    width: '100%',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    flex: 1,
+  },
+  bar: {
+    width: '80%',
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 4,
+    minHeight: 2,
+  },
+  timeLabel: {
+    fontSize: 10,
     marginTop: 4,
+    fontWeight: '500',
+  },
+  xAxis: {
+    height: 1,
+    marginTop: 0,
   },
 });
+
