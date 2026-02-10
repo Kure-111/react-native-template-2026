@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, SafeAreaView, ScrollView, Platform, TouchableOpacity, Text } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 
@@ -15,10 +16,9 @@ import { VisitorTrendChart } from '../components/VisitorTrendChart';
 import { SuspiciousPersonList } from '../components/SuspiciousPersonList';
 import { SecurityPlacement } from '../components/SecurityPlacement';
 import { DigitalClock } from '../components/DigitalClock';
+import { NextSchedule } from '../components/NextSchedule';
 import { WeatherInfo } from '../components/WeatherInfo';
 import { EmergencyModeToggle } from '../components/EmergencyModeToggle';
-import { EmergencyTypeSelector } from '../components/EmergencyTypeSelector';
-import { EmergencyMessageInput } from '../components/EmergencyMessageInput';
 import { NotificationPopup } from '../components/NotificationPopup';
 
 // Hooks
@@ -31,7 +31,7 @@ import { useEmergencyMode } from '../hooks/useEmergencyMode';
 import { DEFAULT_LOCATION, DISASTER_TYPE_LABELS } from '../constants';
 
 /** 画面名 */
-const SCREEN_NAME = '来客カウンター';
+const SCREEN_NAME = '本部';
 
 /**
  * Item9 メイン画面コンポーネント
@@ -54,15 +54,12 @@ const Item9Screen = ({ navigation }) => {
     showNotificationPopup,
     notificationData,
     setShowNotificationPopup,
-    setDisasterType,
-    setMessage,
-    activate,
     deactivate,
   } = useEmergencyMode();
 
-  // Local state
-  const [selectedDisasterType, setSelectedDisasterType] = useState('');
-  const [emergencyMessage, setEmergencyMessage] = useState('');
+  // Local state - 削除
+  // const [selectedDisasterType, setSelectedDisasterType] = useState('');
+  // const [emergencyMessage, setEmergencyMessage] = useState('');
 
   // 今日の日付で履歴を取得
   useEffect(() => {
@@ -71,7 +68,7 @@ const Item9Screen = ({ navigation }) => {
     fetchHistory(today);
   }, []);
 
-  // 緊急モード切替ハンドラ
+  // 緊急モード切替ハンドラ（解除のみ）
   const handleEmergencyToggle = () => {
     if (isEmergency) {
       // 解除確認
@@ -89,50 +86,6 @@ const Item9Screen = ({ navigation }) => {
             {
               text: '解除',
               onPress: () => deactivate('current-user-id'),
-              style: 'destructive',
-            },
-          ]
-        );
-      }
-    } else {
-      // 発動確認
-      if (!selectedDisasterType) {
-        if (Platform.OS === 'web') {
-          alert('災害種別を選択してください');
-        } else {
-          const { Alert } = require('react-native');
-          Alert.alert('エラー', '災害種別を選択してください');
-        }
-        return;
-      }
-      if (!emergencyMessage.trim()) {
-        if (Platform.OS === 'web') {
-          alert('詳細メッセージを入力してください');
-        } else {
-          const { Alert } = require('react-native');
-          Alert.alert('エラー', '詳細メッセージを入力してください');
-        }
-        return;
-      }
-
-      const message = `${DISASTER_TYPE_LABELS[selectedDisasterType]}の緊急モードを発動しますか？\n\n${emergencyMessage}`;
-      
-      if (Platform.OS === 'web') {
-        if (window.confirm(message)) {
-          activate('current-user-id', selectedDisasterType, emergencyMessage);
-        }
-      } else {
-        const { Alert } = require('react-native');
-        Alert.alert(
-          '緊急モード発動',
-          message,
-          [
-            { text: 'いいえ', style: 'cancel' },
-            {
-              text: 'はい',
-              onPress: () => {
-                activate('current-user-id', selectedDisasterType, emergencyMessage);
-              },
               style: 'destructive',
             },
           ]
@@ -157,9 +110,10 @@ const Item9Screen = ({ navigation }) => {
       <ThemedHeader title={SCREEN_NAME} navigation={navigation} />
       
       <View style={styles.contentContainer}>
-        {/* 上部: デジタル時計 */}
+        {/* 上部: デジタル時計と次の予定 */}
         <View style={styles.topRow}>
           <DigitalClock />
+          <NextSchedule />
         </View>
 
         {/* メインコンテンツ: 2列グリッド */}
@@ -189,35 +143,67 @@ const Item9Screen = ({ navigation }) => {
               <EmergencyModeToggle
                 isEmergency={isEmergency}
                 onToggle={handleEmergencyToggle}
-                disabled={emergencyLoading}
+                disabled={emergencyLoading || !isEmergency}
               />
-              
-              {!isEmergency && (
-                <View style={styles.emergencyControls}>
-                  <EmergencyTypeSelector
-                    value={selectedDisasterType}
-                    onValueChange={setSelectedDisasterType}
-                    disabled={isEmergency}
-                  />
-                  <EmergencyMessageInput
-                    value={emergencyMessage}
-                    onChangeText={setEmergencyMessage}
-                    disabled={isEmergency}
-                  />
-                </View>
-              )}
 
               {isEmergency && (
-                <View style={[styles.emergencyInfo, { 
-                  backgroundColor: theme.name === 'dark' ? '#4A1212' : '#FFEBEE',
-                  borderLeftColor: theme.name === 'dark' ? '#FF5252' : '#F44336'
+                <View style={[styles.emergencyInfoCard, { 
+                  backgroundColor: theme.name === 'dark' ? '#1A1A1A' : '#FFFFFF',
+                  borderColor: theme.name === 'dark' ? '#333' : '#E0E0E0'
                 }]}>
-                  <Text style={[styles.emergencyInfoText, { color: theme.text }]}>
-                    災害: {DISASTER_TYPE_LABELS[disasterType]}
-                  </Text>
-                  <Text style={[styles.emergencyInfoText, { color: theme.text }]}>
-                    詳細: {message}
-                  </Text>
+                  <View style={styles.emergencyInfoHeader}>
+                    <MaterialCommunityIcons 
+                      name="information" 
+                      size={20} 
+                      color={theme.name === 'dark' ? '#FF5252' : '#F44336'} 
+                    />
+                    <Text style={[styles.emergencyInfoTitle, { color: theme.text }]}>
+                      災害情報
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.emergencyInfoContent}>
+                    <View style={styles.emergencyInfoRow}>
+                      <View style={[styles.emergencyInfoLabel, { 
+                        backgroundColor: theme.name === 'dark' ? '#2C2C2C' : '#F5F5F5' 
+                      }]}>
+                        <Text style={[styles.emergencyInfoLabelText, { color: theme.textSecondary }]}>
+                          種類
+                        </Text>
+                      </View>
+                      <Text style={[styles.emergencyInfoValue, { color: theme.text }]}>
+                        {DISASTER_TYPE_LABELS[disasterType] || disasterType}
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.emergencyInfoRow}>
+                      <View style={[styles.emergencyInfoLabel, { 
+                        backgroundColor: theme.name === 'dark' ? '#2C2C2C' : '#F5F5F5' 
+                      }]}>
+                        <Text style={[styles.emergencyInfoLabelText, { color: theme.textSecondary }]}>
+                          詳細
+                        </Text>
+                      </View>
+                      <Text style={[styles.emergencyInfoValue, { color: theme.text }]}>
+                        {message}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <View style={[styles.emergencyInfoFooter, { 
+                    backgroundColor: theme.name === 'dark' ? '#2C2C2C' : '#FFF3E0' 
+                  }]}>
+                    <MaterialCommunityIcons 
+                      name="shield-alert" 
+                      size={16} 
+                      color={theme.name === 'dark' ? '#FFB74D' : '#F57C00'} 
+                    />
+                    <Text style={[styles.emergencyInfoFooterText, { 
+                      color: theme.name === 'dark' ? '#FFB74D' : '#F57C00' 
+                    }]}>
+                      全スタッフに避難指示が通知されています
+                    </Text>
+                  </View>
                 </View>
               )}
             </View>
@@ -260,6 +246,8 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   topRow: {
+    flexDirection: 'row',
+    gap: 12,
     marginBottom: 8,
   },
   gridContainer: {
@@ -276,23 +264,64 @@ const styles = StyleSheet.create({
   leftCard: {
     marginBottom: 8,
   },
-  emergencyControls: {
-    marginTop: 12,
-    gap: 8,
+  emergencyInfoCard: {
+    marginTop: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  emergencyInfo: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: '#FFEBEE',
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: '#F44336',
+  emergencyInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
   },
-  emergencyInfoText: {
+  emergencyInfoTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8,
+  },
+  emergencyInfoContent: {
+    padding: 16,
+  },
+  emergencyInfoRow: {
+    marginBottom: 12,
+  },
+  emergencyInfoLabel: {
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginBottom: 6,
+    alignSelf: 'flex-start',
+  },
+  emergencyInfoLabelText: {
     fontSize: 12,
-    color: '#F44336',
-    marginBottom: 4,
     fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  emergencyInfoValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    lineHeight: 22,
+  },
+  emergencyInfoFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
+  },
+  emergencyInfoFooterText: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 8,
+    flex: 1,
   },
   chartSection: {
     marginTop: 12,

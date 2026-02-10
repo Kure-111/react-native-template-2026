@@ -1,16 +1,14 @@
 import { supabase } from '../../../services/supabase/client';
 
 export const emergencyService = {
-  // 緊急モード発動（自然災害のみ）
-  activate: async (userId, disasterType, message) => {
+  // 現在の災害状態を取得
+  getCurrentDisasterStatus: async () => {
     const { data, error } = await supabase
-      .from('emergency_logs')
-      .insert({
-        action: 'activate',
-        activated_by: userId,
-        emergency_type: disasterType,
-        reason: message,
-      });
+      .from('disaster_status')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
     
     return { data, error };
   },
@@ -18,11 +16,13 @@ export const emergencyService = {
   // 緊急モード解除
   deactivate: async (userId) => {
     const { data, error } = await supabase
-      .from('emergency_logs')
-      .insert({
-        action: 'deactivate',
-        activated_by: userId,
-      });
+      .from('disaster_status')
+      .update({
+        is_active: false,
+        deactivated_by: userId,
+        deactivated_at: new Date().toISOString(),
+      })
+      .eq('is_active', true);
     
     return { data, error };
   },

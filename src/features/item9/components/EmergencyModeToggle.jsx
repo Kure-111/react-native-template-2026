@@ -1,79 +1,125 @@
 import React from 'react';
-import { View, Text, StyleSheet, Switch } from 'react-native';
+import { View, Text, StyleSheet, Switch, Animated } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 
 // 緊急モードスイッチ
 export const EmergencyModeToggle = ({ isEmergency, onToggle, disabled }) => {
   const { theme } = useTheme();
+  const pulseAnim = React.useRef(new Animated.Value(1)).current;
+  
+  // 緊急時の点滅アニメーション
+  React.useEffect(() => {
+    if (isEmergency) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    }
+  }, [isEmergency]);
   
   return (
     <View style={[
       styles.container, 
       { backgroundColor: theme.surface, borderColor: theme.border },
-      isEmergency && { 
-        backgroundColor: theme.name === 'dark' ? '#4A1212' : '#FFEBEE',
-        borderColor: theme.name === 'dark' ? '#FF5252' : '#F44336'
-      }
+      isEmergency && styles.emergencyContainer
     ]}>
       <View style={styles.header}>
         <View style={styles.titleContainer}>
-          <View style={[
+          <Animated.View style={[
             styles.iconContainer, 
-            { backgroundColor: theme.name === 'dark' ? '#1B3A1B' : '#E8F5E9' },
-            isEmergency && { 
-              backgroundColor: theme.name === 'dark' ? '#4A1212' : '#FFEBEE' 
-            }
+            isEmergency && styles.emergencyIconContainer,
+            isEmergency && { transform: [{ scale: pulseAnim }] }
           ]}>
             <MaterialCommunityIcons 
               name={isEmergency ? "alert-octagon" : "shield-check"} 
-              size={24} 
-              color={isEmergency ? (theme.name === 'dark' ? "#FF5252" : "#F44336") : "#4CAF50"} 
+              size={32} 
+              color={isEmergency ? "#FFFFFF" : "#4CAF50"} 
             />
-          </View>
-          <View>
+          </Animated.View>
+          <View style={styles.textContainer}>
             <Text style={[
               styles.title, 
               { color: theme.text },
-              isEmergency && { color: theme.name === 'dark' ? '#FF5252' : '#F44336' }
+              isEmergency && styles.emergencyTitle
             ]}>
               緊急モード
             </Text>
-            <Text style={[
-              styles.status, 
-              { color: theme.textSecondary },
-              isEmergency && { color: theme.name === 'dark' ? '#FF5252' : '#F44336' }
-            ]}>
-              {isEmergency ? '発動中' : '待機中'}
-            </Text>
+            <View style={styles.statusContainer}>
+              <View style={[
+                styles.statusDot,
+                isEmergency ? styles.statusDotActive : styles.statusDotInactive
+              ]} />
+              <Text style={[
+                styles.status, 
+                { color: theme.textSecondary },
+                isEmergency && styles.emergencyStatus
+              ]}>
+                {isEmergency ? '🚨 発動中' : '✓ 待機中'}
+              </Text>
+            </View>
           </View>
         </View>
-        <Switch
-          value={isEmergency}
-          onValueChange={onToggle}
-          disabled={disabled}
-          trackColor={{ 
-            false: theme.name === 'dark' ? '#555' : '#BDBDBD', 
-            true: theme.name === 'dark' ? '#FF5252' : '#F44336' 
-          }}
-          thumbColor={isEmergency ? '#fff' : (theme.name === 'dark' ? '#888' : '#f4f3f4')}
-          style={styles.switch}
-        />
+        <View style={styles.switchContainer}>
+          <Switch
+            value={isEmergency}
+            onValueChange={onToggle}
+            disabled={disabled}
+            trackColor={{ 
+              false: theme.name === 'dark' ? '#555' : '#BDBDBD', 
+              true: '#F44336' 
+            }}
+            thumbColor={isEmergency ? '#fff' : (theme.name === 'dark' ? '#888' : '#f4f3f4')}
+            style={styles.switch}
+          />
+          {!isEmergency && (
+            <Text style={[styles.switchLabel, { color: theme.textSecondary }]}>
+              解除可能
+            </Text>
+          )}
+        </View>
       </View>
+      
+      {isEmergency && (
+        <View style={styles.warningBanner}>
+          <MaterialCommunityIcons name="alert" size={16} color="#FFFFFF" />
+          <Text style={styles.warningText}>
+            全スタッフに緊急通知が送信されました
+          </Text>
+        </View>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 16,
+    padding: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
     borderWidth: 2,
+  },
+  emergencyContainer: {
+    backgroundColor: '#D32F2F',
+    borderColor: '#B71C1C',
+    shadowColor: '#F44336',
+    shadowOpacity: 0.4,
   },
   header: {
     flexDirection: 'row',
@@ -86,23 +132,77 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#E8F5E9',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 16,
+  },
+  emergencyIconContainer: {
+    backgroundColor: '#B71C1C',
+  },
+  textContainer: {
+    flex: 1,
   },
   title: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 2,
+    marginBottom: 6,
+  },
+  emergencyTitle: {
+    color: '#FFFFFF',
+    fontSize: 22,
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  statusDotActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  statusDotInactive: {
+    backgroundColor: '#4CAF50',
   },
   status: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
   },
+  emergencyStatus: {
+    color: '#FFFFFF',
+    fontSize: 15,
+  },
+  switchContainer: {
+    alignItems: 'center',
+  },
   switch: {
-    transform: [{ scale: 1.2 }],
+    transform: [{ scale: 1.3 }],
+  },
+  switchLabel: {
+    fontSize: 11,
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  warningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  warningText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 8,
+    flex: 1,
   },
 });

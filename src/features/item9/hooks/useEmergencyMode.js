@@ -11,27 +11,50 @@ export const useEmergencyMode = () => {
   const [notificationData, setNotificationData] = useState(null);
   const [loading, setLoading] = useState(false);
   
-  const activate = async (userId, type, customMessage) => {
-    setLoading(true);
-    try {
-      const result = await emergencyService.activate(userId, type, customMessage);
-      if (!result.error) {
-        setIsEmergency(true);
-        setDisasterType(type);
-        setMessage(customMessage);
-        setNotificationData({
-          to: '全員',
-          message: `【緊急】${type}：${customMessage}`,
-          additionalInfo: '全員のERP画面が避難情報画面に切り替わります',
-        });
-        setShowNotificationPopup(true);
+  // APIから災害情報を定期的にチェック
+  useEffect(() => {
+    const checkDisasterStatus = async () => {
+      try {
+        const result = await emergencyService.getCurrentDisasterStatus();
+        if (result.data && !result.error) {
+          const { is_active, disaster_type, message: disasterMessage } = result.data;
+          
+          if (is_active && !isEmergency) {
+            // 新しい災害が発生
+            setIsEmergency(true);
+            setDisasterType(disaster_type);
+            setMessage(disasterMessage || '');
+            setNotificationData({
+              to: '全員',
+              message: `【緊急】${disaster_type}：${disasterMessage || '災害が発生しました'}`,
+              additionalInfo: '全員のERP画面が避難情報画面に切り替わります',
+            });
+            setShowNotificationPopup(true);
+          } else if (!is_active && isEmergency) {
+            // 災害が解除された
+            setIsEmergency(false);
+            setDisasterType('');
+            setMessage('');
+            setNotificationData({
+              to: '全員',
+              message: '緊急モードが解除されました',
+            });
+            setShowNotificationPopup(true);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking disaster status:', error);
       }
-    } catch (error) {
-      console.error('Error activating emergency mode:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    
+    // 初回チェック
+    checkDisasterStatus();
+    
+    // 10秒ごとにチェック
+    const interval = setInterval(checkDisasterStatus, 10000);
+    
+    return () => clearInterval(interval);
+  }, [isEmergency]);
   
   const deactivate = async (userId) => {
     setLoading(true);
@@ -41,11 +64,6 @@ export const useEmergencyMode = () => {
         setIsEmergency(false);
         setDisasterType('');
         setMessage('');
-        setNotificationData({
-          to: '全員',
-          message: '緊急モードが解除されました',
-        });
-        setShowNotificationPopup(true);
       }
     } catch (error) {
       console.error('Error deactivating emergency mode:', error);
@@ -77,9 +95,6 @@ export const useEmergencyMode = () => {
     showNotificationPopup,
     notificationData,
     setShowNotificationPopup,
-    setDisasterType,
-    setMessage,
-    activate, 
     deactivate, 
     fetchHistory 
   };

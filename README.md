@@ -78,6 +78,26 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 
 ### 4. アプリを起動
 
+#### Webアプリ + 地震監視サービス（推奨）
+
+```bash
+./START_SERVER.sh
+# または
+npm run web
+```
+
+このコマンドで以下が自動起動します：
+- **Webサーバー** (http://localhost:8081)
+- **地震監視サービス** (P2PQuake API v2を10秒ごとにチェック)
+
+#### Webアプリのみ起動
+
+```bash
+npm run web-only
+```
+
+#### その他のプラットフォーム
+
 ```bash
 npm start
 ```
@@ -85,6 +105,18 @@ npm start
 - **iOS シミュレータ:** `i` キーを押す
 - **Android エミュレータ:** `a` キーを押す
 - **Web ブラウザ:** `w` キーを押す
+
+### 5. 地震監視システムのセットアップ（重要）
+
+Supabaseで以下のSQLを実行してテーブルを作成：
+
+```bash
+docs/database/create_disaster_status_table.sql
+```
+
+これで震度5弱以上の地震が発生すると自動的にWebアプリに通知されます。
+
+詳細は [地震監視サービスドキュメント](docs/earthquake-monitor-service.md) を参照してください。
 
 ## 開発の始め方
 

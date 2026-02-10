@@ -1,12 +1,20 @@
 #!/bin/bash
 
 echo "=========================================="
-echo "Expo開発サーバー起動スクリプト"
+echo "Expo開発サーバー + 地震監視サービス起動"
 echo "=========================================="
 echo ""
 
 # プロジェクトディレクトリに移動
 cd /Users/shiraishuugou/Documents/GitHub/ikomasai-erp-2026
+
+# .envファイルの存在確認と読み込み
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+else
+    echo "❌ エラー: .env ファイルが見つかりません"
+    exit 1
+fi
 
 # Node.jsバージョンを確認・切り替え
 echo "Node.jsバージョンを確認中..."
@@ -47,10 +55,15 @@ if lsof -ti:19000 &> /dev/null; then
 fi
 
 echo ""
-echo "開発サーバーを起動中..."
+echo "✅ 開発サーバーを起動中..."
+echo "✅ 地震監視サービスを起動中..."
+echo ""
+echo "📝 ログの見方:"
+echo "   [0] = Webサーバー"
+echo "   [1] = 地震監視サービス"
 echo "=========================================="
 echo ""
 
-# Expoを起動（キャッシュクリア付き）
-npx expo start -c
+# Webサーバーと地震監視サービスを同時起動
+npm run web
 
