@@ -66,8 +66,8 @@ const WrappedItem5Screen = createWrappedScreen(Item5Screen, '項目5');
 const WrappedItem6Screen = createWrappedScreen(Item6Screen, '項目6');
 const WrappedItem7Screen = createWrappedScreen(Item7Screen, '項目7');
 const WrappedItem8Screen = createWrappedScreen(Item8Screen, '項目8');
-const WrappedItem9Screen = createWrappedScreen(Item9Screen, '項目9');
-const WrappedItem10Screen = createWrappedScreen(Item10Screen, '実長機能');
+const WrappedItem9Screen = createWrappedScreen(Item9Screen, '実長機能');
+const WrappedItem10Screen = createWrappedScreen(Item10Screen, '本部');
 const WrappedJimuShiftScreen = createWrappedScreen(JimuShiftScreen, '当日部員');
 const WrappedSettingsThemeScreen = createWrappedScreen(SettingsThemeScreen, 'テーマ設定');
 
@@ -109,7 +109,7 @@ const DrawerNavigator = () => {
       <Drawer.Screen 
         name="Item10" 
         component={WrappedItem10Screen}
-        options={{ title: '実長機能' }}
+        options={{ title: '本部' }}
       />
       <Drawer.Screen name="JimuShift" component={WrappedJimuShiftScreen} />
       <Drawer.Screen name="SettingsTheme" component={WrappedSettingsThemeScreen} />

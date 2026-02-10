@@ -99,7 +99,8 @@ const CustomDrawerContent = (props) => {
    * 項目番号に対応する表示名を定義
    */
   const ITEM_LABELS = {
-    10: '実長機能',
+    9: '実長機能',
+    10: '本部',
     11: '当日部員',
   };
 

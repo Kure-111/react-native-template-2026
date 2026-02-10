@@ -1,5 +1,5 @@
 /**
- * Item9 メイン画面（実長システム）
+ * Item10 メイン画面（実長システム）
  * 来場者数、不審者情報、天気情報、緊急モードなどを統合表示
  */
 
@@ -13,7 +13,6 @@ import { VisitorCounter } from '../components/VisitorCounter';
 import { CountHistoryChart } from '../components/CountHistoryChart';
 import { VisitorTrendChart } from '../components/VisitorTrendChart';
 import { SuspiciousPersonList } from '../components/SuspiciousPersonList';
-import { SecurityPlacement } from '../components/SecurityPlacement';
 import { DigitalClock } from '../components/DigitalClock';
 import { WeatherInfo } from '../components/WeatherInfo';
 import { EmergencyModeToggle } from '../components/EmergencyModeToggle';
@@ -31,12 +30,12 @@ import { useEmergencyMode } from '../hooks/useEmergencyMode';
 import { DEFAULT_LOCATION, DISASTER_TYPE_LABELS } from '../constants';
 
 /** 画面名 */
-const SCREEN_NAME = '来客カウンター';
+const SCREEN_NAME = '実長機能';
 
 /**
- * Item9 メイン画面コンポーネント
+ * Item10 メイン画面コンポーネント
  */
-const Item9Screen = ({ navigation }) => {
+const Item10Screen = ({ navigation }) => {
   const { theme } = useTheme();
   
   // Hooks
@@ -156,7 +155,10 @@ const Item9Screen = ({ navigation }) => {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <ThemedHeader title={SCREEN_NAME} navigation={navigation} />
       
-      <View style={styles.contentContainer}>
+      <ScrollView 
+        style={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
         {/* 上部: デジタル時計 */}
         <View style={styles.topRow}>
           <DigitalClock />
@@ -166,24 +168,19 @@ const Item9Screen = ({ navigation }) => {
         <View style={styles.gridContainer}>
           {/* 左列 */}
           <View style={styles.column}>
+            {/* 来場者カウンター */}
+            <View style={styles.leftCard}>
+              <VisitorCounter count={count} />
+            </View>
+
             {/* 天気情報 */}
             <View style={styles.leftCard}>
               <WeatherInfo weather={weather} rainfall={rainfall} />
-            </View>
-
-            {/* 警備配置図 */}
-            <View style={styles.leftCard}>
-              <SecurityPlacement />
             </View>
           </View>
 
           {/* 右列 */}
           <View style={styles.column}>
-            {/* 来場者カウンター */}
-            <View style={styles.card}>
-              <VisitorCounter count={count} />
-            </View>
-
             {/* 緊急モード */}
             <View style={styles.card}>
               <EmergencyModeToggle
@@ -238,7 +235,25 @@ const Item9Screen = ({ navigation }) => {
             </View>
           </View>
         </View>
-      </View>
+
+        {/* グラフエリア */}
+        <View style={styles.chartSection}>
+          {/* モックデータ使用中の通知 */}
+          {useMockData && (
+            <View style={[styles.mockDataNotice, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <Text style={[styles.mockDataText, { color: theme.textSecondary }]}>
+                ℹ️ データベースにデータがないため、サンプルデータを表示しています
+              </Text>
+            </View>
+          )}
+          
+          {/* 折れ線グラフ */}
+          <VisitorTrendChart history={history} />
+          
+          {/* 棒グラフ */}
+          <CountHistoryChart history={history} />
+        </View>
+      </ScrollView>
 
       {/* 通知ポップアップ */}
       <NotificationPopup
@@ -260,21 +275,21 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   topRow: {
-    marginBottom: 8,
+    marginBottom: 12,
   },
   gridContainer: {
-    flex: 1,
     flexDirection: 'row',
     gap: 12,
+    minHeight: 400,
   },
   column: {
     flex: 1,
   },
   card: {
-    marginBottom: 8,
+    marginBottom: 12,
   },
   leftCard: {
-    marginBottom: 8,
+    marginBottom: 12,
   },
   emergencyControls: {
     marginTop: 12,
@@ -310,4 +325,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Item9Screen;
+export default Item10Screen;
