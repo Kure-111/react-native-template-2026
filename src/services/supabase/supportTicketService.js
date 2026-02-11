@@ -14,6 +14,7 @@ export const SUPPORT_DESK_ROLE_TYPES = {
   HQ: 'hq',
   ACCOUNTING: 'accounting',
   PROPERTY: 'property',
+  PATROL: 'patrol',
 };
 
 /** 連絡案件ステータス */
@@ -121,6 +122,40 @@ export const listMyCreatedTickets = async ({ createdBy, limit = 50 }) => {
     return { data: data || [], error: null };
   } catch (error) {
     console.error('自分の連絡案件取得処理でエラー:', error);
+    return { data: [], error };
+  }
+};
+
+/**
+ * 巡回向け緊急案件一覧を取得
+ * @param {Object} params - 取得条件
+ * @param {number} [params.limit=50] - 最大取得件数
+ * @returns {Promise<{data: Array, error: Error|null}>} 取得結果
+ */
+export const listEmergencyTicketsForPatrol = async ({ limit = 50 }) => {
+  try {
+    const { data, error } = await getSupabaseClient()
+      .from(SUPPORT_TICKETS_TABLE)
+      .select(TICKET_COLUMNS)
+      .eq('ticket_type', 'emergency')
+      .in('ticket_status', [
+        SUPPORT_TICKET_STATUSES.NEW,
+        SUPPORT_TICKET_STATUSES.ACKNOWLEDGED,
+        SUPPORT_TICKET_STATUSES.IN_PROGRESS,
+        SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL,
+        SUPPORT_TICKET_STATUSES.RESOLVED,
+      ])
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.error('巡回向け緊急案件取得エラー:', error);
+      return { data: [], error };
+    }
+
+    return { data: data || [], error: null };
+  } catch (error) {
+    console.error('巡回向け緊急案件取得処理でエラー:', error);
     return { data: [], error };
   }
 };

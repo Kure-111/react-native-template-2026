@@ -193,33 +193,78 @@ const createKeyPreapply = async (input) => {
   try {
     validateCommonInput(input);
 
-    const keyTarget = normalizeText(input.keyTarget);
+    const keyTargets = Array.isArray(input.keyTargets)
+      ? input.keyTargets
+          .map((item) => {
+            const id = normalizeText(item?.id);
+            const keyCode = normalizeText(item?.keyCode || id);
+            const name = normalizeText(item?.name);
+            const building = normalizeText(item?.building);
+            const location = normalizeText(item?.location);
+
+            if (!name) {
+              return null;
+            }
+
+            return {
+              id: id || keyCode || name,
+              keyCode: keyCode || id || name,
+              name,
+              building,
+              location: location || [building, name].filter(Boolean).join(' '),
+            };
+          })
+          .filter(Boolean)
+      : [];
+
+    // ?UI??: ??????????????1??????
+    if (keyTargets.length === 0) {
+      const fallbackKeyTarget = normalizeText(input.keyTarget);
+      if (fallbackKeyTarget) {
+        keyTargets.push({
+          id: fallbackKeyTarget,
+          keyCode: fallbackKeyTarget,
+          name: fallbackKeyTarget,
+          building: '',
+          location: fallbackKeyTarget,
+        });
+      }
+    }
+
     const requestedAt = normalizeText(input.requestedAt);
     const reason = normalizeText(input.reason);
 
-    if (!keyTarget) {
-      throw new Error('対象鍵・教室を入力してください');
+    if (keyTargets.length === 0) {
+      throw new Error('???????????????');
     }
     if (!requestedAt) {
-      throw new Error('希望時刻を入力してください');
+      throw new Error('?????????????');
     }
     if (!reason) {
-      throw new Error('理由を入力してください');
+      throw new Error('???????????');
     }
+
+    const keySummaryForTitle =
+      keyTargets.length === 1 ? keyTargets[0].name : `${keyTargets.length}?`;
+    const keySummaryLines = keyTargets
+      .map((keyItem) => `- ${keyItem.location || keyItem.name}`)
+      .join('\n');
+    const description = `${reason}\n\n???\n${keySummaryLines}`;
 
     const payload = {
       ticket_type: 'key_preapply',
       ticket_status: 'new',
       priority: 'normal',
-      title: `鍵の事前申請: ${keyTarget}`,
-      description: reason,
+      title: `??????: ${keySummaryForTitle}`,
+      description,
       event_name: normalizeText(input.eventName),
       event_location: normalizeText(input.eventLocation),
       created_by: normalizeText(input.createdBy),
       org_id: input.orgId || null,
       notify_target: 'hq',
       metadata: {
-        key_target: keyTarget,
+        key_target: keySummaryForTitle,
+        key_targets: keyTargets,
         requested_at: requestedAt,
       },
     };
@@ -230,11 +275,6 @@ const createKeyPreapply = async (input) => {
   }
 };
 
-/**
- * 企画開始/終了報告を作成
- * @param {Object} input - 入力値
- * @returns {Promise<Object>} 作成結果
- */
 const createEventStatusReport = async (input) => {
   try {
     validateCommonInput(input);
@@ -259,6 +299,7 @@ const createEventStatusReport = async (input) => {
       notify_target: 'hq',
       metadata: {
         event_status: status,
+        reported_at: new Date().toISOString(),
       },
     };
 
