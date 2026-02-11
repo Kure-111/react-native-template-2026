@@ -7,7 +7,7 @@ export const SCREEN_NAME = '本部サポート';
 
 /** 画面説明 */
 export const SCREEN_DESCRIPTION =
-  '本部担当が全体状況を確認し、連絡案件やタスクを管理する画面です。現在は雛形のみを実装しています。';
+  '本部担当が本部対象の連絡案件を確認し、回答とステータス更新を行う画面です。';
 
 /** 実装予定の機能一覧 */
 export const FEATURE_PLACEHOLDERS = [
@@ -16,4 +16,3 @@ export const FEATURE_PLACEHOLDERS = [
   '巡回タスク一覧 / 詳細（割当・結果確認）',
   '鍵管理（貸出・返却・施錠確認依頼）',
 ];
-

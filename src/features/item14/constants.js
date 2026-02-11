@@ -7,7 +7,7 @@ export const SCREEN_NAME = '会計対応';
 
 /** 画面説明 */
 export const SCREEN_DESCRIPTION =
-  '会計部向けの対応画面です。配布ルール変更に関する連絡案件の確認と返信を行います。現在は雛形のみを実装しています。';
+  '会計部向けの対応画面です。会計対象の連絡案件の確認、返信、ステータス更新を行います。';
 
 /** 実装予定の機能一覧 */
 export const FEATURE_PLACEHOLDERS = [
@@ -16,4 +16,3 @@ export const FEATURE_PLACEHOLDERS = [
   '返信投稿（回答）',
   '対応メモ記録と完了更新',
 ];
-

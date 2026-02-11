@@ -1,13 +1,12 @@
 /**
  * 項目14画面
- * 会計対応画面の雛形
+ * 会計対応画面
  */
 
 import React from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useTheme } from '../../../shared/hooks/useTheme';
-import { ThemedHeader } from '../../../shared/components/ThemedHeader';
-import { FEATURE_PLACEHOLDERS, SCREEN_DESCRIPTION, SCREEN_NAME } from '../constants';
+import SupportDeskScreen from '../../support/components/SupportDeskScreen';
+import { SCREEN_DESCRIPTION, SCREEN_NAME } from '../constants';
+import { SUPPORT_DESK_ROLE_TYPES } from '../../../services/supabase/supportTicketService';
 
 /**
  * 項目14画面コンポーネント
@@ -16,56 +15,15 @@ import { FEATURE_PLACEHOLDERS, SCREEN_DESCRIPTION, SCREEN_NAME } from '../consta
  * @returns {JSX.Element} 項目14画面
  */
 const Item14Screen = ({ navigation }) => {
-  const { theme } = useTheme();
-
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <ThemedHeader title={SCREEN_NAME} navigation={navigation} />
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <Text style={[styles.description, { color: theme.textSecondary }]}>{SCREEN_DESCRIPTION}</Text>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>実装予定の機能</Text>
-          {FEATURE_PLACEHOLDERS.map((item, index) => (
-            <Text key={`${item}-${index}`} style={[styles.featureItem, { color: theme.textSecondary }]}>
-              {'\u2022'} {item}
-            </Text>
-          ))}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+    <SupportDeskScreen
+      navigation={navigation}
+      screenName={SCREEN_NAME}
+      screenDescription={SCREEN_DESCRIPTION}
+      roleType={SUPPORT_DESK_ROLE_TYPES.ACCOUNTING}
+    />
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-    gap: 12,
-  },
-  card: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  description: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  featureItem: {
-    fontSize: 14,
-    lineHeight: 22,
-  },
-});
 
 export default Item14Screen;
 
