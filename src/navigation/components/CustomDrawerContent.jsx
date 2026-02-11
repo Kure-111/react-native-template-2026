@@ -102,6 +102,11 @@ const CustomDrawerContent = (props) => {
     9: '実長機能',
     10: '本部',
     11: '当日部員',
+    12: '巡回サポート',
+    13: '本部サポート',
+    14: '会計対応',
+    15: '物品対応',
+    16: '企画者サポート',
   };
 
   /**
@@ -123,7 +128,7 @@ const CustomDrawerContent = (props) => {
     11: '当日部員',
   };
 
-  const accessibleItems = Array.from({ length: 11 }, (_, index) => {
+  const accessibleItems = Array.from({ length: 16 }, (_, index) => {
     const itemNumber = index + 1;
     // カスタム権限名があればそれを使用、なければデフォルト
     const permissionName = PERMISSION_NAME_MAP[itemNumber] || `item${itemNumber}`;
