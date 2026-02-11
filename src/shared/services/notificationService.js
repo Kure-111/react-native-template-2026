@@ -6,6 +6,7 @@
 import { getSupabaseClient } from '../../services/supabase/client.js';
 
 const notificationEventTarget = new EventTarget();
+const SESSION_REFRESH_MARGIN_SECONDS = 60;
 
 export const subscribeNotificationUpdates = (handler) => {
   notificationEventTarget.addEventListener('change', handler);
@@ -14,6 +15,108 @@ export const subscribeNotificationUpdates = (handler) => {
 
 export const emitNotificationUpdate = () => {
   notificationEventTarget.dispatchEvent(new Event('change'));
+};
+
+/**
+ * セッションの有効期限が近いか判定する
+ * @param {Object|null} session
+ * @returns {boolean}
+ */
+const isSessionExpiringSoon = (session) => {
+  const expiresAt = session?.expires_at;
+  if (!expiresAt) {
+    return false;
+  }
+
+  const nowUnixSeconds = Math.floor(Date.now() / 1000);
+  return expiresAt <= nowUnixSeconds + SESSION_REFRESH_MARGIN_SECONDS;
+};
+
+/**
+ * 現在有効なアクセストークンを取得する
+ * @param {boolean} forceRefresh
+ * @returns {Promise<string|null>}
+ */
+const getValidAccessToken = async (forceRefresh = false) => {
+  const supabase = getSupabaseClient();
+
+  if (forceRefresh) {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error) {
+      throw error;
+    }
+    return data?.session?.access_token ?? null;
+  }
+
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    throw error;
+  }
+
+  let session = data?.session ?? null;
+
+  if (!session) {
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError) {
+      return null;
+    }
+    session = refreshData?.session ?? null;
+  }
+
+  if (session && isSessionExpiringSoon(session)) {
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (!refreshError && refreshData?.session?.access_token) {
+      return refreshData.session.access_token;
+    }
+  }
+
+  return session?.access_token ?? null;
+};
+
+/**
+ * Edge Functionエラーが401かどうか
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+const isUnauthorizedFunctionError = (error) => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const maybeError = /** @type {{ context?: { status?: number }; status?: number; message?: string }} */ (error);
+  const status = maybeError.context?.status ?? maybeError.status;
+  if (status === 401) {
+    return true;
+  }
+
+  const message = (maybeError.message ?? '').toLowerCase();
+  return message.includes('401') || message.includes('unauthorized');
+};
+
+/**
+ * Edge Functionエラーを読みやすいエラーへ整形
+ * @param {unknown} error
+ * @param {string} fallbackMessage
+ * @returns {Promise<Error>}
+ */
+const normalizeFunctionError = async (error, fallbackMessage) => {
+  if (error && typeof error === 'object') {
+    const maybeError = /** @type {{ context?: { json?: Function }; message?: string }} */ (error);
+    const responseContext = maybeError.context;
+
+    if (responseContext && typeof responseContext.json === 'function') {
+      const payload = await responseContext.json().catch(() => null);
+      if (payload && typeof payload.error === 'string' && payload.error.trim() !== '') {
+        return new Error(payload.error);
+      }
+    }
+
+    if (typeof maybeError.message === 'string' && maybeError.message.trim() !== '') {
+      return new Error(maybeError.message);
+    }
+  }
+
+  return new Error(fallbackMessage);
 };
 
 /**
@@ -120,24 +223,34 @@ export const getUserProfilesByIds = async (userIds) => {
  */
 const dispatchNotification = async (payload) => {
   try {
-    const {
-      data: { session },
-    } = await getSupabaseClient().auth.getSession();
-    const accessToken = session?.access_token;
+    let accessToken = await getValidAccessToken();
 
     if (!accessToken) {
       return { data: null, error: new Error('ログインセッションが見つかりません。再ログインしてください。') };
     }
 
-    const { data, error } = await getSupabaseClient().functions.invoke('dispatch-notification', {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: payload,
-    });
+    const invokeDispatch = async (token) =>
+      getSupabaseClient().functions.invoke('dispatch-notification', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: payload,
+      });
+
+    let { data, error } = await invokeDispatch(accessToken);
+
+    if (error && isUnauthorizedFunctionError(error)) {
+      accessToken = await getValidAccessToken(true).catch(() => null);
+      if (accessToken) {
+        ({ data, error } = await invokeDispatch(accessToken));
+      }
+    }
 
     if (error) {
-      return { data: null, error };
+      return {
+        data: null,
+        error: await normalizeFunctionError(error, '通知送信に失敗しました'),
+      };
     }
 
     if (data?.error) {

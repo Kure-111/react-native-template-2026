@@ -9,6 +9,7 @@ import { registerServiceWorker } from '../utils/serviceWorker.js';
 
 /** 通知許可案内のローカルストレージキー接頭辞 */
 const WEB_PUSH_PROMPT_KEY_PREFIX = 'ikoma_erp_web_push_prompted_';
+const SESSION_REFRESH_MARGIN_SECONDS = 60;
 
 /**
  * URL-safe Base64文字列をUint8Arrayへ変換
@@ -90,32 +91,141 @@ const requestNotificationPermissionIfNeeded = async (userId) => {
 };
 
 /**
+ * セッション有効期限が近いか判定
+ * @param {Object|null} session
+ * @returns {boolean}
+ */
+const isSessionExpiringSoon = (session) => {
+  const expiresAt = session?.expires_at;
+  if (!expiresAt) {
+    return false;
+  }
+  const nowUnixSeconds = Math.floor(Date.now() / 1000);
+  return expiresAt <= nowUnixSeconds + SESSION_REFRESH_MARGIN_SECONDS;
+};
+
+/**
+ * 有効なアクセストークンを取得
+ * @param {boolean} forceRefresh
+ * @returns {Promise<string|null>}
+ */
+const getValidAccessToken = async (forceRefresh = false) => {
+  const supabase = getSupabaseClient();
+
+  if (forceRefresh) {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error) {
+      throw error;
+    }
+    return data?.session?.access_token ?? null;
+  }
+
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!session) {
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError) {
+      return null;
+    }
+    return refreshData?.session?.access_token ?? null;
+  }
+
+  if (isSessionExpiringSoon(session)) {
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (!refreshError && refreshData?.session?.access_token) {
+      return refreshData.session.access_token;
+    }
+  }
+
+  return session.access_token ?? null;
+};
+
+/**
+ * Edge Functionエラーが401か判定
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+const isUnauthorizedFunctionError = (error) => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const maybeError = /** @type {{ context?: { status?: number }; status?: number; message?: string }} */ (error);
+  const status = maybeError.context?.status ?? maybeError.status;
+  if (status === 401) {
+    return true;
+  }
+
+  const message = (maybeError.message ?? '').toLowerCase();
+  return message.includes('401') || message.includes('unauthorized');
+};
+
+/**
+ * Functionエラーを整形
+ * @param {unknown} error
+ * @returns {Promise<Error>}
+ */
+const normalizeFunctionError = async (error) => {
+  if (error && typeof error === 'object') {
+    const maybeError = /** @type {{ context?: { json?: Function }; message?: string }} */ (error);
+    const responseContext = maybeError.context;
+
+    if (responseContext && typeof responseContext.json === 'function') {
+      const payload = await responseContext.json().catch(() => null);
+      if (payload && typeof payload.error === 'string' && payload.error.trim() !== '') {
+        return new Error(payload.error);
+      }
+    }
+
+    if (typeof maybeError.message === 'string' && maybeError.message.trim() !== '') {
+      return new Error(maybeError.message);
+    }
+  }
+
+  return new Error('push-subscription の呼び出しに失敗しました');
+};
+
+/**
  * Push購読情報をEdge Functionへ保存する
  * @param {PushSubscription} subscription - Push購読情報
  * @returns {Promise<void>} 保存結果
  */
 const savePushSubscription = async (subscription) => {
   const serialized = subscription.toJSON();
-  const {
-    data: { session },
-  } = await getSupabaseClient().auth.getSession();
-  const accessToken = session?.access_token;
+  let accessToken = await getValidAccessToken();
 
   if (!accessToken) {
     throw new Error('ログインセッションが見つかりません。再ログインしてください。');
   }
 
-  const { error } = await getSupabaseClient().functions.invoke('push-subscription', {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: {
-      subscription: serialized,
-    },
-  });
+  const invokeSubscription = async (token) =>
+    getSupabaseClient().functions.invoke('push-subscription', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: {
+        subscription: serialized,
+      },
+    });
+
+  let { error } = await invokeSubscription(accessToken);
+
+  if (error && isUnauthorizedFunctionError(error)) {
+    accessToken = await getValidAccessToken(true).catch(() => null);
+    if (accessToken) {
+      ({ error } = await invokeSubscription(accessToken));
+    }
+  }
 
   if (error) {
-    throw error;
+    throw await normalizeFunctionError(error);
   }
 };
 

@@ -206,7 +206,7 @@ const AdminTestNotificationScreen = ({ navigation }) => {
         user?.id ?? null
       );
       if (result.error) {
-        setErrorMessage('通知送信に失敗しました');
+        setErrorMessage(result.error?.message || '通知送信に失敗しました');
       } else {
         const pushText = result.push
           ? ` / Push: ${result.push.succeeded}/${result.push.attempted}（失敗${result.push.failed}）`
@@ -233,7 +233,7 @@ const AdminTestNotificationScreen = ({ navigation }) => {
         user?.id ?? null
       );
       if (result.error) {
-        setErrorMessage('通知送信に失敗しました');
+        setErrorMessage(result.error?.message || '通知送信に失敗しました');
       } else {
         const pushText = result.push
           ? ` / Push: ${result.push.succeeded}/${result.push.attempted}（失敗${result.push.failed}）`

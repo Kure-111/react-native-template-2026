@@ -33,8 +33,9 @@ const getBearerToken = (request: Request) => {
     return null;
   }
 
-  const [scheme, token] = authHeader.split(' ');
-  if (scheme !== 'Bearer' || !token) {
+  const [scheme, ...rest] = authHeader.trim().split(/\s+/);
+  const token = rest.join(' ');
+  if (!scheme || scheme.toLowerCase() !== 'bearer' || !token) {
     return null;
   }
 
@@ -145,4 +146,3 @@ Deno.serve(async (request) => {
     return createJsonResponse({ error: 'Unexpected error' }, 500);
   }
 });
-

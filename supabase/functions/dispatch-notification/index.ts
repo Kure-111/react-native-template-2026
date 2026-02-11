@@ -64,8 +64,9 @@ const getBearerToken = (request: Request) => {
     return null;
   }
 
-  const [scheme, token] = authHeader.split(' ');
-  if (scheme !== 'Bearer' || !token) {
+  const [scheme, ...rest] = authHeader.trim().split(/\s+/);
+  const token = rest.join(' ');
+  if (!scheme || scheme.toLowerCase() !== 'bearer' || !token) {
     return null;
   }
 
@@ -107,11 +108,7 @@ const authenticateRequester = async (
   supabase: ReturnType<typeof createServiceClient>
 ) => {
   const internalToken = request.headers.get('x-internal-notify-token');
-  if (internalToken) {
-    if (!INTERNAL_NOTIFY_TOKEN || internalToken !== INTERNAL_NOTIFY_TOKEN) {
-      throw new Error('Invalid internal token');
-    }
-
+  if (internalToken && INTERNAL_NOTIFY_TOKEN && internalToken === INTERNAL_NOTIFY_TOKEN) {
     return {
       type: 'internal',
       senderUserId: payload.senderUserId ?? null,
@@ -120,6 +117,9 @@ const authenticateRequester = async (
 
   const bearerToken = getBearerToken(request);
   if (!bearerToken) {
+    if (internalToken) {
+      throw new Error('Invalid internal token');
+    }
     throw new Error('Authorization header or internal token is required');
   }
 
@@ -129,6 +129,7 @@ const authenticateRequester = async (
   } = await supabase.auth.getUser(bearerToken);
 
   if (userError || !user) {
+    console.error('user token validation error:', userError);
     throw new Error('Invalid user token');
   }
 
