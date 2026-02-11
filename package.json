@@ -10,7 +10,7 @@
     "web": "concurrently \"expo start --web\" \"npm run earthquake-monitor\"",
     "web-only": "expo start --web",
     "earthquake-monitor": "node src/services/earthquakeMonitor.js",
-    "earthquake-demo": "node src/services/earthquakeDemo.js"
+    "earthquake-demo": "node src/services/earthquakeDemo.js",
     "build": "expo export --platform web"
   },
   "dependencies": {
