@@ -290,19 +290,20 @@ const styles = StyleSheet.create({
   },
   gridContainerSmall: {
     flexDirection: 'column',
-    gap: 8,
+    gap: 20,
   },
   column: {
     flex: 1,
   },
   columnSmall: {
     width: '100%',
+    marginBottom: 16,
   },
   card: {
-    marginBottom: 8,
+    marginBottom: 16,
   },
   leftCard: {
-    marginBottom: 8,
+    marginBottom: 16,
   },
   emergencyInfoCard: {
     marginTop: 16,

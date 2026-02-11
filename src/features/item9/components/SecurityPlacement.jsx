@@ -38,8 +38,8 @@ export const SecurityPlacement = () => {
 const styles = StyleSheet.create({
   container: {
     borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
+    padding: 16,
+    marginBottom: 4,
     borderWidth: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

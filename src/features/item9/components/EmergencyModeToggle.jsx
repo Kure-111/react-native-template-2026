@@ -120,9 +120,10 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
     borderWidth: 2,
+    marginBottom: 4,
   },
   containerMobile: {
-    padding: 12,
+    padding: 14,
     borderRadius: 12,
   },
   emergencyContainer: {

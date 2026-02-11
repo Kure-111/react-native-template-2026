@@ -46,7 +46,7 @@ export const VisitorCounter = ({ count }) => {
 const styles = StyleSheet.create({
   container: {
     borderRadius: 12,
-    padding: 12,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     shadowColor: '#000',
@@ -56,6 +56,7 @@ const styles = StyleSheet.create({
     elevation: 3,
     borderLeftWidth: 5,
     borderWidth: 2,
+    marginBottom: 4,
   },
   iconContainer: {
     marginRight: 20,
