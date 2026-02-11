@@ -24,6 +24,7 @@
 
 - 管理者が「ロールを選択 → 通知本文を入力 → 送信」して、そのロールに属するユーザーへ通知を送信できるテスト用機能を提供する。
 - 将来的に内部 API / バッチ処理等から呼べる共通の通知サービスを `src/shared` 以下に配置し、再利用可能な構成にする。
+- 通知作成と Web Push 配信は Supabase Edge Function を単一入口として実行できる構成にする。
 - 既存DBの不明点が多いため、通知機能に必要なテーブルは新規で定義する。
 
 ### スケジュール
@@ -60,6 +61,7 @@
 - ロール選択時は `roles` テーブルから一覧を取得して表示する。
 - 個人送信は `user_id` を指定して送信する（同名ユーザーがいるため名前一致は使用しない）。
 - 送信時に `notifications` と `notification_recipients` にレコードを作成する。
+- 送信処理は `dispatch-notification` Edge Function を呼び出して実行する。
 - 送信後に通知IDと送信先件数を表示する。
 - 失敗時はエラーメッセージを表示する。
 - タイトルは必須。
@@ -90,7 +92,23 @@
 - `getRoles()` でロール一覧を取得可能。
 - `getUsersByRole(roleId)` で対象ユーザーを取得可能。
 - `sendNotificationToUser / sendNotificationToRole` を提供する。
+- 送信本体は `dispatch-notification` Edge Function を経由する。
 - 将来的に配信エンジン（メール / プッシュ / In-app）と連携できる構成とする。
+
+---
+
+### 4. Web Push 配信機能
+
+**概要：**
+ログイン後のWebユーザーが通知許可を与えることで `push_subscriptions` に購読情報を保存し、通知送信時に Web Push を配信する。
+
+**詳細仕様：**
+
+- Webログイン時に通知許可を案内する。
+- 許可済みユーザーの購読情報を `push-subscription` Edge Function 経由で保存する。
+- 通知送信時に `dispatch-notification` Edge Function が対象ユーザーの購読先へPush送信する。
+- Push配信に失敗しても通知レコード作成は成功扱いとする。
+- 410/404 を返した購読先は自動削除する。
 
 ---
 
@@ -158,6 +176,7 @@
 | ---------- | ---- |
 | notifications | 通知マスタ |
 | notification_recipients | 通知受信者 |
+| push_subscriptions | Web Push購読情報 |
 
 ---
 
@@ -198,6 +217,26 @@
 
 ---
 
+### push_subscriptions テーブル
+
+**説明:** Web Push の購読情報を管理
+
+| カラム名 | 型 | 制約 | 説明 |
+| --- | --- | --- | --- |
+| id | uuid | PK | 購読ID |
+| user_id | uuid | NOT NULL, FK | ユーザーID |
+| endpoint | text | NOT NULL, UNIQUE | Push購読エンドポイント |
+| p256dh | text | NOT NULL | 公開鍵 |
+| auth | text | NOT NULL | 認証キー |
+| created_at | timestamptz | NOT NULL | 作成日時 |
+| updated_at | timestamptz | NOT NULL | 更新日時 |
+
+**リレーション:**
+
+- `push_subscriptions.user_id` は `auth.users.id` を参照
+
+---
+
 ### マイグレーション（作成用SQL）
 
 ```sql
@@ -223,6 +262,8 @@ CREATE INDEX IF NOT EXISTS idx_notification_recipients_user_id
   ON notification_recipients (user_id);
 ```
 
+Web Push と RLS 強化は `db/migrations/20260210_create_push_subscriptions.sql` で管理する。
+
 ---
 
 ## API 設計
@@ -230,7 +271,7 @@ CREATE INDEX IF NOT EXISTS idx_notification_recipients_user_id
 ### 1. 通知サービス（内部呼び出し）
 
 **アクセス方法:**
-UI から `src/shared/services/notificationService.js` を呼び出す。
+UI から `src/shared/services/notificationService.js` を呼び出し、送信時は Edge Function を実行する。
 
 **主な関数:**
 
@@ -240,9 +281,21 @@ UI から `src/shared/services/notificationService.js` を呼び出す。
 - `sendNotificationToRole(roleId, title, body, metadata)`
 - `getNotificationsForUser(userId)`
 - `markNotificationRead(notificationRecipientId)`
+- `initializeWebPushSubscription(userId)`（Web向け購読初期化）
 
 **注意:**
-全員送信は当面実装しない。
+全員送信は当面実装しない。将来の内部システムは `dispatch-notification` を直接呼び出す。
+
+### 2. Edge Function
+
+**関数一覧:**
+
+- `push-subscription`
+  - `POST`: 購読登録
+  - `DELETE`: 購読解除
+- `dispatch-notification`
+  - 通知作成 + 受信者作成 + Web Push配信を一括実行
+  - `Authorization`（管理者JWT）または `X-Internal-Notify-Token` で認可
 
 ---
 
@@ -295,7 +348,8 @@ UI から `src/shared/services/notificationService.js` を呼び出す。
 
 - **通信:** HTTPS のみ
 - **API キー管理:** 環境変数（`.env`）で管理
-- **RLS:** `notifications` / `notification_recipients` は管理者・サービスロールのみ書き込み可能にする
+- **RLS:** `notifications` / `notification_recipients` / `push_subscriptions` で有効化する
+- **Edge Function Secrets:** `WEB_PUSH_VAPID_*` と `INTERNAL_NOTIFY_TOKEN` をSupabase側シークレットで管理する
 
 ---
 
@@ -303,4 +357,5 @@ UI から `src/shared/services/notificationService.js` を呼び出す。
 
 | 日付 | バージョン | 更新内容 | 更新者 |
 | --- | --- | --- | --- |
+| 2026/02/10 | 1.1 | Web Push + Edge Function + RLS 方針追記 | - |
 | 2026/02/09 | 1.0 | 初版作成 | - |

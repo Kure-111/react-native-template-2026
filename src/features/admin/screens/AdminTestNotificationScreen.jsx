@@ -208,7 +208,10 @@ const AdminTestNotificationScreen = ({ navigation }) => {
       if (result.error) {
         setErrorMessage('通知送信に失敗しました');
       } else {
-        setStatusMessage(`送信完了: ${result.notification.id}（1件）`);
+        const pushText = result.push
+          ? ` / Push: ${result.push.succeeded}/${result.push.attempted}（失敗${result.push.failed}）`
+          : '';
+        setStatusMessage(`送信完了: ${result.notification.id}（1件）${pushText}`);
         setTargetUserId('');
         setTargetRoleIdForUser('');
         setAvailableUsers([]);
@@ -232,7 +235,10 @@ const AdminTestNotificationScreen = ({ navigation }) => {
       if (result.error) {
         setErrorMessage('通知送信に失敗しました');
       } else {
-        setStatusMessage(`送信完了: ${result.notification.id}（${result.recipientsCount}件）`);
+        const pushText = result.push
+          ? ` / Push: ${result.push.succeeded}/${result.push.attempted}（失敗${result.push.failed}）`
+          : '';
+        setStatusMessage(`送信完了: ${result.notification.id}（${result.recipientsCount}件）${pushText}`);
         setSelectedRoleIds([]);
         setTitle('');
         setBody('');

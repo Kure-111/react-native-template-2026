@@ -114,22 +114,40 @@ export const getUserProfilesByIds = async (userIds) => {
 };
 
 /**
- * 通知を作成
- * @param {Object} payload
- * @returns {Promise<Object>} notification, error
+ * Edge Functionで通知を送信する
+ * @param {Object} payload - 送信リクエスト
+ * @returns {Promise<Object>} data, error
  */
-const createNotification = async (payload) => {
-  const { data, error } = await getSupabaseClient()
-    .from('notifications')
-    .insert([payload])
-    .select()
-    .single();
+const dispatchNotification = async (payload) => {
+  try {
+    const {
+      data: { session },
+    } = await getSupabaseClient().auth.getSession();
+    const accessToken = session?.access_token;
 
-  if (error) {
-    return { notification: null, error };
+    if (!accessToken) {
+      return { data: null, error: new Error('ログインセッションが見つかりません。再ログインしてください。') };
+    }
+
+    const { data, error } = await getSupabaseClient().functions.invoke('dispatch-notification', {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: payload,
+    });
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    if (data?.error) {
+      return { data: null, error: new Error(data.error) };
+    }
+
+    return { data: data ?? null, error: null };
+  } catch (error) {
+    return { data: null, error };
   }
-
-  return { notification: data, error: null };
 };
 
 /**
@@ -143,27 +161,30 @@ const createNotification = async (payload) => {
  */
 export const sendNotificationToUser = async (userId, title, body, metadata = {}, senderUserId = null) => {
   try {
-    const { notification, error: createError } = await createNotification({
-      sender_user_id: senderUserId,
+    if (!userId) {
+      return { notification: null, recipientsCount: 0, error: new Error('送信先ユーザーIDが必要です') };
+    }
+
+    const { data, error } = await dispatchNotification({
+      targetType: 'user',
+      userId,
       title,
       body,
       metadata,
+      senderUserId,
     });
 
-    if (createError) {
-      return { notification: null, recipientsCount: 0, error: createError };
-    }
-
-    const { error: insertError } = await getSupabaseClient()
-      .from('notification_recipients')
-      .insert([{ notification_id: notification.id, user_id: userId }]);
-
-    if (insertError) {
-      return { notification, recipientsCount: 0, error: insertError };
+    if (error) {
+      return { notification: null, recipientsCount: 0, error };
     }
 
     emitNotificationUpdate();
-    return { notification, recipientsCount: 1, error: null };
+    return {
+      notification: { id: data?.notificationId ?? '' },
+      recipientsCount: data?.recipientsCount ?? 0,
+      push: data?.push ?? null,
+      error: null,
+    };
   } catch (error) {
     return { notification: null, recipientsCount: 0, error };
   }
@@ -179,44 +200,7 @@ export const sendNotificationToUser = async (userId, title, body, metadata = {},
  * @returns {Promise<Object>} notification, recipientsCount, error
  */
 export const sendNotificationToRole = async (roleId, title, body, metadata = {}, senderUserId = null) => {
-  try {
-    const { users, error: usersError } = await getUsersByRole(roleId);
-    if (usersError) {
-      return { notification: null, recipientsCount: 0, error: usersError };
-    }
-    if (users.length === 0) {
-      return { notification: null, recipientsCount: 0, error: new Error('送信先ユーザーが見つかりません') };
-    }
-
-    const { notification, error: createError } = await createNotification({
-      sender_user_id: senderUserId,
-      title,
-      body,
-      metadata,
-    });
-
-    if (createError) {
-      return { notification: null, recipientsCount: 0, error: createError };
-    }
-
-    const recipients = users.map((userId) => ({
-      notification_id: notification.id,
-      user_id: userId,
-    }));
-
-    const { error: insertError } = await getSupabaseClient()
-      .from('notification_recipients')
-      .insert(recipients);
-
-    if (insertError) {
-      return { notification, recipientsCount: 0, error: insertError };
-    }
-
-    emitNotificationUpdate();
-    return { notification, recipientsCount: recipients.length, error: null };
-  } catch (error) {
-    return { notification: null, recipientsCount: 0, error };
-  }
+  return sendNotificationToRoles([roleId], title, body, metadata, senderUserId);
 };
 
 /**
@@ -230,40 +214,30 @@ export const sendNotificationToRole = async (roleId, title, body, metadata = {},
  */
 export const sendNotificationToRoles = async (roleIds, title, body, metadata = {}, senderUserId = null) => {
   try {
-    const { users, error: usersError } = await getUsersByRoles(roleIds);
-    if (usersError) {
-      return { notification: null, recipientsCount: 0, error: usersError };
-    }
-    if (users.length === 0) {
-      return { notification: null, recipientsCount: 0, error: new Error('送信先ユーザーが見つかりません') };
+    if (!Array.isArray(roleIds) || roleIds.length === 0) {
+      return { notification: null, recipientsCount: 0, error: new Error('送信先ロールが必要です') };
     }
 
-    const { notification, error: createError } = await createNotification({
-      sender_user_id: senderUserId,
+    const { data, error } = await dispatchNotification({
+      targetType: 'roles',
+      roleIds,
       title,
       body,
       metadata,
+      senderUserId,
     });
 
-    if (createError) {
-      return { notification: null, recipientsCount: 0, error: createError };
-    }
-
-    const recipients = users.map((userId) => ({
-      notification_id: notification.id,
-      user_id: userId,
-    }));
-
-    const { error: insertError } = await getSupabaseClient()
-      .from('notification_recipients')
-      .insert(recipients);
-
-    if (insertError) {
-      return { notification, recipientsCount: 0, error: insertError };
+    if (error) {
+      return { notification: null, recipientsCount: 0, error };
     }
 
     emitNotificationUpdate();
-    return { notification, recipientsCount: recipients.length, error: null };
+    return {
+      notification: { id: data?.notificationId ?? '' },
+      recipientsCount: data?.recipientsCount ?? 0,
+      push: data?.push ?? null,
+      error: null,
+    };
   } catch (error) {
     return { notification: null, recipientsCount: 0, error };
   }
