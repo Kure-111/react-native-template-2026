@@ -1,11 +1,13 @@
 import React from 'react';
-import { View, Text, StyleSheet, Switch, Animated } from 'react-native';
+import { View, Text, StyleSheet, Switch, Animated, useWindowDimensions } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 
 // 緊急モードスイッチ
 export const EmergencyModeToggle = ({ isEmergency, onToggle, disabled }) => {
   const { theme } = useTheme();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 480;
   const pulseAnim = React.useRef(new Animated.Value(1)).current;
   
   // 緊急時の点滅アニメーション
@@ -34,18 +36,20 @@ export const EmergencyModeToggle = ({ isEmergency, onToggle, disabled }) => {
     <View style={[
       styles.container, 
       { backgroundColor: theme.surface, borderColor: theme.border },
-      isEmergency && styles.emergencyContainer
+      isEmergency && styles.emergencyContainer,
+      isMobile && styles.containerMobile
     ]}>
-      <View style={styles.header}>
+      <View style={[styles.header, isMobile && styles.headerMobile]}>
         <View style={styles.titleContainer}>
           <Animated.View style={[
             styles.iconContainer, 
+            isMobile && styles.iconContainerMobile,
             isEmergency && styles.emergencyIconContainer,
             isEmergency && { transform: [{ scale: pulseAnim }] }
           ]}>
             <MaterialCommunityIcons 
               name={isEmergency ? "alert-octagon" : "shield-check"} 
-              size={32} 
+              size={isMobile ? 24 : 32} 
               color={isEmergency ? "#FFFFFF" : "#4CAF50"} 
             />
           </Animated.View>
@@ -53,7 +57,8 @@ export const EmergencyModeToggle = ({ isEmergency, onToggle, disabled }) => {
             <Text style={[
               styles.title, 
               { color: theme.text },
-              isEmergency && styles.emergencyTitle
+              isEmergency && styles.emergencyTitle,
+              isMobile && styles.titleMobile
             ]}>
               緊急モード
             </Text>
@@ -65,7 +70,8 @@ export const EmergencyModeToggle = ({ isEmergency, onToggle, disabled }) => {
               <Text style={[
                 styles.status, 
                 { color: theme.textSecondary },
-                isEmergency && styles.emergencyStatus
+                isEmergency && styles.emergencyStatus,
+                isMobile && styles.statusMobile
               ]}>
                 {isEmergency ? '🚨 発動中' : '✓ 待機中'}
               </Text>
@@ -82,9 +88,9 @@ export const EmergencyModeToggle = ({ isEmergency, onToggle, disabled }) => {
               true: '#F44336' 
             }}
             thumbColor={isEmergency ? '#fff' : (theme.name === 'dark' ? '#888' : '#f4f3f4')}
-            style={styles.switch}
+            style={[styles.switch, isMobile && styles.switchMobile]}
           />
-          {!isEmergency && (
+          {!isEmergency && !isMobile && (
             <Text style={[styles.switchLabel, { color: theme.textSecondary }]}>
               解除可能
             </Text>
@@ -114,6 +120,11 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
     borderWidth: 2,
+    marginBottom: 4,
+  },
+  containerMobile: {
+    padding: 14,
+    borderRadius: 12,
   },
   emergencyContainer: {
     backgroundColor: '#D32F2F',
@@ -125,6 +136,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  headerMobile: {
+    gap: 8,
   },
   titleContainer: {
     flexDirection: 'row',
@@ -140,6 +154,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 16,
   },
+  iconContainerMobile: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+  },
   emergencyIconContainer: {
     backgroundColor: '#B71C1C',
   },
@@ -150,6 +170,10 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 6,
+  },
+  titleMobile: {
+    fontSize: 16,
+    marginBottom: 4,
   },
   emergencyTitle: {
     color: '#FFFFFF',
@@ -175,6 +199,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  statusMobile: {
+    fontSize: 12,
+  },
   emergencyStatus: {
     color: '#FFFFFF',
     fontSize: 15,
@@ -184,6 +211,9 @@ const styles = StyleSheet.create({
   },
   switch: {
     transform: [{ scale: 1.3 }],
+  },
+  switchMobile: {
+    transform: [{ scale: 1.1 }],
   },
   switchLabel: {
     fontSize: 11,

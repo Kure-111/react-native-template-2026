@@ -54,13 +54,14 @@ export const SuspiciousPersonList = ({ persons, onPersonPress }) => {
 const styles = StyleSheet.create({
   container: {
     borderRadius: 12,
-    padding: 12,
+    padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
     borderWidth: 2,
+    marginBottom: 4,
   },
   header: {
     flexDirection: 'row',
