@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 
@@ -17,6 +17,8 @@ const getWeatherIcon = (description) => {
 // 天気情報表示（降水量mm/h含む）
 export const WeatherInfo = ({ weather, rainfall }) => {
   const { theme } = useTheme();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 480;
   
   if (!weather) {
     return (
@@ -42,21 +44,21 @@ export const WeatherInfo = ({ weather, rainfall }) => {
     }]}>
       <View style={styles.mainRow}>
         <View style={[styles.iconBox, { backgroundColor: theme.name === 'dark' ? 'rgba(255, 193, 7, 0.1)' : '#FFF8E1' }]}>
-          <MaterialCommunityIcons name={weatherIcon.name} size={56} color={weatherIcon.color} />
+          <MaterialCommunityIcons name={weatherIcon.name} size={isMobile ? 40 : 56} color={weatherIcon.color} />
         </View>
         <View style={styles.tempBox}>
-          <Text style={[styles.temp, { color: theme.name === 'dark' ? '#FFB74D' : '#FF6F00' }]}>{temp}</Text>
-          <Text style={[styles.tempUnit, { color: theme.name === 'dark' ? '#FFB74D' : '#FF6F00' }]}>°C</Text>
+          <Text style={[styles.temp, { color: theme.name === 'dark' ? '#FFB74D' : '#FF6F00' }, isMobile && styles.tempMobile]}>{temp}</Text>
+          <Text style={[styles.tempUnit, { color: theme.name === 'dark' ? '#FFB74D' : '#FF6F00' }, isMobile && styles.tempUnitMobile]}>°C</Text>
         </View>
         <View style={styles.detailsBox}>
           <View style={styles.detailRow}>
-            <Ionicons name="water" size={20} color="#2196F3" />
-            <Text style={[styles.detailText, { color: theme.textSecondary }]}>{humidity}%</Text>
+            <Ionicons name="water" size={isMobile ? 16 : 20} color="#2196F3" />
+            <Text style={[styles.detailText, { color: theme.textSecondary }, isMobile && styles.detailTextMobile]}>{humidity}%</Text>
           </View>
           {isRaining && (
             <View style={styles.detailRow}>
-              <MaterialCommunityIcons name="weather-pouring" size={20} color="#F44336" />
-              <Text style={[styles.detailText, styles.rainfallAlert]}>
+              <MaterialCommunityIcons name="weather-pouring" size={isMobile ? 16 : 20} color="#F44336" />
+              <Text style={[styles.detailText, styles.rainfallAlert, isMobile && styles.detailTextMobile]}>
                 {rainfall.toFixed(1)}mm/h
               </Text>
             </View>
@@ -103,10 +105,17 @@ const styles = StyleSheet.create({
     fontSize: 48,
     fontWeight: 'bold',
   },
+  tempMobile: {
+    fontSize: 32,
+  },
   tempUnit: {
     fontSize: 24,
     fontWeight: '600',
     marginTop: 6,
+  },
+  tempUnitMobile: {
+    fontSize: 18,
+    marginTop: 4,
   },
   detailsBox: {
     gap: 12,
@@ -119,6 +128,9 @@ const styles = StyleSheet.create({
   detailText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  detailTextMobile: {
+    fontSize: 14,
   },
   rainfallAlert: {
     color: '#F44336',

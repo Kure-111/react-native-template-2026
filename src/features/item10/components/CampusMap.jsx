@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Platform, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Platform, Dimensions, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -19,7 +19,13 @@ const KINDAI_CAMPUS = {
 
 export const CampusMap = () => {
   const { theme } = useTheme();
+  const { width, height } = useWindowDimensions();
+  const isMobile = width < 480;
+  const isSmallScreen = width < 768;
   const [mapError, setMapError] = useState(false);
+
+  // レスポンシブな地図の高さを計算
+  const mapHeight = isMobile ? 300 : isSmallScreen ? 400 : 500;
 
   // Web版: Google Maps iframe
   if (Platform.OS === 'web') {
@@ -29,10 +35,12 @@ export const CampusMap = () => {
       <View style={[styles.container, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <View style={styles.header}>
           <MaterialCommunityIcons name="map-marker" size={20} color={theme.primary} />
-          <Text style={[styles.title, { color: theme.text }]}>キャンパス全体マップ</Text>
+          <Text style={[styles.title, { color: theme.text }, isMobile && styles.titleMobile]}>
+            キャンパス全体マップ
+          </Text>
         </View>
 
-        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+        <Text style={[styles.subtitle, { color: theme.textSecondary }, isMobile && styles.subtitleMobile]}>
           近畿大学 東大阪キャンパス
         </Text>
 
@@ -42,7 +50,7 @@ export const CampusMap = () => {
               src={`https://www.google.com/maps?q=34.651251510533875,135.58943350065954&hl=ja&z=16&output=embed`}
               style={{
                 width: '100%',
-                height: 500,
+                height: mapHeight,
                 border: 0,
                 borderRadius: 8,
               }}
@@ -52,9 +60,9 @@ export const CampusMap = () => {
               onError={() => setMapError(true)}
             />
           ) : (
-            <View style={[styles.errorContainer, { backgroundColor: theme.background }]}>
-              <MaterialCommunityIcons name="map-marker-off" size={48} color={theme.textSecondary} />
-              <Text style={[styles.errorText, { color: theme.textSecondary }]}>
+            <View style={[styles.errorContainer, { backgroundColor: theme.background, height: mapHeight }]}>
+              <MaterialCommunityIcons name="map-marker-off" size={isMobile ? 36 : 48} color={theme.textSecondary} />
+              <Text style={[styles.errorText, { color: theme.textSecondary }, isMobile && styles.errorTextMobile]}>
                 地図を読み込めませんでした
               </Text>
             </View>
@@ -127,9 +135,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  titleMobile: {
+    fontSize: 14,
+  },
   subtitle: {
     fontSize: 14,
     marginBottom: 12,
+  },
+  subtitleMobile: {
+    fontSize: 12,
+    marginBottom: 8,
   },
   mapContainer: {
     borderRadius: 8,
@@ -137,7 +152,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   errorContainer: {
-    height: 400,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 8,
@@ -145,6 +159,9 @@ const styles = StyleSheet.create({
   errorText: {
     marginTop: 12,
     fontSize: 14,
+  },
+  errorTextMobile: {
+    fontSize: 12,
   },
   mapPlaceholder: {
     height: 300,
