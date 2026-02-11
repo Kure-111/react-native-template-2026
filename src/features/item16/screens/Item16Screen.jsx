@@ -5,6 +5,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Picker } from '@react-native-picker/picker';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -36,6 +37,7 @@ import {
   listTicketMessages,
   SUPPORT_TICKET_STATUSES,
 } from '../../../services/supabase/supportTicketService';
+import { KEY_BUILDINGS, KEY_CATALOG } from '../data/keyCatalog';
 
 /** 連絡案件ステータス表示名 */
 const STATUS_LABELS = {
@@ -46,6 +48,8 @@ const STATUS_LABELS = {
   [SUPPORT_TICKET_STATUSES.RESOLVED]: '解決済み',
   [SUPPORT_TICKET_STATUSES.CLOSED]: 'クローズ',
 };
+
+const ALL_BUILDINGS_VALUE = 'all';
 
 /**
  * 項目16画面コンポーネント
@@ -74,7 +78,9 @@ const Item16Screen = ({ navigation }) => {
   const [emergencyDetail, setEmergencyDetail] = useState('');
 
   // 鍵の事前申請
-  const [keyTarget, setKeyTarget] = useState('');
+  const [keyBuilding, setKeyBuilding] = useState(ALL_BUILDINGS_VALUE);
+  const [keySelectedId, setKeySelectedId] = useState('');
+  const [selectedKeyIds, setSelectedKeyIds] = useState([]);
   const [keyRequestedAt, setKeyRequestedAt] = useState('');
   const [keyReason, setKeyReason] = useState('');
 
@@ -254,6 +260,60 @@ const Item16Screen = ({ navigation }) => {
   }, [questionType]);
 
   /**
+   * 棟プルダウン選択に応じた鍵候補
+   */
+  const filteredKeyCatalog = useMemo(() => {
+    if (keyBuilding === ALL_BUILDINGS_VALUE) {
+      return KEY_CATALOG;
+    }
+    return KEY_CATALOG.filter((item) => item.building === keyBuilding);
+  }, [keyBuilding]);
+
+  /**
+   * 複数追加済みの鍵一覧
+   */
+  const selectedKeyItems = useMemo(() => {
+    const selectedSet = new Set(selectedKeyIds);
+    return KEY_CATALOG.filter((item) => selectedSet.has(item.id));
+  }, [selectedKeyIds]);
+
+  /**
+   * 棟切替時に選択中の鍵が候補外になった場合は先頭へ戻す
+   */
+  useEffect(() => {
+    if (filteredKeyCatalog.length === 0) {
+      setKeySelectedId('');
+      return;
+    }
+    if (!filteredKeyCatalog.some((item) => item.id === keySelectedId)) {
+      setKeySelectedId(filteredKeyCatalog[0].id);
+    }
+  }, [filteredKeyCatalog, keySelectedId]);
+
+  /**
+   * プルダウン選択中の鍵を複数選択リストへ追加
+   */
+  const addSelectedKey = () => {
+    if (!keySelectedId) {
+      showMessage('入力不足', '追加する鍵を選択してください。');
+      return;
+    }
+    if (selectedKeyIds.includes(keySelectedId)) {
+      showMessage('確認', 'その鍵はすでに追加済みです。');
+      return;
+    }
+    setSelectedKeyIds((prev) => [...prev, keySelectedId]);
+  };
+
+  /**
+   * 複数選択リストから鍵を1件削除
+   * @param {string} keyId - 削除する鍵ID
+   */
+  const removeSelectedKey = (keyId) => {
+    setSelectedKeyIds((prev) => prev.filter((id) => id !== keyId));
+  };
+
+  /**
    * 共通入力の必須チェック
    * @returns {boolean} バリデーション結果
    */
@@ -291,7 +351,7 @@ const Item16Screen = ({ navigation }) => {
     } else if (activeTab === SUPPORT_TAB_TYPES.KEY_PREAPPLY) {
       payload = {
         type: activeTab,
-        keyTarget,
+        keyTargets: selectedKeyItems,
         requestedAt: keyRequestedAt,
         reason: keyReason,
       };
@@ -342,7 +402,7 @@ const Item16Screen = ({ navigation }) => {
       } else if (activeTab === SUPPORT_TAB_TYPES.KEY_PREAPPLY) {
         result = await exhibitorSupportService.createKeyPreapply({
           ...commonPayload,
-          keyTarget,
+          keyTargets: selectedKeyItems,
           requestedAt: keyRequestedAt,
           reason: keyReason,
         });
@@ -368,7 +428,9 @@ const Item16Screen = ({ navigation }) => {
       } else if (activeTab === SUPPORT_TAB_TYPES.EMERGENCY) {
         setEmergencyDetail('');
       } else if (activeTab === SUPPORT_TAB_TYPES.KEY_PREAPPLY) {
-        setKeyTarget('');
+        setSelectedKeyIds([]);
+        setKeyBuilding(ALL_BUILDINGS_VALUE);
+        setKeySelectedId('');
         setKeyRequestedAt('');
         setKeyReason('');
       } else if (activeTab === SUPPORT_TAB_TYPES.EVENT_STATUS) {
@@ -496,21 +558,91 @@ const Item16Screen = ({ navigation }) => {
     if (activeTab === SUPPORT_TAB_TYPES.KEY_PREAPPLY) {
       return (
         <View style={styles.formSection}>
-          <Text style={[styles.label, { color: theme.text }]}>対象鍵・教室</Text>
-          <TextInput
-            value={keyTarget}
-            onChangeText={setKeyTarget}
-            placeholder="例）A101 教室鍵"
-            placeholderTextColor={theme.textSecondary}
+          <Text style={[styles.label, { color: theme.text }]}>棟を選択</Text>
+          <View
             style={[
-              styles.input,
-              {
-                backgroundColor: theme.background,
-                borderColor: theme.border,
-                color: theme.text,
-              },
+              styles.pickerContainer,
+              { backgroundColor: theme.background, borderColor: theme.border },
             ]}
-          />
+          >
+            <Picker
+              selectedValue={keyBuilding}
+              onValueChange={(value) => setKeyBuilding(value)}
+              style={[styles.picker, { color: theme.text }]}
+              dropdownIconColor={theme.text}
+            >
+              <Picker.Item label="すべての棟" value={ALL_BUILDINGS_VALUE} />
+              {KEY_BUILDINGS.map((building) => (
+                <Picker.Item key={building} label={building} value={building} />
+              ))}
+            </Picker>
+          </View>
+
+          <Text style={[styles.label, { color: theme.text }]}>鍵を選択</Text>
+          <View
+            style={[
+              styles.pickerContainer,
+              { backgroundColor: theme.background, borderColor: theme.border },
+            ]}
+          >
+            <Picker
+              selectedValue={keySelectedId}
+              onValueChange={(value) => setKeySelectedId(value)}
+              style={[styles.picker, { color: theme.text }]}
+              dropdownIconColor={theme.text}
+            >
+              {filteredKeyCatalog.length === 0 ? (
+                <Picker.Item label="選択できる鍵がありません" value="" />
+              ) : (
+                filteredKeyCatalog.map((item) => (
+                  <Picker.Item
+                    key={item.id}
+                    label={`${item.building} / ${item.name}`}
+                    value={item.id}
+                  />
+                ))
+              )}
+            </Picker>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.addKeyButton, { borderColor: theme.border, backgroundColor: theme.background }]}
+            onPress={addSelectedKey}
+          >
+            <Text style={[styles.addKeyButtonText, { color: theme.textSecondary }]}>この鍵を追加</Text>
+          </TouchableOpacity>
+
+          <Text style={[styles.selectedKeyTitle, { color: theme.text }]}>
+            申請対象（{selectedKeyItems.length}件）
+          </Text>
+
+          {selectedKeyItems.length === 0 ? (
+            <Text style={[styles.selectedKeyEmpty, { color: theme.textSecondary }]}>
+              まだ鍵が追加されていません
+            </Text>
+          ) : (
+            <View style={styles.selectedKeyList}>
+              {selectedKeyItems.map((item) => (
+                <View
+                  key={item.id}
+                  style={[
+                    styles.selectedKeyRow,
+                    { borderColor: theme.border, backgroundColor: theme.background },
+                  ]}
+                >
+                  <Text style={[styles.selectedKeyText, { color: theme.text }]} numberOfLines={1}>
+                    {item.building} / {item.name}
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.removeKeyButton, { borderColor: theme.border }]}
+                    onPress={() => removeSelectedKey(item.id)}
+                  >
+                    <Text style={[styles.removeKeyButtonText, { color: theme.textSecondary }]}>削除</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
 
           <Text style={[styles.label, { color: theme.text }]}>希望時刻</Text>
           <TextInput
@@ -832,6 +964,60 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 52,
+  },
+  addKeyButton: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  addKeyButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  selectedKeyTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  selectedKeyEmpty: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  selectedKeyList: {
+    gap: 8,
+  },
+  selectedKeyRow: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  selectedKeyText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  removeKeyButton: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  removeKeyButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   multilineInput: {
     borderWidth: 1,

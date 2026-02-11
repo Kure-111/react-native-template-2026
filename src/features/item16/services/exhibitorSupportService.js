@@ -217,7 +217,7 @@ const createKeyPreapply = async (input) => {
           .filter(Boolean)
       : [];
 
-    // ?UI??: ??????????????1??????
+    // Backward compatibility for old single-text input UI.
     if (keyTargets.length === 0) {
       const fallbackKeyTarget = normalizeText(input.keyTarget);
       if (fallbackKeyTarget) {
@@ -235,27 +235,27 @@ const createKeyPreapply = async (input) => {
     const reason = normalizeText(input.reason);
 
     if (keyTargets.length === 0) {
-      throw new Error('???????????????');
+      throw new Error('対象の鍵を選択してください');
     }
     if (!requestedAt) {
-      throw new Error('?????????????');
+      throw new Error('希望時刻を入力してください');
     }
     if (!reason) {
-      throw new Error('???????????');
+      throw new Error('理由を入力してください');
     }
 
     const keySummaryForTitle =
-      keyTargets.length === 1 ? keyTargets[0].name : `${keyTargets.length}?`;
+      keyTargets.length === 1 ? keyTargets[0].name : `${keyTargets.length}件`;
     const keySummaryLines = keyTargets
       .map((keyItem) => `- ${keyItem.location || keyItem.name}`)
       .join('\n');
-    const description = `${reason}\n\n???\n${keySummaryLines}`;
+    const description = `${reason}\n\n対象鍵\n${keySummaryLines}`;
 
     const payload = {
       ticket_type: 'key_preapply',
       ticket_status: 'new',
       priority: 'normal',
-      title: `??????: ${keySummaryForTitle}`,
+      title: `鍵の事前申請: ${keySummaryForTitle}`,
       description,
       event_name: normalizeText(input.eventName),
       event_location: normalizeText(input.eventLocation),
@@ -274,7 +274,6 @@ const createKeyPreapply = async (input) => {
     return { data: null, error };
   }
 };
-
 const createEventStatusReport = async (input) => {
   try {
     validateCommonInput(input);
