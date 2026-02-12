@@ -568,12 +568,20 @@ const Item16Screen = ({ navigation }) => {
             <Picker
               selectedValue={keyBuilding}
               onValueChange={(value) => setKeyBuilding(value)}
-              style={[styles.picker, { color: theme.text }]}
+              style={[
+                styles.picker,
+                styles.themedPicker,
+                {
+                  color: theme.text,
+                  backgroundColor: theme.surface,
+                },
+              ]}
+              itemStyle={{ color: theme.text }}
               dropdownIconColor={theme.text}
             >
-              <Picker.Item label="すべての棟" value={ALL_BUILDINGS_VALUE} />
+              <Picker.Item label="すべての棟" value={ALL_BUILDINGS_VALUE} color={theme.text} />
               {KEY_BUILDINGS.map((building) => (
-                <Picker.Item key={building} label={building} value={building} />
+                <Picker.Item key={building} label={building} value={building} color={theme.text} />
               ))}
             </Picker>
           </View>
@@ -588,17 +596,26 @@ const Item16Screen = ({ navigation }) => {
             <Picker
               selectedValue={keySelectedId}
               onValueChange={(value) => setKeySelectedId(value)}
-              style={[styles.picker, { color: theme.text }]}
+              style={[
+                styles.picker,
+                styles.themedPicker,
+                {
+                  color: theme.text,
+                  backgroundColor: theme.surface,
+                },
+              ]}
+              itemStyle={{ color: theme.text }}
               dropdownIconColor={theme.text}
             >
               {filteredKeyCatalog.length === 0 ? (
-                <Picker.Item label="選択できる鍵がありません" value="" />
+                <Picker.Item label="選択できる鍵がありません" value="" color={theme.text} />
               ) : (
                 filteredKeyCatalog.map((item) => (
                   <Picker.Item
                     key={item.id}
                     label={`${item.building} / ${item.name}`}
                     value={item.id}
+                    color={theme.text}
                   />
                 ))
               )}
@@ -972,6 +989,9 @@ const styles = StyleSheet.create({
   },
   picker: {
     height: 52,
+  },
+  themedPicker: {
+    borderWidth: 0,
   },
   addKeyButton: {
     borderWidth: 1,

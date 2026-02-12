@@ -7,7 +7,7 @@ export const SCREEN_NAME = '巡回サポート';
 
 /** 画面説明 */
 export const SCREEN_DESCRIPTION =
-  '巡回担当が緊急呼び出し案件を確認し、現地対応の進捗（向かいます/完了）と結果メモを登録する画面です。';
+  '巡回担当が緊急呼び出し・企画開始報告・企画終了報告を確認し、現地対応の進捗（向かいます/完了）と結果メモを登録する画面です。';
 
 /** 実装予定の機能一覧 */
 export const FEATURE_PLACEHOLDERS = [

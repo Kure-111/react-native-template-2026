@@ -302,6 +302,22 @@ const createEventStatusReport = async (input) => {
       },
     };
 
+    const { data: rpcData, error: rpcError } = await getSupabaseClient().rpc(
+      'rpc_create_ticket_and_auto_tasks',
+      {
+        ticket_payload: payload,
+      }
+    );
+
+    if (!rpcError) {
+      // RPCは { ticket, task } を返す。既存呼び出し側互換のため ticket を data として返す。
+      return {
+        data: rpcData?.ticket || rpcData || null,
+        error: null,
+      };
+    }
+
+    // RPC未適用環境では従来どおり直接登録へフォールバックする。
     return await createSupportTicket(payload);
   } catch (error) {
     return { data: null, error };

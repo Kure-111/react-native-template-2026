@@ -17,6 +17,13 @@ export const SUPPORT_DESK_ROLE_TYPES = {
   PATROL: 'patrol',
 };
 
+/** 巡回画面で扱う連絡案件種別 */
+export const PATROL_TICKET_TYPES = {
+  EMERGENCY: 'emergency',
+  START_REPORT: 'start_report',
+  END_REPORT: 'end_report',
+};
+
 /** 連絡案件ステータス */
 export const SUPPORT_TICKET_STATUSES = {
   NEW: 'new',
@@ -133,11 +140,34 @@ export const listMyCreatedTickets = async ({ createdBy, limit = 50 }) => {
  * @returns {Promise<{data: Array, error: Error|null}>} 取得結果
  */
 export const listEmergencyTicketsForPatrol = async ({ limit = 50 }) => {
+  const { data, error } = await listPatrolTickets({ limit });
+  if (error) {
+    return { data: [], error };
+  }
+
+  return {
+    data: (data || []).filter((ticket) => ticket.ticket_type === PATROL_TICKET_TYPES.EMERGENCY),
+    error: null,
+  };
+};
+
+/**
+ * 巡回向け対応案件一覧を取得
+ * 緊急連絡に加えて、企画開始/終了報告も巡回確認対象として含める。
+ * @param {Object} params - 取得条件
+ * @param {number} [params.limit=80] - 最大取得件数
+ * @returns {Promise<{data: Array, error: Error|null}>} 取得結果
+ */
+export const listPatrolTickets = async ({ limit = 80 }) => {
   try {
     const { data, error } = await getSupabaseClient()
       .from(SUPPORT_TICKETS_TABLE)
       .select(TICKET_COLUMNS)
-      .eq('ticket_type', 'emergency')
+      .in('ticket_type', [
+        PATROL_TICKET_TYPES.EMERGENCY,
+        PATROL_TICKET_TYPES.START_REPORT,
+        PATROL_TICKET_TYPES.END_REPORT,
+      ])
       .in('ticket_status', [
         SUPPORT_TICKET_STATUSES.NEW,
         SUPPORT_TICKET_STATUSES.ACKNOWLEDGED,
@@ -149,13 +179,13 @@ export const listEmergencyTicketsForPatrol = async ({ limit = 50 }) => {
       .limit(limit);
 
     if (error) {
-      console.error('巡回向け緊急案件取得エラー:', error);
+      console.error('巡回向け対応案件取得エラー:', error);
       return { data: [], error };
     }
 
     return { data: data || [], error: null };
   } catch (error) {
-    console.error('巡回向け緊急案件取得処理でエラー:', error);
+    console.error('巡回向け対応案件取得処理でエラー:', error);
     return { data: [], error };
   }
 };
