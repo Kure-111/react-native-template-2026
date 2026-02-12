@@ -179,6 +179,15 @@ export const ThemedHeader = ({ title, navigation }) => {
   return (
     <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
       {isMobile ? (
+    <View style={[
+      styles.header, 
+      { 
+        backgroundColor: theme.surface, 
+        borderBottomColor: theme.border,
+        shadowOpacity: theme.shadowOpacity,
+      }
+    ]}>
+      {isMobile && (
         <TouchableOpacity style={styles.menuButton} onPress={openDrawer}>
           <Text style={[styles.menuButtonText, { color: theme.text }]}>☰</Text>
         </TouchableOpacity>
@@ -198,6 +207,17 @@ export const ThemedHeader = ({ title, navigation }) => {
           </View>
         )}
       </TouchableOpacity>
+      <Text style={[
+        styles.headerTitle, 
+        { 
+          color: theme.text,
+          fontSize: theme.fontSize.large,
+          fontWeight: theme.fontWeight,
+        }
+      ]}>
+        {title}
+      </Text>
+      {isMobile && <View style={styles.menuButton} />}
     </View>
   );
 };
@@ -210,6 +230,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   menuButton: {
     width: 44,
@@ -240,6 +267,5 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '600',
   },
 });
