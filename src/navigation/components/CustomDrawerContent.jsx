@@ -16,7 +16,7 @@ import { DrawerContentScrollView } from '@react-navigation/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../shared/contexts/AuthContext';
 import { useTheme } from '../../shared/hooks/useTheme';
-import { canAccessScreen } from '../../services/supabase/permissionService';
+import { canAccessScreen, isAdmin } from '../../services/supabase/permissionService';
 
 /**
  * ドロワーアイテムコンポーネント
@@ -141,6 +141,8 @@ const CustomDrawerContent = (props) => {
     };
   }).filter((item) => item.isAccessible);
 
+  const canAccessAdmin = isAdmin(userInfo?.roles || []);
+
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.surface }]}>
       {/* ヘッダー */}
@@ -193,6 +195,14 @@ const CustomDrawerContent = (props) => {
             onPress={() => navigateTo('SettingsTheme')}
             theme={theme}
           />
+          {canAccessAdmin && (
+            <DrawerItem
+              label="🔔 通知送信（管理者）"
+              isActive={currentRouteName === 'AdminTestNotification'}
+              onPress={() => navigateTo('AdminTestNotification')}
+              theme={theme}
+            />
+          )}
         </View>
       </ScrollView>
 
