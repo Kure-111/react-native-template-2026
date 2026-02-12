@@ -177,24 +177,31 @@ export const ThemedHeader = ({ title, navigation }) => {
   }, [refreshUnreadCount]);
 
   return (
-    <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-      {isMobile ? (
     <View style={[
-      styles.header, 
-      { 
-        backgroundColor: theme.surface, 
+      styles.header,
+      {
+        backgroundColor: theme.surface,
         borderBottomColor: theme.border,
         shadowOpacity: theme.shadowOpacity,
       }
     ]}>
-      {isMobile && (
+      {isMobile ? (
         <TouchableOpacity style={styles.menuButton} onPress={openDrawer}>
           <Text style={[styles.menuButtonText, { color: theme.text }]}>☰</Text>
         </TouchableOpacity>
       ) : (
         <View style={styles.menuButton} />
       )}
-      <Text style={[styles.headerTitle, { color: theme.text }]}>{title}</Text>
+      <Text style={[
+        styles.headerTitle,
+        {
+          color: theme.text,
+          fontSize: theme.fontSize.large,
+          fontWeight: theme.fontWeight,
+        }
+      ]}>
+        {title}
+      </Text>
       <TouchableOpacity style={styles.menuButton} onPress={goToNotifications}>
         <Image
           source={require('../../../assets/icons/bell.png')}
@@ -207,17 +214,6 @@ export const ThemedHeader = ({ title, navigation }) => {
           </View>
         )}
       </TouchableOpacity>
-      <Text style={[
-        styles.headerTitle, 
-        { 
-          color: theme.text,
-          fontSize: theme.fontSize.large,
-          fontWeight: theme.fontWeight,
-        }
-      ]}>
-        {title}
-      </Text>
-      {isMobile && <View style={styles.menuButton} />}
     </View>
   );
 };
@@ -243,6 +239,10 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  menuButtonText: {
+    fontSize: 24,
+    fontWeight: 'bold',
   },
   badge: {
     position: 'absolute',
