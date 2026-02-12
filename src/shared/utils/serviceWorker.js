@@ -7,32 +7,6 @@
 import { Platform } from 'react-native';
 
 /**
- * 既存のService Worker登録を解除する（開発環境向け）
- * @returns {Promise<void>} 実行結果
- */
-const unregisterServiceWorkers = async () => {
-  if (!('serviceWorker' in navigator)) {
-    return;
-  }
-
-  const registrations = await navigator.serviceWorker.getRegistrations();
-  await Promise.all(registrations.map((registration) => registration.unregister()));
-};
-
-/**
- * 既存キャッシュを削除する（開発環境向け）
- * @returns {Promise<void>} 実行結果
- */
-const clearCaches = async () => {
-  if (typeof caches === 'undefined') {
-    return;
-  }
-
-  const cacheKeys = await caches.keys();
-  await Promise.all(cacheKeys.map((key) => caches.delete(key)));
-};
-
-/**
  * Service Workerを登録する
  * @returns {void} なし
  */
@@ -53,33 +27,28 @@ export const registerServiceWorker = () => {
     return;
   }
 
-  const isDevelopment =
-    typeof __DEV__ !== 'undefined'
-      ? __DEV__
-      : process.env.NODE_ENV !== 'production';
-
-  // 開発環境とlocalhostではService Workerを無効化し、
-  // 既存登録/キャッシュを削除して古いバンドル混入を防ぐ
-  if (isDevelopment || isLocalhost) {
-    unregisterServiceWorkers().catch((error) => {
-      console.error('Service Worker unregister error:', error);
-    });
-    clearCaches().catch((error) => {
-      console.error('Cache clear error:', error);
-    });
+  // localhost または HTTPS でない場合は登録しない
+  if (!isSecureContext && !isLocalhost) {
     return;
   }
 
-  // HTTPS でない場合は登録しない
-  if (!isSecureContext) {
-    return;
-  }
-
-  window.addEventListener('load', () => {
+  /**
+   * Service Worker を実際に登録する
+   * load 後に呼ばれた場合にも即時登録できるようにする
+   */
+  const register = () => {
     navigator.serviceWorker
       .register('/service-worker.js')
       .catch((error) => {
         console.error('Service Worker register error:', error);
       });
-  });
+  };
+
+  // localhost でも Service Worker を登録（開発時の PWA テスト用）
+  if (document.readyState === 'complete') {
+    register();
+    return;
+  }
+
+  window.addEventListener('load', register, { once: true });
 };
