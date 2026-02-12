@@ -30,6 +30,17 @@ import {
   PATROL_TASK_TYPES,
 } from '../../../services/supabase/patrolTaskService';
 import { createTicketMessage, listTicketMessages } from '../../../services/supabase/supportTicketService';
+import {
+  createPatrolCheck,
+  listPatrolChecks,
+  listPatrolLocations,
+  listUnvisitedLocations,
+} from '../../../services/supabase/patrolCheckService';
+import {
+  createEvaluationCheck,
+  EVALUATION_STATUSES,
+  listEvaluationChecks,
+} from '../../../services/supabase/evaluationService';
 
 /** タスク状態表示名 */
 const TASK_STATUS_LABELS = {
@@ -94,6 +105,23 @@ const GO_MESSAGES = {
   [PATROL_TASK_TYPES.OTHER]: '巡回担当が現地へ向かいます。',
 };
 
+const PATROL_CHECK_ITEM_OPTIONS = [
+  '導線安全',
+  '混雑状況確認',
+  '火気・危険物なし',
+  '設備異常なし',
+  '清掃・衛生確認',
+];
+
+const DEFAULT_UNVISITED_ALERT_MINUTES = 90;
+const UNVISITED_ALERT_OPTIONS = [30, 60, 90, 120];
+const EVALUATION_STATUS_LABELS = {
+  [EVALUATION_STATUSES.PENDING]: '承認待ち',
+  [EVALUATION_STATUSES.APPROVED]: '承認済み',
+  [EVALUATION_STATUSES.REJECTED]: '却下',
+  [EVALUATION_STATUSES.REWORK]: '差戻し',
+};
+
 const getResultOptionsByTaskType = (taskType) => {
   return RESULT_OPTIONS_BY_TASK_TYPE[taskType] || DEFAULT_RESULT_OPTIONS;
 };
@@ -121,6 +149,22 @@ const Item12Screen = ({ navigation }) => {
   const [patrolMemo, setPatrolMemo] = useState('');
   const [resultCode, setResultCode] = useState(PATROL_RESULT_CODES.OK);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [patrolLocations, setPatrolLocations] = useState([]);
+  const [selectedPatrolLocationId, setSelectedPatrolLocationId] = useState('');
+  const [patrolLocationText, setPatrolLocationText] = useState('');
+  const [patrolCheckItems, setPatrolCheckItems] = useState([]);
+  const [patrolCheckMemo, setPatrolCheckMemo] = useState('');
+  const [isSubmittingPatrolCheck, setIsSubmittingPatrolCheck] = useState(false);
+  const [recentPatrolChecks, setRecentPatrolChecks] = useState([]);
+  const [isLoadingRecentPatrolChecks, setIsLoadingRecentPatrolChecks] = useState(false);
+  const [unvisitedLocations, setUnvisitedLocations] = useState([]);
+  const [isLoadingUnvisitedLocations, setIsLoadingUnvisitedLocations] = useState(false);
+  const [unvisitedAlertMinutes, setUnvisitedAlertMinutes] = useState(DEFAULT_UNVISITED_ALERT_MINUTES);
+  const [evaluationScore, setEvaluationScore] = useState(3);
+  const [evaluationComment, setEvaluationComment] = useState('');
+  const [isSubmittingEvaluation, setIsSubmittingEvaluation] = useState(false);
+  const [myEvaluationChecks, setMyEvaluationChecks] = useState([]);
+  const [isLoadingMyEvaluationChecks, setIsLoadingMyEvaluationChecks] = useState(false);
 
   /**
    * メッセージ表示
@@ -236,6 +280,207 @@ const Item12Screen = ({ navigation }) => {
     }
 
     setSourceMessages(data || []);
+  };
+
+  /**
+   * 巡回場所候補を取得
+   * @returns {Promise<void>} 取得処理
+   */
+  const loadPatrolLocations = async () => {
+    const { data, error } = await listPatrolLocations({ limit: 240 });
+    if (error) {
+      console.error('巡回場所候補の取得に失敗:', error);
+      return;
+    }
+
+    const nextLocations = data || [];
+    setPatrolLocations(nextLocations);
+
+    if (nextLocations.length === 0) {
+      return;
+    }
+
+    if (
+      selectedPatrolLocationId &&
+      nextLocations.some((location) => location.id === selectedPatrolLocationId)
+    ) {
+      return;
+    }
+
+    setSelectedPatrolLocationId(nextLocations[0].id);
+    setPatrolLocationText(nextLocations[0].label || nextLocations[0].name || '');
+  };
+
+  /**
+   * 直近巡回チェック履歴を取得
+   * @returns {Promise<void>} 取得処理
+   */
+  const loadRecentPatrolChecks = async () => {
+    setIsLoadingRecentPatrolChecks(true);
+    const { data, error } = await listPatrolChecks({ limit: 12 });
+    setIsLoadingRecentPatrolChecks(false);
+
+    if (error) {
+      console.error('巡回チェック履歴の取得に失敗:', error);
+      return;
+    }
+
+    setRecentPatrolChecks(data || []);
+  };
+
+  /**
+   * 未巡回アラート一覧を取得
+   * @returns {Promise<void>} 取得処理
+   */
+  const loadUnvisitedAlerts = async () => {
+    setIsLoadingUnvisitedLocations(true);
+    const { data, error } = await listUnvisitedLocations({
+      alertMinutes: unvisitedAlertMinutes,
+      limit: 240,
+    });
+    setIsLoadingUnvisitedLocations(false);
+
+    if (error) {
+      console.error('未巡回アラートの取得に失敗:', error);
+      return;
+    }
+
+    setUnvisitedLocations(data || []);
+  };
+
+  /**
+   * 自分の評価入力履歴を取得
+   * @returns {Promise<void>} 取得処理
+   */
+  const loadMyEvaluationChecks = async () => {
+    if (!user?.id) {
+      setMyEvaluationChecks([]);
+      return;
+    }
+
+    setIsLoadingMyEvaluationChecks(true);
+    const { data, error } = await listEvaluationChecks({
+      evaluatorId: user.id,
+      limit: 20,
+    });
+    setIsLoadingMyEvaluationChecks(false);
+
+    if (error) {
+      console.error('評価入力履歴の取得に失敗:', error);
+      return;
+    }
+
+    setMyEvaluationChecks(data || []);
+  };
+
+  /**
+   * 巡回チェック関連情報を更新
+   * @returns {Promise<void>} 更新処理
+   */
+  const refreshPatrolCheckData = async () => {
+    await Promise.all([
+      loadPatrolLocations(),
+      loadRecentPatrolChecks(),
+      loadUnvisitedAlerts(),
+      loadMyEvaluationChecks(),
+    ]);
+  };
+
+  /**
+   * 巡回チェック項目を切替
+   * @param {string} item - 項目名
+   * @returns {void}
+   */
+  const togglePatrolCheckItem = (item) => {
+    setPatrolCheckItems((prev) =>
+      prev.includes(item) ? prev.filter((value) => value !== item) : [...prev, item]
+    );
+  };
+
+  /**
+   * 巡回チェックを登録
+   * @returns {Promise<void>} 登録処理
+   */
+  const handleSubmitPatrolCheck = async () => {
+    if (!user?.id) {
+      showMessage('登録エラー', 'ログイン情報が取得できません');
+      return;
+    }
+
+    const selectedLocation = patrolLocations.find((location) => location.id === selectedPatrolLocationId) || null;
+    const locationText = patrolLocationText.trim() || selectedLocation?.label || selectedLocation?.name || '';
+
+    if (!locationText) {
+      showMessage('入力不足', '巡回場所を入力してください');
+      return;
+    }
+
+    setIsSubmittingPatrolCheck(true);
+    const { error } = await createPatrolCheck({
+      patrolUserId: user.id,
+      locationId: selectedLocation?.id || null,
+      locationText,
+      checkItems: patrolCheckItems,
+      memo: patrolCheckMemo,
+    });
+    setIsSubmittingPatrolCheck(false);
+
+    if (error) {
+      showMessage('登録エラー', error.message || '巡回チェックの登録に失敗しました');
+      return;
+    }
+
+    setPatrolCheckMemo('');
+    setPatrolCheckItems([]);
+    await Promise.all([loadRecentPatrolChecks(), loadUnvisitedAlerts()]);
+    showMessage('登録完了', '巡回チェックを記録しました');
+  };
+
+  /**
+   * 企画評価を登録（承認待ち）
+   * @returns {Promise<void>} 登録処理
+   */
+  const handleSubmitEvaluation = async () => {
+    if (!user?.id) {
+      showMessage('登録エラー', 'ログイン情報が取得できません');
+      return;
+    }
+    if (!selectedTask) {
+      showMessage('入力不足', '評価対象のタスクを選択してください');
+      return;
+    }
+    if (selectedTask.task_status !== PATROL_TASK_STATUSES.DONE) {
+      showMessage('入力不足', '評価はタスク完了後に入力してください');
+      return;
+    }
+    if (evaluationComment.trim().length < 4) {
+      showMessage('入力不足', '評価コメントを4文字以上で入力してください');
+      return;
+    }
+
+    const sourceTicket = Array.isArray(selectedTask.source_ticket)
+      ? selectedTask.source_ticket[0] || null
+      : selectedTask.source_ticket || null;
+
+    setIsSubmittingEvaluation(true);
+    const { error } = await createEvaluationCheck({
+      eventId: sourceTicket?.event_id || null,
+      ticketId: selectedTask.source_ticket_id || null,
+      taskId: selectedTask.id,
+      evaluatorId: user.id,
+      score: evaluationScore,
+      comment: evaluationComment,
+    });
+    setIsSubmittingEvaluation(false);
+
+    if (error) {
+      showMessage('登録エラー', error.message || '評価入力に失敗しました');
+      return;
+    }
+
+    setEvaluationComment('');
+    await loadMyEvaluationChecks();
+    showMessage('登録完了', '評価を承認待ちとして登録しました');
   };
 
   /**
@@ -373,6 +618,7 @@ const Item12Screen = ({ navigation }) => {
 
   useEffect(() => {
     loadTasks();
+    refreshPatrolCheckData();
   }, [user?.id]);
 
   useEffect(() => {
@@ -382,6 +628,10 @@ const Item12Screen = ({ navigation }) => {
   useEffect(() => {
     loadSourceMessages(selectedTask?.source_ticket_id || null);
   }, [selectedTask?.source_ticket_id]);
+
+  useEffect(() => {
+    loadUnvisitedAlerts();
+  }, [unvisitedAlertMinutes]);
 
   useEffect(() => {
     if (resultOptions.length === 0) {
@@ -451,6 +701,318 @@ const Item12Screen = ({ navigation }) => {
                   </Pressable>
                 );
               })}
+            </View>
+          )}
+        </View>
+
+        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>定常巡回チェック</Text>
+            <TouchableOpacity
+              style={[styles.refreshButton, { borderColor: theme.border }]}
+              onPress={refreshPatrolCheckData}
+            >
+              <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+            写真添付は使わず、テキストのみで巡回ログを記録します。
+          </Text>
+
+          <Text style={[styles.label, { color: theme.text }]}>巡回場所</Text>
+          <TextInput
+            value={patrolLocationText}
+            onChangeText={setPatrolLocationText}
+            placeholder="例: A棟 3F 301教室"
+            placeholderTextColor={theme.textSecondary}
+            style={[
+              styles.memoInput,
+              {
+                borderColor: theme.border,
+                backgroundColor: theme.background,
+                color: theme.text,
+                minHeight: 52,
+              },
+            ]}
+          />
+
+          {patrolLocations.length > 0 ? (
+            <View style={styles.optionGroup}>
+              {patrolLocations.slice(0, 18).map((location) => {
+                const isActive = location.id === selectedPatrolLocationId;
+                return (
+                  <Pressable
+                    key={location.id}
+                    style={[
+                      styles.optionButton,
+                      {
+                        borderColor: isActive ? theme.primary : theme.border,
+                        backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
+                      },
+                    ]}
+                    onPress={() => {
+                      setSelectedPatrolLocationId(location.id);
+                      setPatrolLocationText(location.label || location.name || '');
+                    }}
+                  >
+                    <Text style={[styles.optionButtonText, { color: isActive ? theme.primary : theme.textSecondary }]}>
+                      {location.label || location.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
+          <Text style={[styles.label, { color: theme.text }]}>チェック項目</Text>
+          <View style={styles.optionGroup}>
+            {PATROL_CHECK_ITEM_OPTIONS.map((item) => {
+              const isActive = patrolCheckItems.includes(item);
+              return (
+                <Pressable
+                  key={item}
+                  style={[
+                    styles.optionButton,
+                    {
+                      borderColor: isActive ? theme.primary : theme.border,
+                      backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
+                    },
+                  ]}
+                  onPress={() => togglePatrolCheckItem(item)}
+                >
+                  <Text style={[styles.optionButtonText, { color: isActive ? theme.primary : theme.textSecondary }]}>
+                    {item}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text style={[styles.label, { color: theme.text }]}>メモ（任意）</Text>
+          <TextInput
+            value={patrolCheckMemo}
+            onChangeText={setPatrolCheckMemo}
+            multiline
+            placeholder="巡回時の気づきや状況を記録"
+            placeholderTextColor={theme.textSecondary}
+            style={[
+              styles.memoInput,
+              {
+                borderColor: theme.border,
+                backgroundColor: theme.background,
+                color: theme.text,
+              },
+            ]}
+          />
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: theme.primary, marginTop: 10 }]}
+            onPress={handleSubmitPatrolCheck}
+            disabled={isSubmittingPatrolCheck}
+          >
+            <Text style={styles.actionButtonText}>
+              {isSubmittingPatrolCheck ? '登録中...' : '巡回チェックを記録'}
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={[styles.label, { color: theme.text }]}>直近の巡回チェック</Text>
+          {isLoadingRecentPatrolChecks ? (
+            <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
+          ) : recentPatrolChecks.length === 0 ? (
+            <Text style={[styles.helpText, { color: theme.textSecondary }]}>まだ巡回チェックはありません</Text>
+          ) : (
+            <View style={styles.messageList}>
+              {recentPatrolChecks.map((check) => (
+                <View
+                  key={check.id}
+                  style={[
+                    styles.messageItem,
+                    { borderColor: theme.border, backgroundColor: theme.background },
+                  ]}
+                >
+                  <Text style={[styles.messageAuthor, { color: theme.textSecondary }]}>
+                    {check.location_text}
+                  </Text>
+                  <Text style={[styles.messageBody, { color: theme.text }]}>
+                    {check.memo || 'メモなし'}
+                  </Text>
+                  <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
+                    {new Date(check.checked_at || check.created_at).toLocaleString('ja-JP')}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>未巡回アラート</Text>
+            <TouchableOpacity
+              style={[styles.refreshButton, { borderColor: theme.border }]}
+              onPress={loadUnvisitedAlerts}
+            >
+              <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+            設定した閾値以上巡回記録がない場所を先頭に表示します。
+          </Text>
+          <Text style={[styles.label, { color: theme.text }]}>アラート閾値</Text>
+          <View style={styles.optionGroup}>
+            {UNVISITED_ALERT_OPTIONS.map((minutes) => {
+              const isActive = minutes === unvisitedAlertMinutes;
+              return (
+                <Pressable
+                  key={String(minutes)}
+                  style={[
+                    styles.optionButton,
+                    {
+                      borderColor: isActive ? theme.primary : theme.border,
+                      backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
+                    },
+                  ]}
+                  onPress={() => setUnvisitedAlertMinutes(minutes)}
+                >
+                  <Text style={[styles.optionButtonText, { color: isActive ? theme.primary : theme.textSecondary }]}>
+                    {minutes}分
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {isLoadingUnvisitedLocations ? (
+            <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
+          ) : unvisitedLocations.length === 0 ? (
+            <Text style={[styles.helpText, { color: theme.textSecondary }]}>未巡回アラートはありません</Text>
+          ) : (
+            <View style={styles.ticketList}>
+              {unvisitedLocations.slice(0, 24).map((row) => (
+                <View
+                  key={row.location_id}
+                  style={[
+                    styles.ticketItem,
+                    {
+                      borderColor: row.is_alert ? '#D1242F' : theme.border,
+                      backgroundColor: row.is_alert ? '#D1242F14' : theme.background,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.ticketTitle, { color: theme.text }]} numberOfLines={1}>
+                    {row.location_label}
+                  </Text>
+                  <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
+                    最終巡回:{' '}
+                    {row.last_checked_at
+                      ? new Date(row.last_checked_at).toLocaleString('ja-JP')
+                      : '巡回記録なし'}
+                  </Text>
+                  <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
+                    経過時間:{' '}
+                    {row.elapsed_minutes === null ? '-' : `${Math.floor(row.elapsed_minutes / 60)}時間${row.elapsed_minutes % 60}分`}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>企画評価入力（承認待ち）</Text>
+            <TouchableOpacity
+              style={[styles.refreshButton, { borderColor: theme.border }]}
+              onPress={loadMyEvaluationChecks}
+            >
+              <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+            完了済みタスクを選択して評価を入力し、本部承認を待ちます。
+          </Text>
+
+          <Text style={[styles.label, { color: theme.text }]}>評価対象タスク</Text>
+          <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
+            {selectedTask
+              ? `${TASK_TYPE_LABELS[selectedTask.task_type] || selectedTask.task_type} / ${selectedTask.event_name || '-'}`
+              : '未選択'}
+          </Text>
+
+          <Text style={[styles.label, { color: theme.text }]}>点数</Text>
+          <View style={styles.optionGroup}>
+            {[1, 2, 3, 4, 5].map((score) => {
+              const isActive = score === evaluationScore;
+              return (
+                <Pressable
+                  key={String(score)}
+                  style={[
+                    styles.optionButton,
+                    {
+                      borderColor: isActive ? theme.primary : theme.border,
+                      backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
+                    },
+                  ]}
+                  onPress={() => setEvaluationScore(score)}
+                >
+                  <Text style={[styles.optionButtonText, { color: isActive ? theme.primary : theme.textSecondary }]}>
+                    {score}点
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text style={[styles.label, { color: theme.text }]}>コメント</Text>
+          <TextInput
+            value={evaluationComment}
+            onChangeText={setEvaluationComment}
+            multiline
+            placeholder="評価理由・現地状況を入力してください"
+            placeholderTextColor={theme.textSecondary}
+            style={[
+              styles.memoInput,
+              {
+                borderColor: theme.border,
+                backgroundColor: theme.background,
+                color: theme.text,
+              },
+            ]}
+          />
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: theme.primary, marginTop: 10 }]}
+            onPress={handleSubmitEvaluation}
+            disabled={isSubmittingEvaluation}
+          >
+            <Text style={styles.actionButtonText}>
+              {isSubmittingEvaluation ? '登録中...' : '評価を承認待ちで登録'}
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={[styles.label, { color: theme.text }]}>最近の評価入力</Text>
+          {isLoadingMyEvaluationChecks ? (
+            <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
+          ) : myEvaluationChecks.length === 0 ? (
+            <Text style={[styles.helpText, { color: theme.textSecondary }]}>評価入力履歴はまだありません</Text>
+          ) : (
+            <View style={styles.messageList}>
+              {myEvaluationChecks.map((evaluation) => (
+                <View
+                  key={evaluation.id}
+                  style={[
+                    styles.messageItem,
+                    { borderColor: theme.border, backgroundColor: theme.background },
+                  ]}
+                >
+                  <Text style={[styles.messageAuthor, { color: theme.textSecondary }]}>
+                    {EVALUATION_STATUS_LABELS[evaluation.evaluation_status] || evaluation.evaluation_status} /{' '}
+                    {evaluation.score || '-'}点
+                  </Text>
+                  <Text style={[styles.messageBody, { color: theme.text }]}>{evaluation.comment || 'コメントなし'}</Text>
+                  <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
+                    {new Date(evaluation.created_at).toLocaleString('ja-JP')}
+                  </Text>
+                </View>
+              ))}
             </View>
           )}
         </View>

@@ -4,6 +4,7 @@
  */
 
 import { getSupabaseClient } from './client.js';
+import { notifyLockCheckTaskCreated } from '../../shared/services/supportWorkflowNotificationService.js';
 
 const KEY_LOANS_TABLE = 'key_loans';
 const PATROL_TASKS_TABLE = 'patrol_tasks';
@@ -15,6 +16,12 @@ export const KEY_LOAN_STATUSES = {
 };
 
 const normalizeText = (value) => (value || '').trim();
+
+const logNotificationError = (error) => {
+  if (error) {
+    console.warn('施錠確認タスク通知の送信に失敗:', error);
+  }
+};
 
 /**
  * 鍵貸出一覧を取得
@@ -132,6 +139,14 @@ export const returnKeyAndCreateLockTask = async (input) => {
     );
 
     if (!rpcError) {
+      if (shouldCreateLockTask && rpcData?.task) {
+        const { error: notifyError } = await notifyLockCheckTaskCreated({
+          task: rpcData.task,
+          loan: rpcData.loan || null,
+          senderUserId: returnUserId,
+        });
+        logNotificationError(notifyError);
+      }
       return { data: rpcData, error: null };
     }
 
@@ -183,6 +198,15 @@ export const returnKeyAndCreateLockTask = async (input) => {
           lock_task_id: createdTask.id,
         })
         .eq('id', loanData.id);
+    }
+
+    if (shouldCreateLockTask && createdTask) {
+      const { error: notifyError } = await notifyLockCheckTaskCreated({
+        task: createdTask,
+        loan: loanData,
+        senderUserId: returnUserId,
+      });
+      logNotificationError(notifyError);
     }
 
     return {

@@ -4,6 +4,13 @@
  */
 
 import { getSupabaseClient } from '../../../services/supabase/client';
+import { createKeyReservations } from '../../../services/supabase/keyReservationService.js';
+import {
+  createTicketAttachment,
+  DEFAULT_ATTACHMENT_BUCKET,
+  uploadTicketAttachmentFile,
+} from '../../../services/supabase/ticketAttachmentService.js';
+import { notifySupportTicketCreated } from '../../../shared/services/supportWorkflowNotificationService.js';
 
 /** 連絡案件テーブル名 */
 const SUPPORT_TICKETS_TABLE = 'support_tickets';
@@ -57,6 +64,161 @@ const QUESTION_TYPE_CONFIG = {
 const normalizeText = (value) => (value || '').trim();
 
 /**
+ * 警告文を結果へ付与
+ * @param {Object} result - 元結果
+ * @param {string} warning - 追加警告
+ * @returns {Object} warningを付与した結果
+ */
+const withWarning = (result, warning) => {
+  if (!warning) {
+    return result;
+  }
+  if (!result?.warning) {
+    return { ...result, warning };
+  }
+  return { ...result, warning: `${result.warning}\n${warning}` };
+};
+
+/**
+ * 添付入力を正規化
+ * @param {Array} attachments - 添付入力
+ * @returns {Array} 正規化済み添付
+ */
+const normalizeAttachments = (attachments) => {
+  const rows = Array.isArray(attachments) ? attachments : [];
+  return rows
+    .map((row) => {
+      const file = row?.file || null;
+      const fileSizeRaw = Number(row?.fileSizeBytes ?? file?.size);
+      const fileSizeBytes = Number.isFinite(fileSizeRaw) && fileSizeRaw >= 0 ? Math.floor(fileSizeRaw) : null;
+
+      return {
+        storageBucket: normalizeText(row?.storageBucket) || DEFAULT_ATTACHMENT_BUCKET,
+        storagePath: normalizeText(row?.storagePath),
+        file,
+        fileName: normalizeText(row?.fileName || file?.name),
+        mimeType: normalizeText(row?.mimeType || file?.type) || null,
+        caption: normalizeText(row?.caption) || null,
+        fileSizeBytes,
+      };
+    })
+    .filter((row) => row.storagePath || row.file)
+    .slice(0, 5);
+};
+
+/**
+ * 添付情報を保存
+ * @param {Object} input - 入力
+ * @param {string} input.ticketId - 連絡案件ID
+ * @param {string} input.uploadedBy - 登録ユーザーID
+ * @param {Array} input.attachments - 添付入力
+ * @returns {Promise<{count: number, error: Error|null}>} 保存結果
+ */
+const saveTicketAttachments = async ({ ticketId, uploadedBy, attachments }) => {
+  const normalizedTicketId = normalizeText(ticketId);
+  const normalizedUploadedBy = normalizeText(uploadedBy);
+  const normalizedAttachments = normalizeAttachments(attachments);
+
+  if (!normalizedTicketId || !normalizedUploadedBy || normalizedAttachments.length === 0) {
+    return { count: 0, error: null };
+  }
+
+  for (const attachment of normalizedAttachments) {
+    let storageBucket = attachment.storageBucket || DEFAULT_ATTACHMENT_BUCKET;
+    let storagePath = attachment.storagePath;
+    let mimeType = attachment.mimeType;
+    let fileSizeBytes = attachment.fileSizeBytes;
+
+    if (attachment.file) {
+      const uploadResult = await uploadTicketAttachmentFile({
+        ticketId: normalizedTicketId,
+        file: attachment.file,
+        fileName: attachment.fileName,
+        mimeType,
+        storageBucket,
+        fileSizeBytes,
+      });
+      if (uploadResult.error || !uploadResult.data) {
+        const uploadError = uploadResult.error || new Error('添付ファイルのアップロードに失敗しました。');
+        console.warn('添付ファイルのアップロードに失敗:', uploadError);
+        return { count: 0, error: uploadError };
+      }
+
+      storageBucket = uploadResult.data.storageBucket;
+      storagePath = uploadResult.data.storagePath;
+      mimeType = uploadResult.data.mimeType;
+      fileSizeBytes = uploadResult.data.fileSizeBytes;
+    }
+
+    const { error } = await createTicketAttachment({
+      ticketId: normalizedTicketId,
+      uploadedBy: normalizedUploadedBy,
+      storageBucket,
+      storagePath,
+      mimeType,
+      caption: attachment.caption,
+      fileSizeBytes,
+    });
+
+    if (error) {
+      console.warn('添付情報の保存に失敗:', error);
+      return { count: 0, error };
+    }
+  }
+
+  return { count: normalizedAttachments.length, error: null };
+};
+
+/**
+ * 連絡案件作成後に通知を送信する
+ * 通知失敗は業務登録の失敗にしない（ログ出力のみ）
+ * @param {Object} result - 登録結果
+ * @param {string|null} senderUserId - 送信者
+ * @returns {Promise<Object>} 元の登録結果
+ */
+const notifyTicketCreatedIfNeeded = async (result, senderUserId) => {
+  if (result?.error || !result?.data) {
+    return result;
+  }
+
+  const { error: notifyError } = await notifySupportTicketCreated({
+    ticket: result.data,
+    senderUserId,
+  });
+  if (notifyError) {
+    console.warn('連絡案件通知の送信に失敗:', notifyError);
+  }
+
+  return result;
+};
+
+/**
+ * 作成済み連絡案件に添付登録と通知を適用
+ * @param {Object} result - 作成結果
+ * @param {Object} input - 入力値
+ * @returns {Promise<Object>} 反映後結果
+ */
+const applyAttachmentAndNotify = async (result, input) => {
+  if (result?.error || !result?.data) {
+    return result;
+  }
+
+  const attachmentResult = await saveTicketAttachments({
+    ticketId: result.data.id,
+    uploadedBy: normalizeText(input.createdBy),
+    attachments: input.attachments,
+  });
+
+  const notified = await notifyTicketCreatedIfNeeded(result, normalizeText(input.createdBy) || null);
+  if (attachmentResult.error) {
+    const attachmentMessage = attachmentResult.error.message || '添付情報の登録に失敗しました。';
+    return withWarning(notified, `連絡案件は作成しましたが、添付処理に失敗しました。${attachmentMessage}`);
+  }
+
+  return notified;
+};
+
+/**
  * 共通項目のバリデーション
  * @param {Object} input - 入力値
  * @throws {Error} バリデーションエラー
@@ -64,8 +226,12 @@ const normalizeText = (value) => (value || '').trim();
 const validateCommonInput = (input) => {
   const eventName = normalizeText(input.eventName);
   const eventLocation = normalizeText(input.eventLocation);
+  const eventId = normalizeText(input.eventId);
   const createdBy = normalizeText(input.createdBy);
 
+  if (!eventId) {
+    throw new Error('対象企画を選択してください');
+  }
   if (!eventName) {
     throw new Error('企画名が未入力です');
   }
@@ -130,6 +296,7 @@ const createQuestionContact = async (input) => {
       priority: 'normal',
       title: config.title,
       description: detail,
+      event_id: normalizeText(input.eventId),
       event_name: normalizeText(input.eventName),
       event_location: normalizeText(input.eventLocation),
       created_by: normalizeText(input.createdBy),
@@ -140,7 +307,8 @@ const createQuestionContact = async (input) => {
       },
     };
 
-    return await createSupportTicket(payload);
+    const result = await createSupportTicket(payload);
+    return applyAttachmentAndNotify(result, input);
   } catch (error) {
     return { data: null, error };
   }
@@ -168,6 +336,7 @@ const createEmergencyContact = async (input) => {
       priority,
       title: '緊急呼び出し',
       description: detail,
+      event_id: normalizeText(input.eventId),
       event_name: normalizeText(input.eventName),
       event_location: normalizeText(input.eventLocation),
       created_by: normalizeText(input.createdBy),
@@ -178,7 +347,8 @@ const createEmergencyContact = async (input) => {
       },
     };
 
-    return await createSupportTicket(payload);
+    const result = await createSupportTicket(payload);
+    return applyAttachmentAndNotify(result, input);
   } catch (error) {
     return { data: null, error };
   }
@@ -244,11 +414,8 @@ const createKeyPreapply = async (input) => {
       throw new Error('理由を入力してください');
     }
 
-    const keySummaryForTitle =
-      keyTargets.length === 1 ? keyTargets[0].name : `${keyTargets.length}件`;
-    const keySummaryLines = keyTargets
-      .map((keyItem) => `- ${keyItem.location || keyItem.name}`)
-      .join('\n');
+    const keySummaryForTitle = keyTargets.length === 1 ? keyTargets[0].name : `${keyTargets.length}件`;
+    const keySummaryLines = keyTargets.map((keyItem) => `- ${keyItem.location || keyItem.name}`).join('\n');
     const description = `${reason}\n\n対象鍵\n${keySummaryLines}`;
 
     const payload = {
@@ -257,6 +424,7 @@ const createKeyPreapply = async (input) => {
       priority: 'normal',
       title: `鍵の事前申請: ${keySummaryForTitle}`,
       description,
+      event_id: normalizeText(input.eventId),
       event_name: normalizeText(input.eventName),
       event_location: normalizeText(input.eventLocation),
       created_by: normalizeText(input.createdBy),
@@ -269,11 +437,42 @@ const createKeyPreapply = async (input) => {
       },
     };
 
-    return await createSupportTicket(payload);
+    const result = await createSupportTicket(payload);
+    if (result.error || !result.data) {
+      return result;
+    }
+
+    const reservationResult = await createKeyReservations({
+      requestedBy: normalizeText(input.createdBy),
+      orgId: input.orgId || null,
+      ticketId: result.data.id,
+      eventName: normalizeText(input.eventName),
+      eventLocation: normalizeText(input.eventLocation),
+      requestedAtText: requestedAt,
+      reason,
+      keyTargets,
+    });
+
+    let nextResult = await applyAttachmentAndNotify(result, input);
+    if (reservationResult.error) {
+      console.warn('鍵予約テーブルへの保存に失敗:', reservationResult.error);
+      nextResult = withWarning(
+        nextResult,
+        '連絡案件は作成しましたが、鍵予約テーブルへの保存に失敗しました。'
+      );
+    }
+
+    return nextResult;
   } catch (error) {
     return { data: null, error };
   }
 };
+
+/**
+ * 開始/終了報告を作成
+ * @param {Object} input - 入力値
+ * @returns {Promise<Object>} 作成結果
+ */
 const createEventStatusReport = async (input) => {
   try {
     validateCommonInput(input);
@@ -286,11 +485,13 @@ const createEventStatusReport = async (input) => {
     const description = memo || (isStart ? '企画開始を報告します。' : '企画終了を報告します。');
 
     const payload = {
+      ticket_no: generateTicketNo(),
       ticket_type: ticketType,
       ticket_status: 'new',
       priority: 'normal',
       title,
       description,
+      event_id: normalizeText(input.eventId),
       event_name: normalizeText(input.eventName),
       event_location: normalizeText(input.eventLocation),
       created_by: normalizeText(input.createdBy),
@@ -302,23 +503,21 @@ const createEventStatusReport = async (input) => {
       },
     };
 
-    const { data: rpcData, error: rpcError } = await getSupabaseClient().rpc(
-      'rpc_create_ticket_and_auto_tasks',
-      {
-        ticket_payload: payload,
-      }
-    );
+    const { data: rpcData, error: rpcError } = await getSupabaseClient().rpc('rpc_create_ticket_and_auto_tasks', {
+      ticket_payload: payload,
+    });
 
     if (!rpcError) {
-      // RPCは { ticket, task } を返す。既存呼び出し側互換のため ticket を data として返す。
-      return {
+      const result = {
         data: rpcData?.ticket || rpcData || null,
         error: null,
       };
+      return applyAttachmentAndNotify(result, input);
     }
 
     // RPC未適用環境では従来どおり直接登録へフォールバックする。
-    return await createSupportTicket(payload);
+    const fallbackResult = await createSupportTicket(payload);
+    return applyAttachmentAndNotify(fallbackResult, input);
   } catch (error) {
     return { data: null, error };
   }
@@ -341,7 +540,7 @@ const listMyContacts = async ({ createdBy, limit = 20 }) => {
     const { data, error } = await getSupabaseClient()
       .from(SUPPORT_TICKETS_TABLE)
       .select(
-        'id,ticket_no,ticket_type,ticket_status,priority,title,description,event_name,event_location,created_at,updated_at'
+        'id,ticket_no,ticket_type,ticket_status,priority,title,description,event_id,event_name,event_location,created_at,updated_at'
       )
       .eq('created_by', userId)
       .order('created_at', { ascending: false })

@@ -5,6 +5,10 @@
 
 import { getSupabaseClient } from './client.js';
 import { createTicketMessage, SUPPORT_TICKET_STATUSES, updateTicketStatus } from './supportTicketService.js';
+import {
+  notifyPatrolTaskAccepted,
+  notifyPatrolTaskCompleted,
+} from '../../shared/services/supportWorkflowNotificationService.js';
 
 const PATROL_TASKS_TABLE = 'patrol_tasks';
 const PATROL_TASK_RESULTS_TABLE = 'patrol_task_results';
@@ -42,6 +46,12 @@ export const PATROL_RESULT_CODES = {
 
 const normalizeText = (value) => (value || '').trim();
 
+const logNotificationError = (label, error) => {
+  if (error) {
+    console.warn(`${label}通知の送信に失敗:`, error);
+  }
+};
+
 const toLockCheckStatus = (resultCode) => {
   const normalized = normalizeText(resultCode).toUpperCase();
   if (normalized === PATROL_RESULT_CODES.LOCKED || normalized === PATROL_RESULT_CODES.OK) {
@@ -73,7 +83,19 @@ export const listPatrolTasks = async ({
   try {
     let query = getSupabaseClient()
       .from(PATROL_TASKS_TABLE)
-      .select('*')
+      .select(
+        `
+          *,
+          source_ticket:support_tickets!patrol_tasks_source_ticket_id_fkey(
+            id,
+            ticket_no,
+            title,
+            event_id,
+            event_name,
+            event_location
+          )
+        `
+      )
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -103,6 +125,42 @@ export const listPatrolTasks = async ({
   } catch (error) {
     console.error('巡回タスク一覧取得処理でエラー:', error);
     return { data: [], error };
+  }
+};
+
+/**
+ * 巡回タスクの担当者を更新（本部向け）
+ * @param {Object} input - 入力
+ * @param {string} input.taskId - タスクID
+ * @param {string|null} [input.assignedTo] - 担当者ユーザーID（未割当に戻す場合はnull）
+ * @returns {Promise<{data: Object|null, error: Error|null}>} 更新結果
+ */
+export const assignPatrolTask = async ({ taskId, assignedTo = null }) => {
+  try {
+    const normalizedTaskId = normalizeText(taskId);
+    const normalizedAssignedTo = normalizeText(assignedTo) || null;
+
+    if (!normalizedTaskId) {
+      throw new Error('taskId が未指定です');
+    }
+
+    const { data, error } = await getSupabaseClient()
+      .from(PATROL_TASKS_TABLE)
+      .update({
+        assigned_to: normalizedAssignedTo,
+      })
+      .eq('id', normalizedTaskId)
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('巡回タスク担当更新エラー:', error);
+      return { data: null, error };
+    }
+
+    return { data, error: null };
+  } catch (error) {
+    return { data: null, error };
   }
 };
 
@@ -161,6 +219,11 @@ export const acceptPatrolTask = async ({ taskId, patrolUserId }) => {
     });
 
     if (!rpcError) {
+      const { error: notifyError } = await notifyPatrolTaskAccepted({
+        task: rpcData,
+        senderUserId: normalizedUserId,
+      });
+      logNotificationError('巡回受諾', notifyError);
       return { data: rpcData, error: null };
     }
 
@@ -185,6 +248,12 @@ export const acceptPatrolTask = async ({ taskId, patrolUserId }) => {
       console.error('巡回タスク受諾エラー:', error);
       return { data: null, error };
     }
+
+    const { error: notifyError } = await notifyPatrolTaskAccepted({
+      task: data,
+      senderUserId: normalizedUserId,
+    });
+    logNotificationError('巡回受諾', notifyError);
 
     return { data, error: null };
   } catch (error) {
@@ -230,6 +299,12 @@ export const completePatrolTask = async (input) => {
     });
 
     if (!rpcError) {
+      const { error: notifyError } = await notifyPatrolTaskCompleted({
+        task: rpcData?.task || null,
+        resultCode: normalizedResultCode,
+        senderUserId: normalizedUserId,
+      });
+      logNotificationError('巡回完了', notifyError);
       return { data: rpcData, error: null };
     }
 
@@ -299,6 +374,13 @@ export const completePatrolTask = async (input) => {
         })
         .eq('id', input.sourceKeyLoanId);
     }
+
+    const { error: notifyError } = await notifyPatrolTaskCompleted({
+      task: taskData,
+      resultCode: normalizedResultCode,
+      senderUserId: normalizedUserId,
+    });
+    logNotificationError('巡回完了', notifyError);
 
     return {
       data: {

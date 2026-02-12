@@ -1,5 +1,54 @@
 # 企画者サポートページ 実装タスク
 
+## 管理部統合システム 再検証タスク（2026-02-12）
+
+### MCP再検証結果（`docs/管理部統合システム仕様書.md`照合）
+- [x] `item12`〜`item16` 画面遷移と主要UIは表示可能
+- [x] `item13` 本部画面の連絡案件対応・鍵貸出/返却UIは動作
+- [x] `item14` 会計対応（対象絞り込み・返信・状態更新UI）は動作
+- [x] `item15` 物品対応（対象絞り込み・返信・状態更新UI）は動作
+- [x] `item16` 4タブ入力、履歴、回答閲覧は動作
+- [x] `start_report` / `end_report` の巡回タスク自動生成（`rpc_create_ticket_and_auto_tasks`）を修正
+- [x] 通知機能（`develop`実装）の取り込みと業務フロー連携を反映
+
+### 今回の実装タスク
+- [x] `develop` から通知関連ファイルを同期
+  - `src/shared/services/notificationService.js`
+  - `src/shared/services/webPushService.js`
+  - `src/shared/utils/serviceWorker.js`
+  - `src/shared/contexts/AuthContext.js`
+  - `supabase/functions/*` と `db/migrations/20260209~11_*`
+- [x] `item16` の開始/終了報告RPC失敗を修正
+  - `ticket_no` をRPCペイロードに含める
+- [x] 通知機能を `item12`〜`item16` の業務フローへ接続
+  - 連絡案件作成時通知
+  - 巡回タスク受諾/完了通知
+  - 鍵返却時の施錠確認タスク作成通知
+- [x] 起動不良の恒久対応
+  - `START_SERVER.sh` の固定パスを削除し、スクリプト配置ディレクトリ基準に修正
+- [x] `item12` 未巡回アラート閾値設定UIを追加
+- [x] `item12` 企画評価入力（`evaluation_checks`）と承認待ち導線を追加
+- [x] `item13` 本部ダッシュボード（新着/遅延/巡回/無線）を追加
+- [x] `item13` 巡回タスク割当UIを追加
+- [x] `item13` 評価承認導線（承認/差戻し/却下）を追加
+- [x] `item13` 部署再通知導線（会計/物品）を追加
+- [x] `item16` 添付入力（実ファイルアップロード、5MB制限）を追加
+- [x] `item16` `event_id` 必須化と企画マスタ選択UIを追加
+- [x] `item16` 回帰修正（緊急送信時の `requestedAt is not defined` を解消）
+
+### まだ未実装（次フェーズ）
+- 現時点では該当なし（`item15` 破損写真閲覧導線まで実装済み）
+
+### 未整備テーブル対応（2026-02-12）
+- [x] `db/migrations/20260209_create_notifications.sql` をMCPで適用
+- [x] 未整備テーブルDDL作成・適用（`keys` / `key_reservations` / `patrol_checks` / `radio_logs`）
+  - `db/migrations/20260212_create_missing_management_tables.sql`
+- [x] `item12` に巡回チェック登録（`patrol_checks`）を追加
+- [x] `item12` に未巡回アラート一覧（固定90分閾値）を追加
+- [x] `item13`（本部）に無線ログ入力/一覧（`radio_logs`）を追加
+- [x] `item16` 鍵事前申請時に `key_reservations` へ保存
+- [x] `item13` 本部鍵管理で鍵予約の承認/却下操作を追加
+
 ## 目的
 `item16（企画者サポート）` を先に見た目から実装し、その後に Supabase の DB/サービスを接続する。
 
@@ -260,6 +309,5 @@
   - `npm run build` 通過
 
 ### 未完了
-- [ ] SupabaseへのSQL適用（MCP）
-  - `mcp__supabase__list_projects` が `Transport closed` で失敗するため、MCP経由の適用は未実施
-  - 追加したSQL: `docs/database/006_create_patrol_tasks_and_key_loans.sql`
+- [x] SupabaseへのSQL適用（MCP）
+  - `20260209_create_notifications.sql` / `20260212_create_missing_management_tables.sql` 適用済み

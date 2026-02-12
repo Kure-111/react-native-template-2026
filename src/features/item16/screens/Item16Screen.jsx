@@ -38,6 +38,9 @@ import {
   SUPPORT_TICKET_STATUSES,
 } from '../../../services/supabase/supportTicketService';
 import { KEY_BUILDINGS, KEY_CATALOG } from '../data/keyCatalog';
+import { ensureKeysSeededFromCatalog } from '../../../services/supabase/keyMasterService';
+import { listEvents } from '../../../services/supabase/eventService';
+import { MAX_ATTACHMENT_FILE_BYTES } from '../../../services/supabase/ticketAttachmentService';
 
 /** 連絡案件ステータス表示名 */
 const STATUS_LABELS = {
@@ -50,6 +53,26 @@ const STATUS_LABELS = {
 };
 
 const ALL_BUILDINGS_VALUE = 'all';
+const MAX_ATTACHMENT_FILE_SIZE_MB = Math.floor(MAX_ATTACHMENT_FILE_BYTES / 1024 / 1024);
+
+/**
+ * ファイルサイズを表示文字列へ変換
+ * @param {number|null|undefined} fileSizeBytes - バイト数
+ * @returns {string} 表示文字列
+ */
+const formatFileSize = (fileSizeBytes) => {
+  const size = Number(fileSizeBytes);
+  if (!Number.isFinite(size) || size < 0) {
+    return '-';
+  }
+  if (size < 1024) {
+    return `${size} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+  return `${(size / 1024 / 1024).toFixed(2)} MB`;
+};
 
 /**
  * 項目16画面コンポーネント
@@ -65,9 +88,16 @@ const Item16Screen = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState(SUPPORT_TAB_TYPES.QUESTION);
 
   // 共通入力（ローカル保存対象）
+  const [selectedEventId, setSelectedEventId] = useState('');
+  const [eventOptions, setEventOptions] = useState([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [eventName, setEventName] = useState('');
   const [eventLocation, setEventLocation] = useState('');
   const [isHydrated, setIsHydrated] = useState(false);
+
+  // 添付（任意）
+  const [attachmentFile, setAttachmentFile] = useState(null);
+  const [attachmentCaption, setAttachmentCaption] = useState('');
 
   // 質問系統
   const [questionType, setQuestionType] = useState(QUESTION_TYPES[0].key);
@@ -106,6 +136,46 @@ const Item16Screen = ({ navigation }) => {
       return;
     }
     Alert.alert(title, message);
+  };
+
+  /**
+   * 企画一覧を取得
+   * @returns {Promise<void>} 取得処理
+   */
+  const loadEvents = async () => {
+    setIsLoadingEvents(true);
+    const { data, error } = await listEvents({ limit: 120 });
+    setIsLoadingEvents(false);
+
+    if (error) {
+      console.error('企画一覧取得に失敗:', error);
+      return;
+    }
+
+    const nextEvents = (data || []).map((event) => ({
+      ...event,
+      key: event.id,
+      label: event.name,
+    }));
+    setEventOptions(nextEvents);
+
+    if (nextEvents.length === 0) {
+      setSelectedEventId('');
+      return;
+    }
+
+    if (selectedEventId && nextEvents.some((event) => event.id === selectedEventId)) {
+      return;
+    }
+
+    const matchedByStoredText = nextEvents.find(
+      (event) => event.name === eventName.trim() && event.location === eventLocation.trim()
+    );
+    const nextSelected = matchedByStoredText || nextEvents[0];
+
+    setSelectedEventId(nextSelected.id);
+    setEventName(nextSelected.name || '');
+    setEventLocation(nextSelected.location || '');
   };
 
   /**
@@ -202,6 +272,33 @@ const Item16Screen = ({ navigation }) => {
   }, []);
 
   /**
+   * 鍵マスタが空の場合は初期カタログを投入
+   */
+  useEffect(() => {
+    const seedKeys = async () => {
+      const { error } = await ensureKeysSeededFromCatalog(KEY_CATALOG);
+      if (error) {
+        console.warn('鍵マスタ初期化に失敗:', error);
+      }
+    };
+    seedKeys();
+  }, []);
+
+  /**
+   * 企画マスタを読み込む
+   */
+  useEffect(() => {
+    loadEvents();
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+    loadEvents();
+  }, [isHydrated]);
+
+  /**
    * 企画情報をローカルストレージに保存
    */
   useEffect(() => {
@@ -222,6 +319,21 @@ const Item16Screen = ({ navigation }) => {
 
     saveEventInfo();
   }, [eventLocation, eventName, isHydrated]);
+
+  /**
+   * 選択企画が変わったら企画名/場所を同期
+   */
+  useEffect(() => {
+    if (!selectedEventId) {
+      return;
+    }
+    const selectedEvent = eventOptions.find((event) => event.id === selectedEventId);
+    if (!selectedEvent) {
+      return;
+    }
+    setEventName(selectedEvent.name || '');
+    setEventLocation(selectedEvent.location || '');
+  }, [eventOptions, selectedEventId]);
 
   /**
    * ログインユーザーが変わったら履歴を再取得
@@ -318,6 +430,10 @@ const Item16Screen = ({ navigation }) => {
    * @returns {boolean} バリデーション結果
    */
   const validateCommonFields = () => {
+    if (!selectedEventId) {
+      showMessage('入力不足', '対象企画を選択してください。');
+      return false;
+    }
     if (!eventName.trim() || !eventLocation.trim()) {
       showMessage('入力不足', '「企画名」と「企画場所」は必須です。');
       return false;
@@ -326,11 +442,60 @@ const Item16Screen = ({ navigation }) => {
   };
 
   /**
+   * 添付選択を解除
+   * @returns {void}
+   */
+  const clearAttachment = () => {
+    setAttachmentFile(null);
+  };
+
+  /**
+   * 添付ファイルを選択（Web）
+   * @returns {void}
+   */
+  const pickAttachmentFile = () => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') {
+      showMessage('添付不可', '現在の端末ではファイル選択に未対応です。');
+      return;
+    }
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*,application/pdf';
+    fileInput.onchange = () => {
+      const selectedFile = fileInput.files?.[0] || null;
+      if (!selectedFile) {
+        return;
+      }
+      if (selectedFile.size > MAX_ATTACHMENT_FILE_BYTES) {
+        showMessage(
+          '容量超過',
+          `添付は${MAX_ATTACHMENT_FILE_SIZE_MB}MB以下にしてください（選択: ${formatFileSize(
+            selectedFile.size
+          )}）。`
+        );
+        return;
+      }
+      setAttachmentFile(selectedFile);
+    };
+    fileInput.click();
+  };
+
+  /**
    * 仮送信処理
    * @returns {void}
    */
   const handleSubmit = () => {
     if (!validateCommonFields()) {
+      return;
+    }
+    if (attachmentFile && attachmentFile.size > MAX_ATTACHMENT_FILE_BYTES) {
+      showMessage(
+        '容量超過',
+        `添付は${MAX_ATTACHMENT_FILE_SIZE_MB}MB以下にしてください（選択: ${formatFileSize(
+          attachmentFile.size
+        )}）。`
+      );
       return;
     }
 
@@ -364,8 +529,20 @@ const Item16Screen = ({ navigation }) => {
     }
 
     const request = {
+      eventId: selectedEventId,
       eventName,
       eventLocation,
+      attachments: attachmentFile
+        ? [
+            {
+              file: attachmentFile,
+              fileName: attachmentFile.name || 'attachment.bin',
+              mimeType: attachmentFile.type || null,
+              caption: attachmentCaption.trim() || null,
+              fileSizeBytes: attachmentFile.size || null,
+            },
+          ]
+        : [],
       submittedAt: new Date().toISOString(),
       payload,
     };
@@ -379,8 +556,10 @@ const Item16Screen = ({ navigation }) => {
       setIsSubmitting(true);
 
       const commonPayload = {
+        eventId: request.eventId,
         eventName: request.eventName,
         eventLocation: request.eventLocation,
+        attachments: request.attachments,
         createdBy: user.id,
         orgId: userInfo?.org_id || null,
       };
@@ -436,8 +615,14 @@ const Item16Screen = ({ navigation }) => {
       } else if (activeTab === SUPPORT_TAB_TYPES.EVENT_STATUS) {
         setEventMemo('');
       }
+      setAttachmentFile(null);
+      setAttachmentCaption('');
 
-      showMessage('送信完了', '連絡案件を登録しました。');
+      if (result.warning) {
+        showMessage('送信完了（一部警告）', `連絡案件を登録しました。\n${result.warning}`);
+      } else {
+        showMessage('送信完了', '連絡案件を登録しました。');
+      }
       loadMyContacts();
     };
 
@@ -735,7 +920,63 @@ const Item16Screen = ({ navigation }) => {
           </View>
 
           <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>企画情報</Text>
+            <View style={styles.historyHeader}>
+              <Text style={[styles.sectionTitle, styles.historyTitle, { color: theme.text }]}>企画情報</Text>
+              <TouchableOpacity
+                style={[styles.refreshButton, { borderColor: theme.border }]}
+                onPress={loadEvents}
+              >
+                <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>
+                  {isLoadingEvents ? '更新中...' : '企画更新'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.questionTargetHint, { color: theme.textSecondary }]}>
+              `events`マスタから対象企画を選択してください（event_id必須）。
+            </Text>
+
+            <Text style={[styles.label, { color: theme.text }]}>対象企画</Text>
+            {eventOptions.length === 0 ? (
+              <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
+                企画が未登録です。先に企画マスタを登録してください。
+              </Text>
+            ) : (
+              <View style={styles.optionGroup}>
+                {eventOptions.slice(0, 12).map((event) => {
+                  const isActive = event.id === selectedEventId;
+                  return (
+                    <Pressable
+                      key={event.id}
+                      style={[
+                        styles.optionButton,
+                        {
+                          borderColor: isActive ? theme.primary : theme.border,
+                          backgroundColor: isActive ? `${theme.primary}22` : theme.background,
+                        },
+                      ]}
+                      onPress={() => setSelectedEventId(event.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.optionButtonText,
+                          { color: isActive ? theme.primary : theme.textSecondary },
+                        ]}
+                      >
+                        {event.name}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.optionButtonSubText,
+                          { color: isActive ? theme.primary : theme.textSecondary },
+                        ]}
+                      >
+                        {event.location || '場所未設定'}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
 
             <Text style={[styles.label, { color: theme.text }]}>企画名</Text>
             <TextInput
@@ -743,6 +984,7 @@ const Item16Screen = ({ navigation }) => {
               onChangeText={setEventName}
               placeholder="企画名を入力"
               placeholderTextColor={theme.textSecondary}
+              editable={false}
               style={[
                 styles.input,
                 {
@@ -759,6 +1001,7 @@ const Item16Screen = ({ navigation }) => {
               onChangeText={setEventLocation}
               placeholder="企画場所を入力"
               placeholderTextColor={theme.textSecondary}
+              editable={false}
               style={[
                 styles.input,
                 {
@@ -773,6 +1016,63 @@ const Item16Screen = ({ navigation }) => {
           <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>{activeTabTitle}</Text>
             {renderActiveForm()}
+
+            <Text style={[styles.label, { color: theme.text }]}>添付情報（任意）</Text>
+            <Text style={[styles.questionTargetHint, { color: theme.textSecondary }]}>
+              画像/PDFを1件添付できます（最大 {MAX_ATTACHMENT_FILE_SIZE_MB}MB）。
+            </Text>
+            <TouchableOpacity
+              style={[
+                styles.attachPickerButton,
+                { borderColor: theme.border, backgroundColor: theme.background },
+              ]}
+              onPress={pickAttachmentFile}
+            >
+              <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
+                {attachmentFile ? '別の添付を選択' : '添付を選択'}
+              </Text>
+            </TouchableOpacity>
+
+            {attachmentFile ? (
+              <View
+                style={[
+                  styles.attachmentSummary,
+                  { borderColor: theme.border, backgroundColor: theme.background },
+                ]}
+              >
+                <Text style={[styles.attachmentSummaryName, { color: theme.text }]} numberOfLines={1}>
+                  {attachmentFile.name || 'attachment.bin'}
+                </Text>
+                <Text style={[styles.attachmentSummaryMeta, { color: theme.textSecondary }]}>
+                  {formatFileSize(attachmentFile.size)} / {attachmentFile.type || 'application/octet-stream'}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.removeKeyButton, { borderColor: theme.border }]}
+                  onPress={clearAttachment}
+                >
+                  <Text style={[styles.removeKeyButtonText, { color: theme.textSecondary }]}>添付解除</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
+                添付未選択（任意）
+              </Text>
+            )}
+
+            <TextInput
+              value={attachmentCaption}
+              onChangeText={setAttachmentCaption}
+              placeholder="添付メモ（任意・最大100文字程度）"
+              placeholderTextColor={theme.textSecondary}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.background,
+                  borderColor: theme.border,
+                  color: theme.text,
+                },
+              ]}
+            />
           </View>
 
           <TouchableOpacity
@@ -1002,6 +1302,30 @@ const styles = StyleSheet.create({
   addKeyButtonText: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  attachPickerButton: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  attachPickerButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  attachmentSummary: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  attachmentSummaryName: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  attachmentSummaryMeta: {
+    fontSize: 12,
   },
   selectedKeyTitle: {
     fontSize: 13,

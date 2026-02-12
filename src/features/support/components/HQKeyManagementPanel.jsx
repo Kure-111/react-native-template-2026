@@ -12,11 +12,37 @@ import {
   listKeyLoans,
   returnKeyAndCreateLockTask,
 } from '../../../services/supabase/keyLoanService';
+import { ensureKeysSeededFromCatalog, listKeys } from '../../../services/supabase/keyMasterService';
+import {
+  KEY_RESERVATION_STATUSES,
+  listKeyReservations,
+  updateKeyReservationStatus,
+} from '../../../services/supabase/keyReservationService';
 
 const LOCK_CHECK_STATUS_LABELS = {
   locked: '施錠済',
   unlocked: '未施錠',
   cannot_confirm: '確認不可',
+};
+
+const RESERVATION_STATUS_LABELS = {
+  [KEY_RESERVATION_STATUSES.PENDING]: '承認待ち',
+  [KEY_RESERVATION_STATUSES.APPROVED]: '承認済み',
+  [KEY_RESERVATION_STATUSES.REJECTED]: '却下',
+  [KEY_RESERVATION_STATUSES.CANCELED]: '取消',
+};
+
+const normalizeText = (value) => (value || '').trim();
+
+const toFallbackKeyOptions = () => {
+  return KEY_CATALOG.map((item) => ({
+    id: item.id,
+    keyCode: item.id,
+    label: `${item.building} / ${item.name}`,
+    location: item.location || `${item.building} / ${item.name}`,
+    name: item.name,
+    building: item.building,
+  }));
 };
 
 /**
@@ -31,8 +57,12 @@ const HQKeyManagementPanel = ({ theme, user }) => {
   const [borrowerContact, setBorrowerContact] = useState('');
   const [eventName, setEventName] = useState('');
   const [eventLocation, setEventLocation] = useState('');
+  const [keyOptions, setKeyOptions] = useState([]);
   const [keyLoans, setKeyLoans] = useState([]);
+  const [keyReservations, setKeyReservations] = useState([]);
+  const [isLoadingKeys, setIsLoadingKeys] = useState(false);
   const [isLoadingLoans, setIsLoadingLoans] = useState(false);
+  const [isLoadingReservations, setIsLoadingReservations] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   /**
@@ -53,8 +83,8 @@ const HQKeyManagementPanel = ({ theme, user }) => {
    * 選択中鍵情報
    */
   const selectedKey = useMemo(() => {
-    return KEY_CATALOG.find((item) => item.id === selectedKeyId) || null;
-  }, [selectedKeyId]);
+    return keyOptions.find((item) => item.keyCode === selectedKeyId) || null;
+  }, [keyOptions, selectedKeyId]);
 
   /**
    * 貸出中一覧
@@ -69,6 +99,39 @@ const HQKeyManagementPanel = ({ theme, user }) => {
   const returnedKeyItems = useMemo(() => {
     return keyLoans.filter((loan) => loan.status === 'returned').slice(0, 20);
   }, [keyLoans]);
+
+  /**
+   * 承認待ち予約
+   */
+  const pendingReservations = useMemo(() => {
+    return keyReservations.filter((reservation) => reservation.status === KEY_RESERVATION_STATUSES.PENDING);
+  }, [keyReservations]);
+
+  /**
+   * 最近の承認済/却下予約
+   */
+  const recentResolvedReservations = useMemo(() => {
+    return keyReservations
+      .filter((reservation) => reservation.status !== KEY_RESERVATION_STATUSES.PENDING)
+      .slice(0, 20);
+  }, [keyReservations]);
+
+  /**
+   * 鍵ラベルを表示用へ変換
+   * @param {Object} reservation - 鍵予約
+   * @returns {string} 表示名
+   */
+  const getReservationKeyLabel = (reservation) => {
+    const fromRelation = normalizeText(reservation?.keys?.display_name);
+    if (fromRelation) {
+      return fromRelation;
+    }
+    const fromMetadata = normalizeText(reservation?.metadata?.key_name);
+    if (fromMetadata) {
+      return fromMetadata;
+    }
+    return normalizeText(reservation?.key_code) || '鍵未設定';
+  };
 
   /**
    * 貸出一覧を読み込む
@@ -88,6 +151,62 @@ const HQKeyManagementPanel = ({ theme, user }) => {
   };
 
   /**
+   * 鍵マスタを読み込む
+   * @returns {Promise<void>} 読み込み処理
+   */
+  const loadKeys = async () => {
+    setIsLoadingKeys(true);
+    let { data, error } = await listKeys({ activeOnly: true, limit: 500 });
+
+    if (!error && (data || []).length === 0) {
+      const seeded = await ensureKeysSeededFromCatalog(KEY_CATALOG);
+      data = seeded.data || [];
+      error = seeded.error;
+    }
+    setIsLoadingKeys(false);
+
+    if (error) {
+      console.error('鍵マスタ取得に失敗:', error);
+      setKeyOptions(toFallbackKeyOptions());
+      return;
+    }
+
+    const rows = (data || []).map((row) => {
+      const metadata = row?.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+      const building = normalizeText(metadata.building);
+      const name = normalizeText(metadata.name) || normalizeText(row.display_name);
+      const fallbackLabel = [building, name].filter(Boolean).join(' / ');
+      return {
+        id: row.id,
+        keyCode: normalizeText(row.key_code) || row.id,
+        label: normalizeText(row.display_name) || fallbackLabel || normalizeText(row.key_code) || row.id,
+        location: normalizeText(row.location_text) || fallbackLabel || normalizeText(row.display_name),
+        name,
+        building,
+      };
+    });
+
+    setKeyOptions(rows.length > 0 ? rows : toFallbackKeyOptions());
+  };
+
+  /**
+   * 鍵予約一覧を読み込む
+   * @returns {Promise<void>} 読み込み処理
+   */
+  const loadKeyReservations = async () => {
+    setIsLoadingReservations(true);
+    const { data, error } = await listKeyReservations({ limit: 120 });
+    setIsLoadingReservations(false);
+
+    if (error) {
+      console.error('鍵予約一覧取得に失敗:', error);
+      return;
+    }
+
+    setKeyReservations(data || []);
+  };
+
+  /**
    * 鍵貸出を登録
    * @returns {Promise<void>} 登録処理
    */
@@ -99,8 +218,8 @@ const HQKeyManagementPanel = ({ theme, user }) => {
 
     setIsSubmitting(true);
     const { error } = await createKeyLoan({
-      keyCode: selectedKey.id,
-      keyLabel: selectedKey.location || `${selectedKey.building} / ${selectedKey.name}`,
+      keyCode: selectedKey.keyCode,
+      keyLabel: selectedKey.location || selectedKey.label,
       eventName: eventName.trim(),
       eventLocation: eventLocation.trim(),
       borrowerName: borrowerName.trim(),
@@ -156,14 +275,45 @@ const HQKeyManagementPanel = ({ theme, user }) => {
     );
   };
 
-  useEffect(() => {
-    if (KEY_CATALOG.length > 0 && !selectedKeyId) {
-      setSelectedKeyId(KEY_CATALOG[0].id);
+  /**
+   * 鍵予約を承認/却下
+   * @param {string} reservationId - 予約ID
+   * @param {'approved'|'rejected'} status - 更新ステータス
+   * @returns {Promise<void>} 更新処理
+   */
+  const handleReservationDecision = async (reservationId, status) => {
+    if (!user?.id) {
+      showMessage('操作エラー', 'ログイン情報が取得できません');
+      return;
     }
-  }, [selectedKeyId]);
+
+    setIsSubmitting(true);
+    const { error } = await updateKeyReservationStatus({
+      reservationId,
+      status,
+      approvedBy: user.id,
+    });
+    setIsSubmitting(false);
+
+    if (error) {
+      showMessage('更新エラー', error.message || '鍵予約の更新に失敗しました');
+      return;
+    }
+
+    await loadKeyReservations();
+    showMessage('更新完了', status === 'approved' ? '鍵予約を承認しました' : '鍵予約を却下しました');
+  };
 
   useEffect(() => {
+    if (keyOptions.length > 0 && !selectedKeyId) {
+      setSelectedKeyId(keyOptions[0].keyCode);
+    }
+  }, [keyOptions, selectedKeyId]);
+
+  useEffect(() => {
+    loadKeys();
     loadKeyLoans();
+    loadKeyReservations();
   }, []);
 
   return (
@@ -172,7 +322,11 @@ const HQKeyManagementPanel = ({ theme, user }) => {
         <Text style={[styles.sectionTitle, { color: theme.text }]}>鍵貸出/返却（本部）</Text>
         <TouchableOpacity
           style={[styles.refreshButton, { borderColor: theme.border }]}
-          onPress={loadKeyLoans}
+          onPress={() => {
+            loadKeys();
+            loadKeyLoans();
+            loadKeyReservations();
+          }}
           disabled={isSubmitting}
         >
           <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
@@ -193,16 +347,19 @@ const HQKeyManagementPanel = ({ theme, user }) => {
           itemStyle={{ color: theme.text }}
           dropdownIconColor={theme.text}
         >
-          {KEY_CATALOG.map((item) => (
+          {keyOptions.map((item) => (
             <Picker.Item
-              key={item.id}
-              label={`${item.building} / ${item.name}`}
-              value={item.id}
+              key={item.id || item.keyCode}
+              label={item.label}
+              value={item.keyCode}
               color={theme.text}
             />
           ))}
         </Picker>
       </View>
+      {isLoadingKeys ? (
+        <Text style={[styles.helpText, { color: theme.textSecondary }]}>鍵マスタを読み込み中...</Text>
+      ) : null}
 
       <Text style={[styles.label, { color: theme.text }]}>借受人（任意）</Text>
       <TextInput
@@ -316,6 +473,89 @@ const HQKeyManagementPanel = ({ theme, user }) => {
               </Text>
               <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
                 施錠確認: {LOCK_CHECK_STATUS_LABELS[loan.lock_check_status] || '未確認'}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <Text style={[styles.subTitle, { color: theme.text }]}>鍵予約（承認待ち）</Text>
+      {isLoadingReservations ? (
+        <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
+      ) : pendingReservations.length === 0 ? (
+        <Text style={[styles.helpText, { color: theme.textSecondary }]}>承認待ちの鍵予約はありません</Text>
+      ) : (
+        <View style={styles.list}>
+          {pendingReservations.map((reservation) => (
+            <View
+              key={reservation.id}
+              style={[
+                styles.listRow,
+                { borderColor: theme.border, backgroundColor: theme.background },
+              ]}
+            >
+              <Text style={[styles.listTitle, { color: theme.text }]} numberOfLines={1}>
+                {getReservationKeyLabel(reservation)}
+              </Text>
+              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
+                予約番号: {reservation.reservation_no || '-'}
+              </Text>
+              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
+                希望時刻: {reservation.requested_at_text}
+              </Text>
+              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={2}>
+                理由: {reservation.reason}
+              </Text>
+              <View style={styles.rowActions}>
+                <TouchableOpacity
+                  style={[styles.subActionButton, { borderColor: theme.border }]}
+                  onPress={() =>
+                    handleReservationDecision(reservation.id, KEY_RESERVATION_STATUSES.APPROVED)
+                  }
+                  disabled={isSubmitting}
+                >
+                  <Text style={[styles.subActionText, { color: '#22A06B' }]}>承認</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.subActionButton, { borderColor: theme.border }]}
+                  onPress={() =>
+                    handleReservationDecision(reservation.id, KEY_RESERVATION_STATUSES.REJECTED)
+                  }
+                  disabled={isSubmitting}
+                >
+                  <Text style={[styles.subActionText, { color: '#D1242F' }]}>却下</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <Text style={[styles.subTitle, { color: theme.text }]}>鍵予約（対応済み）</Text>
+      {recentResolvedReservations.length === 0 ? (
+        <Text style={[styles.helpText, { color: theme.textSecondary }]}>対応済みデータはまだありません</Text>
+      ) : (
+        <View style={styles.list}>
+          {recentResolvedReservations.map((reservation) => (
+            <View
+              key={reservation.id}
+              style={[
+                styles.listRow,
+                { borderColor: theme.border, backgroundColor: theme.background },
+              ]}
+            >
+              <Text style={[styles.listTitle, { color: theme.text }]} numberOfLines={1}>
+                {getReservationKeyLabel(reservation)}
+              </Text>
+              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
+                状態: {RESERVATION_STATUS_LABELS[reservation.status] || reservation.status}
+              </Text>
+              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
+                希望時刻: {reservation.requested_at_text}
+              </Text>
+              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
+                対応日時:{' '}
+                {reservation.approved_at ? new Date(reservation.approved_at).toLocaleString('ja-JP') : '-'}
               </Text>
             </View>
           ))}
