@@ -8,7 +8,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   SafeAreaView,
@@ -34,13 +36,20 @@ import {
 import { exhibitorSupportService } from '../services/exhibitorSupportService';
 import { useAuth } from '../../../shared/contexts/AuthContext';
 import {
+  createTicketMessage,
   listTicketMessages,
   SUPPORT_TICKET_STATUSES,
 } from '../../../services/supabase/supportTicketService';
 import { KEY_BUILDINGS, KEY_CATALOG } from '../data/keyCatalog';
 import { ensureKeysSeededFromCatalog } from '../../../services/supabase/keyMasterService';
 import { listEvents } from '../../../services/supabase/eventService';
-import { MAX_ATTACHMENT_FILE_BYTES } from '../../../services/supabase/ticketAttachmentService';
+import {
+  createAttachmentSignedUrl,
+  createTicketAttachment,
+  listTicketAttachments,
+  MAX_ATTACHMENT_FILE_BYTES,
+  uploadTicketAttachmentFile,
+} from '../../../services/supabase/ticketAttachmentService';
 
 /** 連絡案件ステータス表示名 */
 const STATUS_LABELS = {
@@ -54,6 +63,25 @@ const STATUS_LABELS = {
 
 const ALL_BUILDINGS_VALUE = 'all';
 const MAX_ATTACHMENT_FILE_SIZE_MB = Math.floor(MAX_ATTACHMENT_FILE_BYTES / 1024 / 1024);
+const FAQ_HINTS_BY_QUESTION_TYPE = {
+  rule_change: [
+    '案内資料との差分（何を、どの時間帯で変えるか）を先に整理すると回答が早くなります。',
+    '安全導線・音量・火気など運用制約に触れる変更は優先して明記してください。',
+  ],
+  layout_change: [
+    '変更前/変更後の動線（人・物の流れ）を文章で添えると確認がスムーズです。',
+    '通路幅・避難経路への影響がある場合は必ず詳細欄に記載してください。',
+  ],
+  distribution_change: [
+    '配布開始時刻と対象者の範囲を明記すると会計側の確認が早くなります。',
+    '既存ルールとの差分を先に書くと再確認が減ります。',
+  ],
+  damage_report: [
+    '破損物品名、現状、保管場所を先に書くと物品対応が早くなります。',
+    '写真添付（任意）をつけると状況判断がしやすくなります。',
+  ],
+};
+const normalizeText = (value) => (value || '').trim();
 
 /**
  * ファイルサイズを表示文字列へ変換
@@ -123,6 +151,13 @@ const Item16Screen = ({ navigation }) => {
   const [selectedContactId, setSelectedContactId] = useState(null);
   const [contactMessages, setContactMessages] = useState([]);
   const [isLoadingContactMessages, setIsLoadingContactMessages] = useState(false);
+  const [contactAttachments, setContactAttachments] = useState([]);
+  const [isLoadingContactAttachments, setIsLoadingContactAttachments] = useState(false);
+  const [contactReplyBody, setContactReplyBody] = useState('');
+  const [isSubmittingContactReply, setIsSubmittingContactReply] = useState(false);
+  const [followupAttachmentFile, setFollowupAttachmentFile] = useState(null);
+  const [followupAttachmentCaption, setFollowupAttachmentCaption] = useState('');
+  const [isSubmittingFollowupAttachment, setIsSubmittingFollowupAttachment] = useState(false);
 
   /**
    * メッセージ表示
@@ -242,6 +277,180 @@ const Item16Screen = ({ navigation }) => {
   };
 
   /**
+   * 選択案件の添付一覧を読み込む
+   * @param {string|null} ticketId - 連絡案件ID
+   * @returns {Promise<void>} 読み込み処理
+   */
+  const loadContactAttachments = async (ticketId) => {
+    if (!ticketId) {
+      setContactAttachments([]);
+      return;
+    }
+
+    setIsLoadingContactAttachments(true);
+    const { data, error } = await listTicketAttachments({ ticketId, limit: 20 });
+    if (error) {
+      setIsLoadingContactAttachments(false);
+      console.error('連絡案件添付取得に失敗:', error);
+      return;
+    }
+
+    const attachments = await Promise.all(
+      (data || []).map(async (attachment) => {
+        const { data: signedData, error: signedError } = await createAttachmentSignedUrl({
+          storageBucket: attachment.storage_bucket,
+          storagePath: attachment.storage_path,
+          expiresIn: 3600,
+        });
+        if (signedError) {
+          console.warn('添付URL生成に失敗:', signedError);
+        }
+
+        return {
+          ...attachment,
+          signedUrl: signedData?.signedUrl || '',
+        };
+      })
+    );
+
+    setIsLoadingContactAttachments(false);
+    setContactAttachments(attachments);
+  };
+
+  /**
+   * 添付URLを開く
+   * @param {Object} attachment - 添付情報
+   * @returns {Promise<void>} 実行処理
+   */
+  const openAttachment = async (attachment) => {
+    const signedUrl = normalizeText(attachment?.signedUrl);
+    if (!signedUrl) {
+      showMessage('添付表示エラー', '添付URLが取得できませんでした。再読み込みしてください。');
+      return;
+    }
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.open(signedUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    try {
+      await Linking.openURL(signedUrl);
+    } catch (error) {
+      console.error('添付表示エラー:', error);
+      showMessage('添付表示エラー', '添付ファイルを開けませんでした。');
+    }
+  };
+
+  /**
+   * 回答スレッドへ追記投稿
+   * @returns {Promise<void>} 投稿処理
+   */
+  const handleSubmitContactReply = async () => {
+    if (!selectedContact) {
+      showMessage('送信エラー', '連絡案件を選択してください。');
+      return;
+    }
+    if (!user?.id) {
+      showMessage('送信エラー', 'ログイン情報が取得できません。');
+      return;
+    }
+    if (!normalizeText(contactReplyBody)) {
+      showMessage('入力不足', '追記内容を入力してください。');
+      return;
+    }
+
+    setIsSubmittingContactReply(true);
+    const { error } = await createTicketMessage({
+      ticketId: selectedContact.id,
+      authorId: user.id,
+      body: normalizeText(contactReplyBody),
+    });
+    setIsSubmittingContactReply(false);
+
+    if (error) {
+      showMessage('送信エラー', error.message || '追記投稿に失敗しました。');
+      return;
+    }
+
+    setContactReplyBody('');
+    await loadContactMessages(selectedContact.id);
+    showMessage('送信完了', '追記を投稿しました。');
+  };
+
+  /**
+   * 追記用添付ファイルを解除
+   * @returns {void}
+   */
+  const clearFollowupAttachment = () => {
+    setFollowupAttachmentFile(null);
+  };
+
+  /**
+   * 追記用添付を登録
+   * @returns {Promise<void>} 登録処理
+   */
+  const handleSubmitFollowupAttachment = async () => {
+    if (!selectedContact) {
+      showMessage('登録エラー', '連絡案件を選択してください。');
+      return;
+    }
+    if (!user?.id) {
+      showMessage('登録エラー', 'ログイン情報が取得できません。');
+      return;
+    }
+    if (!followupAttachmentFile) {
+      showMessage('入力不足', '添付ファイルを選択してください。');
+      return;
+    }
+    if (followupAttachmentFile.size > MAX_ATTACHMENT_FILE_BYTES) {
+      showMessage(
+        '容量超過',
+        `添付は${MAX_ATTACHMENT_FILE_SIZE_MB}MB以下にしてください（選択: ${formatFileSize(
+          followupAttachmentFile.size
+        )}）。`
+      );
+      return;
+    }
+
+    setIsSubmittingFollowupAttachment(true);
+    const uploadResult = await uploadTicketAttachmentFile({
+      ticketId: selectedContact.id,
+      file: followupAttachmentFile,
+      fileName: followupAttachmentFile.name || 'attachment.bin',
+      mimeType: followupAttachmentFile.type || null,
+      fileSizeBytes: followupAttachmentFile.size || null,
+    });
+
+    if (uploadResult.error || !uploadResult.data) {
+      setIsSubmittingFollowupAttachment(false);
+      showMessage('登録エラー', uploadResult.error?.message || '添付アップロードに失敗しました。');
+      return;
+    }
+
+    const { error } = await createTicketAttachment({
+      ticketId: selectedContact.id,
+      uploadedBy: user.id,
+      storageBucket: uploadResult.data.storageBucket,
+      storagePath: uploadResult.data.storagePath,
+      mimeType: uploadResult.data.mimeType,
+      fileSizeBytes: uploadResult.data.fileSizeBytes,
+      caption: normalizeText(followupAttachmentCaption) || null,
+    });
+    setIsSubmittingFollowupAttachment(false);
+
+    if (error) {
+      showMessage('登録エラー', error.message || '添付情報の登録に失敗しました。');
+      return;
+    }
+
+    clearFollowupAttachment();
+    setFollowupAttachmentCaption('');
+    await loadContactAttachments(selectedContact.id);
+    showMessage('登録完了', '添付を追加しました。');
+  };
+
+  /**
    * 企画情報をローカルストレージから復元
    */
   useEffect(() => {
@@ -347,6 +556,10 @@ const Item16Screen = ({ navigation }) => {
    */
   useEffect(() => {
     loadContactMessages(selectedContactId);
+    loadContactAttachments(selectedContactId);
+    setContactReplyBody('');
+    clearFollowupAttachment();
+    setFollowupAttachmentCaption('');
   }, [selectedContactId]);
 
   /**
@@ -450,10 +663,11 @@ const Item16Screen = ({ navigation }) => {
   };
 
   /**
-   * 添付ファイルを選択（Web）
+   * 添付ファイルを選択（Web共通）
+   * @param {(file: File) => void} onSelected - 選択後コールバック
    * @returns {void}
    */
-  const pickAttachmentFile = () => {
+  const pickFileFromDevice = (onSelected) => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') {
       showMessage('添付不可', '現在の端末ではファイル選択に未対応です。');
       return;
@@ -476,9 +690,25 @@ const Item16Screen = ({ navigation }) => {
         );
         return;
       }
-      setAttachmentFile(selectedFile);
+      onSelected(selectedFile);
     };
     fileInput.click();
+  };
+
+  /**
+   * 新規連絡用の添付を選択
+   * @returns {void}
+   */
+  const pickAttachmentFile = () => {
+    pickFileFromDevice((file) => setAttachmentFile(file));
+  };
+
+  /**
+   * 追記用の添付を選択
+   * @returns {void}
+   */
+  const pickFollowupAttachmentFile = () => {
+    pickFileFromDevice((file) => setFollowupAttachmentFile(file));
   };
 
   /**
@@ -693,6 +923,21 @@ const Item16Screen = ({ navigation }) => {
           <Text style={[styles.questionTargetHint, { color: theme.textSecondary }]}>
             現在の対応先: {selectedQuestion.targetLabel}
           </Text>
+          {(FAQ_HINTS_BY_QUESTION_TYPE[selectedQuestion.key] || []).length > 0 ? (
+            <View
+              style={[
+                styles.faqHintBox,
+                { borderColor: theme.border, backgroundColor: theme.background },
+              ]}
+            >
+              <Text style={[styles.faqHintTitle, { color: theme.text }]}>FAQ/入力ヒント</Text>
+              {(FAQ_HINTS_BY_QUESTION_TYPE[selectedQuestion.key] || []).map((hint) => (
+                <Text key={hint} style={[styles.faqHintItem, { color: theme.textSecondary }]}>
+                  ・{hint}
+                </Text>
+              ))}
+            </View>
+          ) : null}
 
           <Text style={[styles.label, { color: theme.text }]}>詳細</Text>
           <TextInput
@@ -1141,11 +1386,14 @@ const Item16Screen = ({ navigation }) => {
             <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <View style={styles.historyHeader}>
                 <Text style={[styles.sectionTitle, styles.historyTitle, { color: theme.text }]}>
-                  回答内容
+                  連絡詳細・回答
                 </Text>
                 <TouchableOpacity
                   style={[styles.refreshButton, { borderColor: theme.border }]}
-                  onPress={() => loadContactMessages(selectedContact.id)}
+                  onPress={() => {
+                    loadContactMessages(selectedContact.id);
+                    loadContactAttachments(selectedContact.id);
+                  }}
                 >
                   <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
                 </TouchableOpacity>
@@ -1168,6 +1416,59 @@ const Item16Screen = ({ navigation }) => {
                 {selectedContact.description}
               </Text>
 
+              <Text style={[styles.label, { color: theme.text }]}>添付</Text>
+              {isLoadingContactAttachments ? (
+                <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>読み込み中...</Text>
+              ) : contactAttachments.length === 0 ? (
+                <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
+                  添付はありません
+                </Text>
+              ) : (
+                <View style={styles.messageList}>
+                  {contactAttachments.map((attachment) => {
+                    const isImage = normalizeText(attachment.mime_type).startsWith('image/');
+                    const fileName = normalizeText(attachment.storage_path).split('/').pop() || '添付ファイル';
+                    return (
+                      <View
+                        key={attachment.id}
+                        style={[
+                          styles.messageItem,
+                          {
+                            borderColor: theme.border,
+                            backgroundColor: theme.background,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.messageBody, { color: theme.text }]}>
+                          {attachment.caption || fileName}
+                        </Text>
+                        <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
+                          {fileName} / {formatFileSize(attachment.file_size_bytes)} /{' '}
+                          {attachment.mime_type || 'application/octet-stream'}
+                        </Text>
+                        {isImage && attachment.signedUrl ? (
+                          <Image
+                            source={{ uri: attachment.signedUrl }}
+                            style={styles.inlineAttachmentPreview}
+                            resizeMode="cover"
+                          />
+                        ) : null}
+                        <TouchableOpacity
+                          style={[styles.attachPickerButton, { borderColor: theme.border, backgroundColor: theme.surface }]}
+                          onPress={() => openAttachment(attachment)}
+                          disabled={!attachment.signedUrl}
+                        >
+                          <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
+                            {attachment.signedUrl ? '添付を開く' : 'URL生成失敗'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
+              <Text style={[styles.label, { color: theme.text }]}>対応メッセージ</Text>
               {isLoadingContactMessages ? (
                 <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>読み込み中...</Text>
               ) : contactMessages.length === 0 ? (
@@ -1201,6 +1502,97 @@ const Item16Screen = ({ navigation }) => {
                   })}
                 </View>
               )}
+
+              <Text style={[styles.label, { color: theme.text }]}>追記投稿</Text>
+              <TextInput
+                value={contactReplyBody}
+                onChangeText={setContactReplyBody}
+                multiline
+                placeholder="担当者への追記内容を入力してください"
+                placeholderTextColor={theme.textSecondary}
+                style={[
+                  styles.multilineInput,
+                  {
+                    backgroundColor: theme.background,
+                    borderColor: theme.border,
+                    color: theme.text,
+                    minHeight: 88,
+                  },
+                ]}
+              />
+              <TouchableOpacity
+                style={[styles.submitButton, { backgroundColor: theme.primary }]}
+                onPress={handleSubmitContactReply}
+                disabled={isSubmittingContactReply}
+              >
+                <Text style={styles.submitButtonText}>
+                  {isSubmittingContactReply ? '送信中...' : '追記を送信'}
+                </Text>
+              </TouchableOpacity>
+
+              <Text style={[styles.label, { color: theme.text }]}>添付追加（必要時）</Text>
+              <TouchableOpacity
+                style={[
+                  styles.attachPickerButton,
+                  { borderColor: theme.border, backgroundColor: theme.background },
+                ]}
+                onPress={pickFollowupAttachmentFile}
+              >
+                <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
+                  {followupAttachmentFile ? '別の添付を選択' : '添付を選択'}
+                </Text>
+              </TouchableOpacity>
+
+              {followupAttachmentFile ? (
+                <View
+                  style={[
+                    styles.attachmentSummary,
+                    { borderColor: theme.border, backgroundColor: theme.background },
+                  ]}
+                >
+                  <Text style={[styles.attachmentSummaryName, { color: theme.text }]} numberOfLines={1}>
+                    {followupAttachmentFile.name || 'attachment.bin'}
+                  </Text>
+                  <Text style={[styles.attachmentSummaryMeta, { color: theme.textSecondary }]}>
+                    {formatFileSize(followupAttachmentFile.size)} /{' '}
+                    {followupAttachmentFile.type || 'application/octet-stream'}
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.removeKeyButton, { borderColor: theme.border }]}
+                    onPress={clearFollowupAttachment}
+                  >
+                    <Text style={[styles.removeKeyButtonText, { color: theme.textSecondary }]}>添付解除</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
+                  添付未選択（任意）
+                </Text>
+              )}
+
+              <TextInput
+                value={followupAttachmentCaption}
+                onChangeText={setFollowupAttachmentCaption}
+                placeholder="添付メモ（任意）"
+                placeholderTextColor={theme.textSecondary}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: theme.background,
+                    borderColor: theme.border,
+                    color: theme.text,
+                  },
+                ]}
+              />
+              <TouchableOpacity
+                style={[styles.submitButton, { backgroundColor: theme.primary }]}
+                onPress={handleSubmitFollowupAttachment}
+                disabled={isSubmittingFollowupAttachment}
+              >
+                <Text style={styles.submitButtonText}>
+                  {isSubmittingFollowupAttachment ? '登録中...' : '添付を追加'}
+                </Text>
+              </TouchableOpacity>
             </View>
           ) : null}
         </ScrollView>
@@ -1396,10 +1788,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: -2,
   },
+  faqHintBox: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
+  },
+  faqHintTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  faqHintItem: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
   submitButton: {
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
+    marginTop: 8,
   },
   submitButtonText: {
     color: '#FFFFFF',
@@ -1476,6 +1884,12 @@ const styles = StyleSheet.create({
   messageDate: {
     fontSize: 11,
     marginTop: 4,
+  },
+  inlineAttachmentPreview: {
+    width: '100%',
+    height: 132,
+    borderRadius: 8,
+    marginTop: 6,
   },
   bottomArea: {
     borderTopWidth: 1,

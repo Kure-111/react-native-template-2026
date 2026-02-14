@@ -35,6 +35,9 @@
 - [x] `item16` 添付入力（実ファイルアップロード、5MB制限）を追加
 - [x] `item16` `event_id` 必須化と企画マスタ選択UIを追加
 - [x] `item16` 回帰修正（緊急送信時の `requestedAt is not defined` を解消）
+- [x] `item16` 連絡詳細で追記投稿（`ticket_messages`）を追加
+- [x] `item16` 連絡詳細で添付表示/追加（`ticket_attachments`）を追加
+- [x] `item16` 質問系統にFAQ/入力ヒント（自己解決導線）を追加
 
 ### まだ未実装（次フェーズ）
 - 現時点では該当なし（`item15` 破損写真閲覧導線まで実装済み）
