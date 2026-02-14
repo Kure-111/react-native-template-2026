@@ -3,7 +3,7 @@
  * ログインユーザーのシフトをパーソナライズして表示します
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,8 @@ import {
 } from 'react-native';
 import { useAuth } from '../../../shared/contexts/AuthContext.js';
 import { useTheme } from '../../../shared/hooks/useTheme';
+import { getSupabaseClient } from '../../../services/supabase/client.js';
+import { getUnreadCount, subscribeNotificationUpdates } from '../../../shared/services/notificationService';
 import { fetchShiftData } from '../../../services/gas/gasApi.js';
 import {
   getUserShifts,
@@ -48,9 +50,14 @@ const JimuShiftScreen = ({ navigation }) => {
   /** モバイル判定 */
   const isMobile = width < MOBILE_BREAKPOINT;
   /** 認証コンテキストからユーザー情報を取得 */
-  const { userInfo } = useAuth();
+  const { userInfo, user } = useAuth();
   /** テーマを取得 */
   const { theme } = useTheme();
+  const [unreadCount, setUnreadCount] = useState(0);
+  const previousUnreadCountRef = useRef(0);
+  const subscriptionRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const audioUnlockedRef = useRef(false);
 
   /** 祭り開催期間 */
   const festivalStartDate = useMemo(() => getFestivalStartDate(), []);
@@ -145,6 +152,148 @@ const JimuShiftScreen = ({ navigation }) => {
     navigation.openDrawer();
   };
 
+  const goToNotifications = () => {
+    navigation.navigate('Notifications');
+  };
+
+  const ensureAudioUnlocked = useCallback(() => {
+    if (audioUnlockedRef.current) {
+      return;
+    }
+    const AudioCtx = globalThis.AudioContext || globalThis.webkitAudioContext;
+    if (!AudioCtx) {
+      return;
+    }
+    if (!(navigator?.userActivation && navigator.userActivation.isActive)) {
+      return;
+    }
+    const context = new AudioCtx();
+    try {
+      if (context.state === 'suspended') {
+        context.resume().catch(() => {});
+      }
+      audioContextRef.current = context;
+      audioUnlockedRef.current = true;
+    } catch (error) {
+      // keep locked if resume fails
+    }
+  }, []);
+
+  const playNotificationSound = useCallback(() => {
+    const context = audioContextRef.current;
+    if (!context) {
+      return;
+    }
+    if (context.state === 'suspended') {
+      context.resume();
+    }
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = 880;
+    gain.gain.value = 0.15;
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    setTimeout(() => {
+      oscillator.stop();
+    }, 150);
+  }, []);
+
+  const refreshUnreadCount = useCallback(async () => {
+    if (!user?.id) {
+      setUnreadCount(0);
+      previousUnreadCountRef.current = 0;
+      return;
+    }
+    const { count } = await getUnreadCount(user.id);
+    setUnreadCount(count);
+    if (audioUnlockedRef.current && count > previousUnreadCountRef.current) {
+      playNotificationSound();
+    }
+    previousUnreadCountRef.current = count;
+  }, [user?.id, playNotificationSound]);
+
+  useEffect(() => {
+    const unlockAudio = (event) => {
+      if (event && event.isTrusted) {
+        ensureAudioUnlocked();
+      }
+    };
+
+    const options = { once: true, capture: true };
+    window.addEventListener('pointerdown', unlockAudio, options);
+    window.addEventListener('keydown', unlockAudio, options);
+
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio, options);
+      window.removeEventListener('keydown', unlockAudio, options);
+    };
+  }, [ensureAudioUnlocked]);
+
+  useEffect(() => {
+    refreshUnreadCount();
+  }, [refreshUnreadCount]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      return () => {};
+    }
+    const supabase = getSupabaseClient();
+    const channel = supabase.channel(`notification_recipients_${user.id}`);
+    channel.on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notification_recipients',
+        filter: `user_id=eq.${user.id}`,
+      },
+      () => {
+        refreshUnreadCount();
+        if (audioUnlockedRef.current) {
+          playNotificationSound();
+        }
+      }
+    );
+    channel.on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'notification_recipients',
+        filter: `user_id=eq.${user.id}`,
+      },
+      () => {
+        refreshUnreadCount();
+      }
+    );
+    channel.subscribe();
+    subscriptionRef.current = channel;
+
+    return () => {
+      if (subscriptionRef.current) {
+        supabase.removeChannel(subscriptionRef.current);
+        subscriptionRef.current = null;
+      }
+    };
+  }, [user?.id, playNotificationSound, refreshUnreadCount]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      refreshUnreadCount();
+    });
+    return unsubscribe;
+  }, [navigation, refreshUnreadCount]);
+
+  useEffect(() => {
+    const handler = () => {
+      refreshUnreadCount();
+    };
+    const unsubscribe = subscribeNotificationUpdates(handler);
+    return unsubscribe;
+  }, [refreshUnreadCount]);
+
   /**
    * 開始日かどうかを判定
    * @returns {boolean} 開始日の場合true
@@ -230,13 +379,26 @@ const JimuShiftScreen = ({ navigation }) => {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       {/* ヘッダー */}
       <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-        {isMobile && (
+        {isMobile ? (
           <TouchableOpacity style={styles.menuButton} onPress={openDrawer}>
             <Text style={[styles.menuButtonText, { color: theme.text }]}>☰</Text>
           </TouchableOpacity>
+        ) : (
+          <View style={styles.menuButton} />
         )}
         <Text style={[styles.headerTitle, { color: theme.text }]}>{SCREEN_NAME}</Text>
-        {isMobile && <View style={styles.menuButton} />}
+        <TouchableOpacity style={styles.menuButton} onPress={goToNotifications}>
+          <Image
+            source={require('../../../../assets/icons/bell.png')}
+            style={styles.bellIcon}
+            resizeMode="contain"
+          />
+          {unreadCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* コンテンツ */}
@@ -408,8 +570,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  menuButtonText: {
-    fontSize: 24,
+  badge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: '#e53935',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  bellIcon: {
+    width: 22,
+    height: 22,
   },
   headerTitle: {
     fontSize: 18,

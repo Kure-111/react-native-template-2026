@@ -12,6 +12,7 @@ import {
 } from '../../services/supabase/authService.js';
 import { selectUserInfo } from '../../services/supabase/userService.js';
 import { checkIsFirstLogin } from '../../features/auth/services/passwordService.js';
+import { initializeWebPushSubscription } from '../services/webPushService.js';
 
 /**
  * 認証コンテキスト
@@ -75,6 +76,17 @@ export const AuthProvider = ({ children }) => {
       subscription?.unsubscribe();
     };
   }, []);
+
+  /**
+   * 認証後にWeb Push購読を初期化
+   */
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    initializeWebPushSubscription(user.id);
+  }, [user?.id]);
 
   /**
    * 現在のセッションをチェック

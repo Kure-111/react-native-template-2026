@@ -32,12 +32,23 @@ export const registerServiceWorker = () => {
     return;
   }
 
-  // localhost でも Service Worker を登録（開発時の PWA テスト用）
-  window.addEventListener('load', () => {
+  /**
+   * Service Worker を実際に登録する
+   * load 後に呼ばれた場合にも即時登録できるようにする
+   */
+  const register = () => {
     navigator.serviceWorker
       .register('/service-worker.js')
       .catch((error) => {
         console.error('Service Worker register error:', error);
       });
-  });
+  };
+
+  // localhost でも Service Worker を登録（開発時の PWA テスト用）
+  if (document.readyState === 'complete') {
+    register();
+    return;
+  }
+
+  window.addEventListener('load', register, { once: true });
 };
