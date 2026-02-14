@@ -84,6 +84,7 @@ const CustomDrawerContent = (props) => {
    * 項目番号に対応する表示名を定義
    */
   const ITEM_LABELS = {
+    3: 'チケット配布率',
     11: '当日部員',
   };
 
