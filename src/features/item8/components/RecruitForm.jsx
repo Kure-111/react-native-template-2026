@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, TextInput, StyleSheet, Button, ScrollView, Pressable } from 'react-native';
 import { OPTIONAL_FIELD_DEFAULTS } from '../constants.js';
+import { useTheme } from '../../../shared/hooks/useTheme';
 
 const TITLE_SEPARATOR = '\n\n---\n\n';
 const IMMEDIATE_TIME_LABEL = '現在時刻';
@@ -24,12 +25,22 @@ const emptyForm = {
   department_id: '',
 };
 
+const withAlpha = (hexColor, alpha) => {
+  if (typeof hexColor === 'string' && /^#[0-9A-Fa-f]{6}$/.test(hexColor)) {
+    return `${hexColor}${alpha}`;
+  }
+  return hexColor;
+};
+
 export const RecruitForm = ({
   initialValues = {},
   submitLabel = '作成',
   onSubmit,
   disabled = false,
 }) => {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const [form, setForm] = useState({ ...emptyForm, ...initialValues });
   const [errors, setErrors] = useState({});
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -37,7 +48,7 @@ export const RecruitForm = ({
   const [startHour, setStartHour] = useState('');
   const [startMinute, setStartMinute] = useState('');
   const [isImmediateTime, setIsImmediateTime] = useState(false);
-  const [lateJoin, setLateJoin] = useState(LATE_JOIN_DENY);
+  const [lateJoin, setLateJoin] = useState(LATE_JOIN_ALLOW);
   const [durationMinutes, setDurationMinutes] = useState('未定');
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [timeLayout, setTimeLayout] = useState(null);
@@ -62,7 +73,7 @@ export const RecruitForm = ({
   useEffect(() => {
     const parseTitleAndDescription = (value) => {
       if (!value || typeof value !== 'string') {
-        return { title: '', description: '', lateJoin: LATE_JOIN_DENY };
+        return { title: '', description: '', lateJoin: LATE_JOIN_ALLOW };
       }
       const metaIdx = value.indexOf(META_SEPARATOR);
       const plain = metaIdx === -1 ? value : value.slice(0, metaIdx);
@@ -194,7 +205,7 @@ export const RecruitForm = ({
         value={form[key]}
         onChangeText={(text) => updateField(key, text)}
         editable={!disabled}
-        placeholderTextColor={props.placeholderTextColor || '#999'}
+        placeholderTextColor={props.placeholderTextColor || theme.textSecondary}
         {...props}
       />
       {errors[key] ? <Text style={styles.error}>{errors[key]}</Text> : null}
@@ -224,7 +235,7 @@ export const RecruitForm = ({
             setDatePickerOpen((v) => !v);
           }}
           disabled={disabled}
-          color={selected ? undefined : '#666'}
+          color={selected ? theme.primary : theme.textSecondary}
         />
         {errors.work_date ? <Text style={styles.error}>{errors.work_date}</Text> : null}
       </View>
@@ -281,6 +292,7 @@ export const RecruitForm = ({
               setDatePickerOpen(false);
               setTimePickerOpen((v) => !v);
             }}
+            color={theme.primary}
           />
           {errors.work_time ? <Text style={styles.error}>{errors.work_time}</Text> : null}
         </View>
@@ -294,7 +306,7 @@ export const RecruitForm = ({
               setDurationMinutes(onlyNumber || '未定');
             }}
             placeholder="未定"
-            placeholderTextColor="#999"
+            placeholderTextColor={theme.textSecondary}
             keyboardType="numeric"
             editable={!disabled}
           />
@@ -352,7 +364,7 @@ export const RecruitForm = ({
 
       {/* 行5: 業務内容 */}
       {renderInput('業務内容', 'description', { multiline: true, inputStyle: styles.textarea })}
-      <Button title={submitLabel} onPress={handleSubmit} disabled={disabled} />
+      <Button title={submitLabel} onPress={handleSubmit} disabled={disabled} color={theme.primary} />
       {datePickerOpen && (
         <>
           <Pressable style={styles.portalOverlay} onPress={() => setDatePickerOpen(false)} />
@@ -443,201 +455,183 @@ export const RecruitForm = ({
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    padding: 12,
-    gap: 8,
-    position: 'relative',
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  field: {
-    marginBottom: 8,
-    position: 'relative',
-  },
-  label: {
-    fontSize: 13,
-    color: '#444',
-    marginBottom: 4,
-  },
-  fieldRaised: {
-    zIndex: 2000,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 6,
-    padding: 8,
-  },
-  error: {
-    color: '#d00',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  half: {
-    flex: 1,
-  },
-  third: {
-    flex: 1,
-  },
-  twoThird: {
-    flex: 2,
-  },
-  inputMultiline: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  textarea: {
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
-  dropdown: {
-  },
-  dropdownItem: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    fontSize: 14,
-    backgroundColor: '#fff',
-  },
-  smallPicker: {
-    flex: 1,
-    position: 'relative',
-  },
-  miniDropdown: {
-    position: 'absolute',
-    top: 36,
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 6,
-    zIndex: 3100,
-    maxHeight: 220,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 10,
-  },
-  timeDropdown: {
-    position: 'absolute',
-    minWidth: TIME_DROPDOWN_MIN_WIDTH,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    zIndex: 4200,
-    padding: 8,
-    gap: 8,
-    maxHeight: 260,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 5,
-    elevation: 14,
-    overflow: 'hidden',
-  },
-  timeGrid: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  timeQuickOption: {
-    width: '100%',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e6e6e6',
-    backgroundColor: '#fff',
-    marginBottom: 8,
-  },
-  timeQuickText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#222',
-  },
-  timeColumn: {
-    flex: 1,
-  },
-  timeHeader: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
-  },
-  timeScroll: {
-    borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 6,
-    maxHeight: 210,
-    backgroundColor: '#fff',
-  },
-  timeSelected: {
-    backgroundColor: '#e8f0ff',
-    fontWeight: '700',
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
-    minHeight: 40,
-  },
-  checkboxOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  radioOuter: {
-    width: 18,
-    height: 18,
-    borderWidth: 1,
-    borderColor: '#7a7a7a',
-    borderRadius: 999,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioOuterChecked: {
-    borderColor: '#3b82f6',
-  },
-  radioInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: '#3b82f6',
-  },
-  checkboxLabel: {
-    fontSize: 13,
-    color: '#333',
-  },
-  portalOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-    zIndex: 3900,
-  },
-  portalDropdown: {
-    position: 'absolute',
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 6,
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 5,
-    elevation: 12,
-    overflow: 'hidden',
-    zIndex: 4100,
-  },
-});
+const createStyles = (theme) =>
+  StyleSheet.create({
+    container: {
+      padding: 12,
+      gap: 8,
+      position: 'relative',
+    },
+    sectionTitle: {
+      fontSize: 16,
+      color: theme.text,
+      fontWeight: theme.fontWeight,
+      marginBottom: 4,
+    },
+    field: {
+      marginBottom: 8,
+      position: 'relative',
+    },
+    label: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      marginBottom: 4,
+    },
+    fieldRaised: {
+      zIndex: 2000,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: theme.borderRadius,
+      padding: 8,
+      color: theme.text,
+      backgroundColor: theme.background,
+    },
+    error: {
+      color: theme.error,
+      fontSize: 12,
+      marginTop: 2,
+    },
+    row: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    half: {
+      flex: 1,
+    },
+    third: {
+      flex: 1,
+    },
+    twoThird: {
+      flex: 2,
+    },
+    inputMultiline: {
+      minHeight: 80,
+      textAlignVertical: 'top',
+    },
+    textarea: {
+      minHeight: 100,
+      textAlignVertical: 'top',
+    },
+    dropdownItem: {
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+      fontSize: 14,
+      backgroundColor: theme.surface,
+      color: theme.text,
+    },
+    timeDropdown: {
+      position: 'absolute',
+      minWidth: TIME_DROPDOWN_MIN_WIDTH,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: theme.borderRadius,
+      zIndex: 4200,
+      padding: 8,
+      gap: 8,
+      maxHeight: 260,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 5,
+      elevation: 14,
+      overflow: 'hidden',
+    },
+    timeGrid: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    timeQuickOption: {
+      width: '100%',
+      paddingVertical: 10,
+      paddingHorizontal: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+      backgroundColor: theme.surface,
+      marginBottom: 8,
+    },
+    timeQuickText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: theme.text,
+    },
+    timeColumn: {
+      flex: 1,
+    },
+    timeHeader: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      marginBottom: 4,
+    },
+    timeScroll: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: theme.borderRadius,
+      maxHeight: 210,
+      backgroundColor: theme.surface,
+    },
+    timeSelected: {
+      backgroundColor: withAlpha(theme.primary, '22'),
+      color: theme.primary,
+      fontWeight: '700',
+    },
+    checkboxRow: {
+      flexDirection: 'row',
+      gap: 12,
+      alignItems: 'center',
+      minHeight: 40,
+    },
+    checkboxOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    radioOuter: {
+      width: 18,
+      height: 18,
+      borderWidth: 1,
+      borderColor: theme.textSecondary,
+      borderRadius: 999,
+      backgroundColor: theme.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    radioOuterChecked: {
+      borderColor: theme.primary,
+    },
+    radioInner: {
+      width: 10,
+      height: 10,
+      borderRadius: 999,
+      backgroundColor: theme.primary,
+    },
+    checkboxLabel: {
+      fontSize: 13,
+      color: theme.text,
+    },
+    portalOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: withAlpha('#000000', '40'),
+      zIndex: 3900,
+    },
+    portalDropdown: {
+      position: 'absolute',
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: theme.borderRadius,
+      backgroundColor: theme.surface,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 5,
+      elevation: 12,
+      overflow: 'hidden',
+      zIndex: 4100,
+    },
+  });
 
 export default RecruitForm;

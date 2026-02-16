@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, Button } from 'react-native';
 import { OPTIONAL_FIELD_DEFAULTS, RINJI_STATUS } from '../constants.js';
+import { useTheme } from '../../../shared/hooks/useTheme';
 
 const TITLE_SEPARATOR = '\n\n---\n\n';
 const WORK_TIME_SEPARATOR = '〜';
@@ -9,6 +10,42 @@ const LEGACY_IMMEDIATE_TIME_LABEL = 'いますぐ';
 const META_SEPARATOR = '\n\n::META::\n\n';
 const LATE_JOIN_ALLOW = 'allow';
 const LATE_JOIN_DENY = 'deny';
+const STATUS_LABELS = {
+  [RINJI_STATUS.OPEN]: '募集中',
+  [RINJI_STATUS.CLOSED]: '受付終了',
+};
+
+const withAlpha = (hexColor, alpha) => {
+  if (typeof hexColor === 'string' && /^#[0-9A-Fa-f]{6}$/.test(hexColor)) {
+    return `${hexColor}${alpha}`;
+  }
+  return hexColor;
+};
+
+const brightenHex = (hexColor, ratio = 0.08) => {
+  if (typeof hexColor !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(hexColor)) {
+    return hexColor;
+  }
+  const value = hexColor.slice(1);
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  const lift = (v) => Math.min(255, Math.round(v + (255 - v) * ratio));
+  const toHex = (v) => v.toString(16).padStart(2, '0');
+  return `#${toHex(lift(r))}${toHex(lift(g))}${toHex(lift(b))}`;
+};
+
+const getCardBackgroundColor = (theme, themeMode) => {
+  if (themeMode === 'light') {
+    // light は元の surface をそのまま使う（デフォルト色）
+    return theme.surface;
+  }
+  if (themeMode === 'joshi') {
+    // joshi は少し白っぽさを強める
+    return brightenHex(theme.surface, 0.22);
+  }
+  return brightenHex(theme.surface, 0.08);
+};
 
 const inferStartTime = (workTime) => {
   if (!workTime || typeof workTime !== 'string') return null;
@@ -48,7 +85,9 @@ const parseTitleAndDescription = (raw) => {
   };
 };
 
-const InfoRow = ({ items, size = 'half' }) => (
+const getStatusLabel = (status) => STATUS_LABELS[status] || status;
+
+const InfoRow = ({ items, size = 'half', theme }) => (
   <View style={styles.row}>
     {items.map((item) => (
       <View
@@ -56,10 +95,15 @@ const InfoRow = ({ items, size = 'half' }) => (
         style={[
           size === 'third' ? styles.third : styles.half,
           styles.infoBox,
+          {
+            borderColor: theme.border,
+            backgroundColor: theme.background,
+            borderRadius: theme.borderRadius,
+          },
         ]}
       >
-        <Text style={styles.label}>{item.label}</Text>
-        <Text style={styles.value}>{item.value || '—'}</Text>
+        <Text style={[styles.label, { color: theme.textSecondary }]}>{item.label}</Text>
+        <Text style={[styles.value, { color: theme.text }]}>{item.value || '—'}</Text>
       </View>
     ))}
   </View>
@@ -72,21 +116,52 @@ const RecruitCard = ({
   onEdit,
   onClose,
   onReopen,
+  theme,
+  showStatus = false,
+  themeMode,
 }) => {
   const optional = formatOptional(recruit);
   const text = parseTitleAndDescription(recruit.description);
+
   return (
-    <View style={styles.card}>
+    <View
+      style={[
+        styles.card,
+        {
+          borderColor: theme.border,
+          backgroundColor: getCardBackgroundColor(theme, themeMode),
+          borderRadius: theme.borderRadius,
+        },
+      ]}
+    >
       <View style={styles.titleRow}>
-        <Text style={styles.title}>{text.title}</Text>
+        <Text style={[styles.title, { color: theme.text, fontWeight: theme.fontWeight }]}>{text.title}</Text>
         {text.lateJoin === LATE_JOIN_ALLOW ? (
-          <View style={styles.lateJoinBadge}>
-            <Text style={styles.lateJoinBadgeText}>途中参加可</Text>
+          <View
+            style={[
+              styles.lateJoinBadge,
+              {
+                backgroundColor: withAlpha(theme.success, '22'),
+                borderColor: theme.success,
+                borderRadius: theme.borderRadius,
+              },
+            ]}
+          >
+            <Text style={[styles.lateJoinBadgeText, { color: theme.success }]}>途中参加可</Text>
           </View>
         ) : null}
         {text.lateJoin === LATE_JOIN_DENY ? (
-          <View style={styles.lateJoinBadgeDeny}>
-            <Text style={styles.lateJoinBadgeDenyText}>途中参加不可</Text>
+          <View
+            style={[
+              styles.lateJoinBadgeDeny,
+              {
+                backgroundColor: withAlpha(theme.primary, '22'),
+                borderColor: theme.primary,
+                borderRadius: theme.borderRadius,
+              },
+            ]}
+          >
+            <Text style={[styles.lateJoinBadgeDenyText, { color: theme.primary }]}>途中参加不可</Text>
           </View>
         ) : null}
       </View>
@@ -94,6 +169,7 @@ const RecruitCard = ({
       {/* 行1: 募集人数 / 場所 / 集合場所 */}
       <InfoRow
         size="third"
+        theme={theme}
         items={[
           { label: '募集人数', value: recruit.headcount },
           { label: '場所', value: recruit.location },
@@ -104,6 +180,7 @@ const RecruitCard = ({
       {/* 行2: 募集日 / 募集時間帯 / 集合時間 */}
       <InfoRow
         size="third"
+        theme={theme}
         items={[
           { label: '募集日', value: recruit.work_date },
           { label: '募集時間帯', value: recruit.work_time },
@@ -113,6 +190,7 @@ const RecruitCard = ({
 
       {/* 報酬 + 持ち物 */}
       <InfoRow
+        theme={theme}
         items={[
           { label: '報酬', value: recruit.reward },
           { label: '持ち物', value: optional.belongings },
@@ -121,25 +199,30 @@ const RecruitCard = ({
 
       {/* 業務内容 */}
       <View style={styles.rowColumn}>
-        <Text style={styles.label}>業務内容</Text>
-        <Text style={styles.value}>{text.body || '—'}</Text>
+        <Text style={[styles.label, { color: theme.textSecondary }]}>業務内容</Text>
+        <Text style={[styles.value, { color: theme.text }]}>{text.body || '—'}</Text>
       </View>
 
-      <Text style={styles.status}>ステータス: {recruit.status}</Text>
+      {showStatus ? (
+        <Text style={[styles.status, { color: theme.textSecondary }]}>
+          ステータス: {getStatusLabel(recruit.status)}
+        </Text>
+      ) : null}
 
       <View style={styles.actions}>
         {isManager ? (
           <>
-            <Button title="編集" onPress={() => onEdit?.(recruit)} />
+            <Button title="編集" color={theme.primary} onPress={() => onEdit?.(recruit)} />
             {recruit.status === RINJI_STATUS.OPEN ? (
-              <Button title="クローズ" onPress={() => onClose?.(recruit.id)} />
+              <Button title="クローズ" color={theme.error} onPress={() => onClose?.(recruit.id)} />
             ) : (
-              <Button title="再開" onPress={() => onReopen?.(recruit.id)} />
+              <Button title="再開" color={theme.success} onPress={() => onReopen?.(recruit.id)} />
             )}
           </>
         ) : (
           <Button
             title="応募する"
+            color={theme.primary}
             onPress={() => onApply?.(recruit.id)}
             disabled={recruit.status !== RINJI_STATUS.OPEN}
           />
@@ -159,14 +242,17 @@ export const RecruitList = ({
   refreshing = false,
   onRefresh,
   emptyText = '募集がありません',
+  showStatus = false,
 }) => {
+  const { theme, themeMode } = useTheme();
+
   return (
     <FlatList
       data={data}
       keyExtractor={(item) => item.id}
       refreshing={refreshing}
       onRefresh={onRefresh}
-      ListEmptyComponent={<Text style={styles.empty}>{emptyText}</Text>}
+      ListEmptyComponent={<Text style={[styles.empty, { color: theme.textSecondary }]}>{emptyText}</Text>}
       renderItem={({ item }) => (
         <RecruitCard
           recruit={item}
@@ -175,6 +261,9 @@ export const RecruitList = ({
           onEdit={onEdit}
           onClose={onClose}
           onReopen={onReopen}
+          theme={theme}
+          showStatus={showStatus}
+          themeMode={themeMode}
         />
       )}
     />
@@ -184,16 +273,12 @@ export const RecruitList = ({
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
     padding: 12,
     marginBottom: 10,
-    backgroundColor: '#fff',
     gap: 8,
   },
   title: {
     fontSize: 16,
-    fontWeight: '700',
     flexShrink: 1,
   },
   titleRow: {
@@ -203,39 +288,29 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   lateJoinBadge: {
-    backgroundColor: '#fde68a',
-    borderColor: '#f59e0b',
     borderWidth: 1,
-    borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   lateJoinBadgeText: {
     fontSize: 12,
-    color: '#7c2d12',
     fontWeight: '700',
   },
   lateJoinBadgeDeny: {
-    backgroundColor: '#bfdbfe',
-    borderColor: '#2563eb',
     borderWidth: 1,
-    borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   lateJoinBadgeDenyText: {
     fontSize: 12,
-    color: '#1e3a8a',
     fontWeight: '700',
   },
   label: {
     fontSize: 12,
-    color: '#666',
     marginBottom: 2,
   },
   value: {
     fontSize: 14,
-    color: '#222',
   },
   row: {
     flexDirection: 'row',
@@ -253,14 +328,10 @@ const styles = StyleSheet.create({
   status: {
     marginTop: 4,
     fontSize: 12,
-    color: '#555',
   },
   infoBox: {
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 6,
     padding: 8,
-    backgroundColor: '#fafafa',
   },
   actions: {
     marginTop: 4,
@@ -270,7 +341,6 @@ const styles = StyleSheet.create({
   empty: {
     textAlign: 'center',
     padding: 20,
-    color: '#666',
   },
 });
 
