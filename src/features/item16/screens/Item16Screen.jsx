@@ -62,7 +62,10 @@ const STATUS_LABELS = {
 };
 
 const ALL_BUILDINGS_VALUE = 'all';
+const EVENT_QUICK_PICK_LIMIT = 30;
 const MAX_ATTACHMENT_FILE_SIZE_MB = Math.floor(MAX_ATTACHMENT_FILE_BYTES / 1024 / 1024);
+const REQUESTED_AT_TIME_PATTERN = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+const REQUESTED_AT_DATE_TIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})\s+([01]\d|2[0-3]):([0-5]\d)$/;
 const FAQ_HINTS_BY_QUESTION_TYPE = {
   rule_change: [
     '案内資料との差分（何を、どの時間帯で変えるか）を先に整理すると回答が早くなります。',
@@ -82,6 +85,82 @@ const FAQ_HINTS_BY_QUESTION_TYPE = {
   ],
 };
 const normalizeText = (value) => (value || '').trim();
+const normalizeRequestedAtInput = (value) =>
+  normalizeText(value).replace(/：/g, ':').replace(/\s+/g, ' ');
+
+/**
+ * 日付文字列の妥当性を確認
+ * @param {number} year - 年
+ * @param {number} month - 月
+ * @param {number} day - 日
+ * @returns {boolean} 妥当性
+ */
+const isValidCalendarDate = (year, month, day) => {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return false;
+  }
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return false;
+  }
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+};
+
+/**
+ * 鍵希望時刻を検証
+ * 受理形式:
+ * - HH:mm
+ * - YYYY-MM-DD HH:mm
+ * @param {string} value - 入力値
+ * @returns {{isValid: boolean, normalizedValue: string, message: string}}
+ */
+const validateKeyRequestedAtInput = (value) => {
+  const normalized = normalizeRequestedAtInput(value);
+  if (!normalized) {
+    return {
+      isValid: false,
+      normalizedValue: '',
+      message: '希望時刻を入力してください。',
+    };
+  }
+
+  if (REQUESTED_AT_TIME_PATTERN.test(normalized)) {
+    return {
+      isValid: true,
+      normalizedValue: normalized,
+      message: '',
+    };
+  }
+
+  const dateTimeMatch = REQUESTED_AT_DATE_TIME_PATTERN.exec(normalized);
+  if (dateTimeMatch) {
+    const year = Number(dateTimeMatch[1]);
+    const month = Number(dateTimeMatch[2]);
+    const day = Number(dateTimeMatch[3]);
+    if (!isValidCalendarDate(year, month, day)) {
+      return {
+        isValid: false,
+        normalizedValue: normalized,
+        message: '希望時刻の日付が正しくありません。',
+      };
+    }
+    return {
+      isValid: true,
+      normalizedValue: `${dateTimeMatch[1]}-${dateTimeMatch[2]}-${dateTimeMatch[3]} ${dateTimeMatch[4]}:${dateTimeMatch[5]}`,
+      message: '',
+    };
+  }
+
+  return {
+    isValid: false,
+    normalizedValue: normalized,
+    message: '希望時刻は「HH:mm」または「YYYY-MM-DD HH:mm」で入力してください。',
+  };
+};
 
 /**
  * ファイルサイズを表示文字列へ変換
@@ -118,6 +197,7 @@ const Item16Screen = ({ navigation }) => {
   // 共通入力（ローカル保存対象）
   const [selectedEventId, setSelectedEventId] = useState('');
   const [eventOptions, setEventOptions] = useState([]);
+  const [eventSearchText, setEventSearchText] = useState('');
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [eventName, setEventName] = useState('');
   const [eventLocation, setEventLocation] = useState('');
@@ -585,6 +665,40 @@ const Item16Screen = ({ navigation }) => {
   }, [questionType]);
 
   /**
+   * 検索語に応じた企画候補
+   * 未検索時は先頭候補を表示し、候補が多い場合は検索を促す。
+   */
+  const filteredEventOptions = useMemo(() => {
+    const keyword = normalizeText(eventSearchText).toLowerCase();
+    if (!keyword) {
+      if (eventOptions.length <= EVENT_QUICK_PICK_LIMIT) {
+        return eventOptions;
+      }
+      const quickPick = eventOptions.slice(0, EVENT_QUICK_PICK_LIMIT);
+      if (!selectedEventId || quickPick.some((event) => event.id === selectedEventId)) {
+        return quickPick;
+      }
+      const selectedEvent = eventOptions.find((event) => event.id === selectedEventId);
+      if (!selectedEvent) {
+        return quickPick;
+      }
+      return [selectedEvent, ...quickPick.slice(0, EVENT_QUICK_PICK_LIMIT - 1)];
+    }
+
+    return eventOptions.filter((event) => {
+      const source = `${normalizeText(event.name)} ${normalizeText(event.location)}`.toLowerCase();
+      return source.includes(keyword);
+    });
+  }, [eventOptions, eventSearchText, selectedEventId]);
+
+  const hiddenEventCount = useMemo(() => {
+    if (normalizeText(eventSearchText)) {
+      return 0;
+    }
+    return Math.max(eventOptions.length - filteredEventOptions.length, 0);
+  }, [eventOptions.length, filteredEventOptions.length, eventSearchText]);
+
+  /**
    * 棟プルダウン選択に応じた鍵候補
    */
   const filteredKeyCatalog = useMemo(() => {
@@ -719,6 +833,18 @@ const Item16Screen = ({ navigation }) => {
     if (!validateCommonFields()) {
       return;
     }
+    let normalizedKeyRequestedAt = keyRequestedAt;
+    if (activeTab === SUPPORT_TAB_TYPES.KEY_PREAPPLY) {
+      const validation = validateKeyRequestedAtInput(keyRequestedAt);
+      if (!validation.isValid) {
+        showMessage('入力エラー', validation.message);
+        return;
+      }
+      normalizedKeyRequestedAt = validation.normalizedValue;
+      if (normalizedKeyRequestedAt !== keyRequestedAt) {
+        setKeyRequestedAt(normalizedKeyRequestedAt);
+      }
+    }
     if (attachmentFile && attachmentFile.size > MAX_ATTACHMENT_FILE_BYTES) {
       showMessage(
         '容量超過',
@@ -747,7 +873,7 @@ const Item16Screen = ({ navigation }) => {
       payload = {
         type: activeTab,
         keyTargets: selectedKeyItems,
-        requestedAt: keyRequestedAt,
+        requestedAt: normalizedKeyRequestedAt,
         reason: keyReason,
       };
     } else if (activeTab === SUPPORT_TAB_TYPES.EVENT_STATUS) {
@@ -812,7 +938,7 @@ const Item16Screen = ({ navigation }) => {
         result = await exhibitorSupportService.createKeyPreapply({
           ...commonPayload,
           keyTargets: selectedKeyItems,
-          requestedAt: keyRequestedAt,
+          requestedAt: normalizedKeyRequestedAt,
           reason: keyReason,
         });
       } else if (activeTab === SUPPORT_TAB_TYPES.EVENT_STATUS) {
@@ -1095,7 +1221,13 @@ const Item16Screen = ({ navigation }) => {
           <TextInput
             value={keyRequestedAt}
             onChangeText={setKeyRequestedAt}
-            placeholder="例）10:30"
+            onBlur={() => {
+              const normalized = normalizeRequestedAtInput(keyRequestedAt);
+              if (normalized !== keyRequestedAt) {
+                setKeyRequestedAt(normalized);
+              }
+            }}
+            placeholder="例）10:30 または 2026-02-16 10:30"
             placeholderTextColor={theme.textSecondary}
             style={[
               styles.input,
@@ -1106,6 +1238,9 @@ const Item16Screen = ({ navigation }) => {
               },
             ]}
           />
+          <Text style={[styles.questionTargetHint, { color: theme.textSecondary }]}>
+            入力形式: HH:mm または YYYY-MM-DD HH:mm
+          </Text>
 
           <Text style={[styles.label, { color: theme.text }]}>理由</Text>
           <TextInput
@@ -1181,13 +1316,31 @@ const Item16Screen = ({ navigation }) => {
             </Text>
 
             <Text style={[styles.label, { color: theme.text }]}>対象企画</Text>
+            <TextInput
+              value={eventSearchText}
+              onChangeText={setEventSearchText}
+              placeholder="企画名・場所で検索"
+              placeholderTextColor={theme.textSecondary}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.background,
+                  borderColor: theme.border,
+                  color: theme.text,
+                },
+              ]}
+            />
             {eventOptions.length === 0 ? (
               <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
                 企画が未登録です。先に企画マスタを登録してください。
               </Text>
+            ) : filteredEventOptions.length === 0 ? (
+              <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
+                検索条件に一致する企画がありません。キーワードを変更してください。
+              </Text>
             ) : (
               <View style={styles.optionGroup}>
-                {eventOptions.slice(0, 12).map((event) => {
+                {filteredEventOptions.map((event) => {
                   const isActive = event.id === selectedEventId;
                   return (
                     <Pressable
@@ -1222,6 +1375,11 @@ const Item16Screen = ({ navigation }) => {
                 })}
               </View>
             )}
+            {hiddenEventCount > 0 ? (
+              <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
+                候補が多いため先頭{filteredEventOptions.length}件のみ表示中です。検索で絞り込んでください。
+              </Text>
+            ) : null}
 
             <Text style={[styles.label, { color: theme.text }]}>企画名</Text>
             <TextInput

@@ -59,7 +59,8 @@ const normalizeText = (value) => (value || '').trim();
  */
 const applyRoleFilter = (query, roleType) => {
   if (roleType === SUPPORT_DESK_ROLE_TYPES.HQ) {
-    return query.in('notify_target', ['hq', 'none']);
+    // 仕様書どおり、本部は全連絡案件を横断して扱える前提にする。
+    return query;
   }
   if (roleType === SUPPORT_DESK_ROLE_TYPES.ACCOUNTING) {
     return query.eq('notify_target', 'accounting');

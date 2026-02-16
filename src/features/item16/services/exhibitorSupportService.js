@@ -62,6 +62,70 @@ const QUESTION_TYPE_CONFIG = {
  * @returns {string} トリム済み文字列
  */
 const normalizeText = (value) => (value || '').trim();
+const TIME_ONLY_PATTERN = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+const DATE_TIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})\s+([01]\d|2[0-3]):([0-5]\d)$/;
+
+/**
+ * 鍵希望時刻テキストを正規化
+ * @param {string} value - 入力値
+ * @returns {string} 正規化済み文字列
+ */
+const normalizeRequestedAtText = (value) => normalizeText(value).replace(/：/g, ':').replace(/\s+/g, ' ');
+
+/**
+ * 日付文字列の妥当性を確認
+ * @param {number} year - 年
+ * @param {number} month - 月
+ * @param {number} day - 日
+ * @returns {boolean} 妥当性
+ */
+const isValidCalendarDate = (year, month, day) => {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return false;
+  }
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return false;
+  }
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+};
+
+/**
+ * 鍵希望時刻をバリデーション
+ * 受理形式:
+ * - HH:mm
+ * - YYYY-MM-DD HH:mm
+ * @param {string} value - 入力値
+ * @returns {string} 正規化済み希望時刻
+ * @throws {Error} 入力形式エラー
+ */
+const validateRequestedAtText = (value) => {
+  const normalized = normalizeRequestedAtText(value);
+  if (!normalized) {
+    throw new Error('希望時刻を入力してください');
+  }
+
+  if (TIME_ONLY_PATTERN.test(normalized)) {
+    return normalized;
+  }
+
+  const dateTimeMatch = DATE_TIME_PATTERN.exec(normalized);
+  if (dateTimeMatch) {
+    const year = Number(dateTimeMatch[1]);
+    const month = Number(dateTimeMatch[2]);
+    const day = Number(dateTimeMatch[3]);
+    if (!isValidCalendarDate(year, month, day)) {
+      throw new Error('希望時刻の日付が正しくありません');
+    }
+    return `${dateTimeMatch[1]}-${dateTimeMatch[2]}-${dateTimeMatch[3]} ${dateTimeMatch[4]}:${dateTimeMatch[5]}`;
+  }
+
+  throw new Error('希望時刻は「HH:mm」または「YYYY-MM-DD HH:mm」で入力してください');
+};
 
 /**
  * 警告文を結果へ付与
@@ -401,14 +465,11 @@ const createKeyPreapply = async (input) => {
       }
     }
 
-    const requestedAt = normalizeText(input.requestedAt);
+    const requestedAt = validateRequestedAtText(input.requestedAt);
     const reason = normalizeText(input.reason);
 
     if (keyTargets.length === 0) {
       throw new Error('対象の鍵を選択してください');
-    }
-    if (!requestedAt) {
-      throw new Error('希望時刻を入力してください');
     }
     if (!reason) {
       throw new Error('理由を入力してください');
