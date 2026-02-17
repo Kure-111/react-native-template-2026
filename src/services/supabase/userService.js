@@ -130,3 +130,21 @@ export const updateUserProfile = async (userId, updates) => {
     return { profile: null, error };
   }
 };
+
+/**
+ * 企画者サポートの企画情報をプロフィールへ保存
+ * @param {String} userId - ユーザーID
+ * @param {Object} input - 企画情報
+ * @param {String|null|undefined} input.eventName - 企画名
+ * @param {String|null|undefined} input.eventLocation - 企画場所
+ * @returns {Promise<Object>} 更新結果（profile, error）
+ */
+export const updateExhibitorEventProfile = async (userId, { eventName, eventLocation }) => {
+  const normalizedEventName = (eventName || '').trim() || null;
+  const normalizedEventLocation = (eventLocation || '').trim() || null;
+
+  return updateUserProfile(userId, {
+    exhibitor_event_name: normalizedEventName,
+    exhibitor_event_location: normalizedEventLocation,
+  });
+};

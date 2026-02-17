@@ -290,12 +290,8 @@ const applyAttachmentAndNotify = async (result, input) => {
 const validateCommonInput = (input) => {
   const eventName = normalizeText(input.eventName);
   const eventLocation = normalizeText(input.eventLocation);
-  const eventId = normalizeText(input.eventId);
   const createdBy = normalizeText(input.createdBy);
 
-  if (!eventId) {
-    throw new Error('対象企画を選択してください');
-  }
   if (!eventName) {
     throw new Error('企画名が未入力です');
   }
@@ -360,7 +356,7 @@ const createQuestionContact = async (input) => {
       priority: 'normal',
       title: config.title,
       description: detail,
-      event_id: normalizeText(input.eventId),
+      event_id: normalizeText(input.eventId) || null,
       event_name: normalizeText(input.eventName),
       event_location: normalizeText(input.eventLocation),
       created_by: normalizeText(input.createdBy),
@@ -400,7 +396,7 @@ const createEmergencyContact = async (input) => {
       priority,
       title: '緊急呼び出し',
       description: detail,
-      event_id: normalizeText(input.eventId),
+      event_id: normalizeText(input.eventId) || null,
       event_name: normalizeText(input.eventName),
       event_location: normalizeText(input.eventLocation),
       created_by: normalizeText(input.createdBy),
@@ -485,7 +481,7 @@ const createKeyPreapply = async (input) => {
       priority: 'normal',
       title: `鍵の事前申請: ${keySummaryForTitle}`,
       description,
-      event_id: normalizeText(input.eventId),
+      event_id: normalizeText(input.eventId) || null,
       event_name: normalizeText(input.eventName),
       event_location: normalizeText(input.eventLocation),
       created_by: normalizeText(input.createdBy),
@@ -552,7 +548,7 @@ const createEventStatusReport = async (input) => {
       priority: 'normal',
       title,
       description,
-      event_id: normalizeText(input.eventId),
+      event_id: normalizeText(input.eventId) || null,
       event_name: normalizeText(input.eventName),
       event_location: normalizeText(input.eventLocation),
       created_by: normalizeText(input.createdBy),

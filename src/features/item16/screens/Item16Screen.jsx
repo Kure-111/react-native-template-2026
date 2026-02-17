@@ -40,7 +40,7 @@ import {
 } from '../../../services/supabase/supportTicketService';
 import { KEY_BUILDINGS, KEY_CATALOG } from '../data/keyCatalog';
 import { ensureKeysSeededFromCatalog } from '../../../services/supabase/keyMasterService';
-import { listEvents } from '../../../services/supabase/eventService';
+import { updateExhibitorEventProfile } from '../../../services/supabase/userService';
 import {
   createAttachmentSignedUrl,
   createTicketAttachment,
@@ -57,9 +57,6 @@ import OfflineBanner from '../../../shared/components/OfflineBanner';
 
 /** 全棟選択値 */
 const ALL_BUILDINGS_VALUE = 'all';
-
-/** 企画候補の表示上限 */
-const EVENT_QUICK_PICK_LIMIT = 30;
 
 /** 添付ファイルサイズ上限（MB表示用） */
 const MAX_ATTACHMENT_FILE_SIZE_MB = Math.floor(MAX_ATTACHMENT_FILE_BYTES / 1024 / 1024);
@@ -179,6 +176,20 @@ const formatFileSize = (fileSizeBytes) => {
 };
 
 /**
+ * ユーザーごとのローカル保存キーを生成
+ * @param {string} baseKey - ベースキー
+ * @param {string|null|undefined} userId - ユーザーID
+ * @returns {string} ユーザー別キー
+ */
+const buildUserScopedStorageKey = (baseKey, userId) => {
+  const normalizedUserId = normalizeText(userId);
+  if (!normalizedUserId) {
+    return `${baseKey}_guest`;
+  }
+  return `${baseKey}_${normalizedUserId}`;
+};
+
+/**
  * 項目16画面コンポーネント
  * @param {Object} props - コンポーネントプロパティ
  * @param {Object} props.navigation - React Navigationのnavigationオブジェクト
@@ -192,10 +203,6 @@ const Item16Screen = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState(SUPPORT_TAB_TYPES.QUESTION);
 
   // 共通入力（ローカル保存対象）
-  const [selectedEventId, setSelectedEventId] = useState('');
-  const [eventOptions, setEventOptions] = useState([]);
-  const [eventSearchText, setEventSearchText] = useState('');
-  const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [eventName, setEventName] = useState('');
   const [eventLocation, setEventLocation] = useState('');
   const [isHydrated, setIsHydrated] = useState(false);
@@ -248,46 +255,6 @@ const Item16Screen = ({ navigation }) => {
       return;
     }
     Alert.alert(title, message);
-  };
-
-  /**
-   * 企画一覧を取得
-   * @returns {Promise<void>} 取得処理
-   */
-  const loadEvents = async () => {
-    setIsLoadingEvents(true);
-    const { data, error } = await listEvents({ limit: 120 });
-    setIsLoadingEvents(false);
-
-    if (error) {
-      console.error('企画一覧取得に失敗:', error);
-      return;
-    }
-
-    const nextEvents = (data || []).map((event) => ({
-      ...event,
-      key: event.id,
-      label: event.name,
-    }));
-    setEventOptions(nextEvents);
-
-    if (nextEvents.length === 0) {
-      setSelectedEventId('');
-      return;
-    }
-
-    if (selectedEventId && nextEvents.some((event) => event.id === selectedEventId)) {
-      return;
-    }
-
-    const matchedByStoredText = nextEvents.find(
-      (event) => event.name === eventName.trim() && event.location === eventLocation.trim()
-    );
-    const nextSelected = matchedByStoredText || nextEvents[0];
-
-    setSelectedEventId(nextSelected.id);
-    setEventName(nextSelected.name || '');
-    setEventLocation(nextSelected.location || '');
   };
 
   /**
@@ -546,25 +513,26 @@ const Item16Screen = ({ navigation }) => {
   };
 
   /**
-   * 企画情報をローカルストレージから復元
+   * 企画情報をユーザー単位で復元
+   * 優先順: user_profiles > ローカル保存
    */
   useEffect(() => {
     const loadEventInfo = async () => {
+      setIsHydrated(false);
+
+      const eventNameKey = buildUserScopedStorageKey(STORAGE_KEYS.EVENT_NAME, user?.id);
+      const eventLocationKey = buildUserScopedStorageKey(STORAGE_KEYS.EVENT_LOCATION, user?.id);
+
       try {
-        const values = await AsyncStorage.multiGet([
-          STORAGE_KEYS.EVENT_NAME,
-          STORAGE_KEYS.EVENT_LOCATION,
-        ]);
+        const values = await AsyncStorage.multiGet([eventNameKey, eventLocationKey]);
+        const storedEventName = normalizeText(values[0]?.[1]);
+        const storedEventLocation = normalizeText(values[1]?.[1]);
 
-        const eventNameValue = values[0]?.[1];
-        const eventLocationValue = values[1]?.[1];
+        const profileEventName = normalizeText(userInfo?.exhibitor_event_name);
+        const profileEventLocation = normalizeText(userInfo?.exhibitor_event_location);
 
-        if (eventNameValue) {
-          setEventName(eventNameValue);
-        }
-        if (eventLocationValue) {
-          setEventLocation(eventLocationValue);
-        }
+        setEventName(profileEventName || storedEventName);
+        setEventLocation(profileEventLocation || storedEventLocation);
       } catch (error) {
         console.error('企画情報の復元に失敗しました:', error);
       } finally {
@@ -573,7 +541,7 @@ const Item16Screen = ({ navigation }) => {
     };
 
     loadEventInfo();
-  }, []);
+  }, [user?.id, userInfo?.exhibitor_event_location, userInfo?.exhibitor_event_name]);
 
   /**
    * 鍵マスタが空の場合は初期カタログを投入
@@ -589,32 +557,21 @@ const Item16Screen = ({ navigation }) => {
   }, []);
 
   /**
-   * 企画マスタを読み込む
-   */
-  useEffect(() => {
-    loadEvents();
-  }, []);
-
-  useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-    loadEvents();
-  }, [isHydrated]);
-
-  /**
-   * 企画情報をローカルストレージに保存
+   * 企画情報をローカルストレージへ保存（ユーザー別）
    */
   useEffect(() => {
     if (!isHydrated) {
       return;
     }
+
+    const eventNameKey = buildUserScopedStorageKey(STORAGE_KEYS.EVENT_NAME, user?.id);
+    const eventLocationKey = buildUserScopedStorageKey(STORAGE_KEYS.EVENT_LOCATION, user?.id);
 
     const saveEventInfo = async () => {
       try {
         await AsyncStorage.multiSet([
-          [STORAGE_KEYS.EVENT_NAME, eventName],
-          [STORAGE_KEYS.EVENT_LOCATION, eventLocation],
+          [eventNameKey, eventName],
+          [eventLocationKey, eventLocation],
         ]);
       } catch (error) {
         console.error('企画情報の保存に失敗しました:', error);
@@ -622,7 +579,51 @@ const Item16Screen = ({ navigation }) => {
     };
 
     saveEventInfo();
-  }, [eventLocation, eventName, isHydrated]);
+  }, [eventLocation, eventName, isHydrated, user?.id]);
+
+  /**
+   * 企画情報をユーザープロフィールへ保存（ユーザー紐付け）
+   */
+  useEffect(() => {
+    if (!isHydrated || !user?.id) {
+      return undefined;
+    }
+
+    const hasEventProfileColumns =
+      userInfo &&
+      Object.prototype.hasOwnProperty.call(userInfo, 'exhibitor_event_name') &&
+      Object.prototype.hasOwnProperty.call(userInfo, 'exhibitor_event_location');
+
+    if (!hasEventProfileColumns) {
+      return undefined;
+    }
+
+    const normalizedEventName = normalizeText(eventName);
+    const normalizedEventLocation = normalizeText(eventLocation);
+    const profileEventName = normalizeText(userInfo?.exhibitor_event_name);
+    const profileEventLocation = normalizeText(userInfo?.exhibitor_event_location);
+
+    if (
+      normalizedEventName === profileEventName &&
+      normalizedEventLocation === profileEventLocation
+    ) {
+      return undefined;
+    }
+
+    const timerId = setTimeout(async () => {
+      const { error } = await updateExhibitorEventProfile(user.id, {
+        eventName: normalizedEventName,
+        eventLocation: normalizedEventLocation,
+      });
+      if (error) {
+        console.warn('企画情報のプロフィール保存に失敗:', error);
+      }
+    }, 700);
+
+    return () => {
+      clearTimeout(timerId);
+    };
+  }, [eventLocation, eventName, isHydrated, user?.id, userInfo?.exhibitor_event_location, userInfo?.exhibitor_event_name]);
 
   /**
    * フォームテキストフィールドの下書きを復元する
@@ -678,21 +679,6 @@ const Item16Screen = ({ navigation }) => {
   }, [questionDetail, emergencyDetail, keyReason, eventMemo, isHydrated]);
 
   /**
-   * 選択企画が変わったら企画名/場所を同期
-   */
-  useEffect(() => {
-    if (!selectedEventId) {
-      return;
-    }
-    const selectedEvent = eventOptions.find((event) => event.id === selectedEventId);
-    if (!selectedEvent) {
-      return;
-    }
-    setEventName(selectedEvent.name || '');
-    setEventLocation(selectedEvent.location || '');
-  }, [eventOptions, selectedEventId]);
-
-  /**
    * ログインユーザーが変わったら履歴を再取得
    */
   useEffect(() => {
@@ -724,41 +710,6 @@ const Item16Screen = ({ navigation }) => {
   const selectedContact = useMemo(() => {
     return myContacts.find((contact) => contact.id === selectedContactId) || null;
   }, [myContacts, selectedContactId]);
-
-  /**
-   * 検索語に応じた企画候補
-   * 未検索時は先頭候補を表示し、候補が多い場合は検索を促す。
-   */
-  const filteredEventOptions = useMemo(() => {
-    const keyword = normalizeText(eventSearchText).toLowerCase();
-    if (!keyword) {
-      if (eventOptions.length <= EVENT_QUICK_PICK_LIMIT) {
-        return eventOptions;
-      }
-      const quickPick = eventOptions.slice(0, EVENT_QUICK_PICK_LIMIT);
-      if (!selectedEventId || quickPick.some((event) => event.id === selectedEventId)) {
-        return quickPick;
-      }
-      const selectedEvent = eventOptions.find((event) => event.id === selectedEventId);
-      if (!selectedEvent) {
-        return quickPick;
-      }
-      return [selectedEvent, ...quickPick.slice(0, EVENT_QUICK_PICK_LIMIT - 1)];
-    }
-
-    return eventOptions.filter((event) => {
-      const source = `${normalizeText(event.name)} ${normalizeText(event.location)}`.toLowerCase();
-      return source.includes(keyword);
-    });
-  }, [eventOptions, eventSearchText, selectedEventId]);
-
-  /** 非表示の企画数 */
-  const hiddenEventCount = useMemo(() => {
-    if (normalizeText(eventSearchText)) {
-      return 0;
-    }
-    return Math.max(eventOptions.length - filteredEventOptions.length, 0);
-  }, [eventOptions.length, filteredEventOptions.length, eventSearchText]);
 
   /**
    * 棟プルダウン選択に応じた鍵候補
@@ -819,10 +770,6 @@ const Item16Screen = ({ navigation }) => {
    * @returns {boolean} バリデーション結果
    */
   const validateCommonFields = () => {
-    if (!selectedEventId) {
-      showMessage('入力不足', '対象企画を選択してください。');
-      return false;
-    }
     if (!eventName.trim() || !eventLocation.trim()) {
       showMessage('入力不足', '「企画名」と「企画場所」は必須です。');
       return false;
@@ -917,25 +864,11 @@ const Item16Screen = ({ navigation }) => {
       return;
     }
 
-    /** 確認ダイアログを表示 */
-    const confirmMessage = `「${activeTabTitle}」の連絡案件を送信しますか？`;
-    if (Platform.OS === 'web') {
-      if (!window.confirm(confirmMessage)) {
-        return;
-      }
-    } else {
-      Alert.alert('確認', confirmMessage, [
-        { text: 'キャンセル', style: 'cancel' },
-        { text: '送信', onPress: () => executeSubmit(normalizedKeyRequestedAt) },
-      ]);
-      return;
-    }
-
     executeSubmit(normalizedKeyRequestedAt);
   };
 
   /**
-   * 送信実行処理（確認ダイアログ後に呼ばれる）
+   * 送信実行処理
    * @param {string} normalizedKeyRequestedAt - 正規化済み希望時刻
    * @returns {void}
    */
@@ -970,7 +903,7 @@ const Item16Screen = ({ navigation }) => {
     }
 
     const request = {
-      eventId: selectedEventId,
+      eventId: null,
       eventName,
       eventLocation,
       attachments: attachmentFile
@@ -1246,84 +1179,10 @@ const Item16Screen = ({ navigation }) => {
           <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <View style={styles.historyHeader}>
               <Text style={[styles.sectionTitle, styles.historyTitle, { color: theme.text }]}>企画情報</Text>
-              <TouchableOpacity
-                style={[styles.refreshButton, { borderColor: theme.border }]}
-                onPress={loadEvents}
-              >
-                <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>
-                  {isLoadingEvents ? '更新中...' : '企画更新'}
-                </Text>
-              </TouchableOpacity>
             </View>
             <Text style={[styles.questionTargetHint, { color: theme.textSecondary }]}>
-              `events`マスタから対象企画を選択してください（event_id必須）。
+              記述式で入力できます。入力内容はこのアカウントに自動保存され、次回ログイン時に復元されます。
             </Text>
-
-            <Text style={[styles.label, { color: theme.text }]}>対象企画</Text>
-            <TextInput
-              value={eventSearchText}
-              onChangeText={setEventSearchText}
-              placeholder="企画名・場所で検索"
-              placeholderTextColor={theme.textSecondary}
-              style={[
-                styles.input,
-                {
-                  backgroundColor: theme.background,
-                  borderColor: theme.border,
-                  color: theme.text,
-                },
-              ]}
-            />
-            {eventOptions.length === 0 ? (
-              <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
-                企画が未登録です。先に企画マスタを登録してください。
-              </Text>
-            ) : filteredEventOptions.length === 0 ? (
-              <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
-                検索条件に一致する企画がありません。キーワードを変更してください。
-              </Text>
-            ) : (
-              <View style={styles.optionGroup}>
-                {filteredEventOptions.map((event) => {
-                  const isActive = event.id === selectedEventId;
-                  return (
-                    <Pressable
-                      key={event.id}
-                      style={[
-                        styles.optionButton,
-                        {
-                          borderColor: isActive ? theme.primary : theme.border,
-                          backgroundColor: isActive ? `${theme.primary}22` : theme.background,
-                        },
-                      ]}
-                      onPress={() => setSelectedEventId(event.id)}
-                    >
-                      <Text
-                        style={[
-                          styles.optionButtonText,
-                          { color: isActive ? theme.primary : theme.textSecondary },
-                        ]}
-                      >
-                        {event.name}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.optionButtonSubText,
-                          { color: isActive ? theme.primary : theme.textSecondary },
-                        ]}
-                      >
-                        {event.location || '場所未設定'}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
-            {hiddenEventCount > 0 ? (
-              <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
-                候補が多いため先頭{filteredEventOptions.length}件のみ表示中です。検索で絞り込んでください。
-              </Text>
-            ) : null}
 
             <Text style={[styles.label, { color: theme.text }]}>企画名</Text>
             <TextInput
@@ -1331,7 +1190,6 @@ const Item16Screen = ({ navigation }) => {
               onChangeText={setEventName}
               placeholder="企画名を入力"
               placeholderTextColor={theme.textSecondary}
-              editable={false}
               style={[
                 styles.input,
                 {
@@ -1348,7 +1206,6 @@ const Item16Screen = ({ navigation }) => {
               onChangeText={setEventLocation}
               placeholder="企画場所を入力"
               placeholderTextColor={theme.textSecondary}
-              editable={false}
               style={[
                 styles.input,
                 {
