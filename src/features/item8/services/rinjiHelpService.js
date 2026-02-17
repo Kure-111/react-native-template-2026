@@ -10,6 +10,12 @@ const supabase = getSupabaseClient();
 const IMMEDIATE_TIME_LABEL = '現在時刻';
 const LEGACY_IMMEDIATE_TIME_LABEL = 'いますぐ';
 
+/**
+ * 表示用の作業時間文字列から開始時刻を推定する。
+ *
+ * @param {string | null | undefined} workTime
+ * @returns {string | null}
+ */
 const inferStartTime = (workTime) => {
   if (!workTime || typeof workTime !== 'string') return null;
   if (
@@ -25,6 +31,12 @@ const inferStartTime = (workTime) => {
   return /^\d{2}:\d{2}$/.test(start) ? start : null;
 };
 
+/**
+ * 任意項目を既定値で補完して DB へ送る payload を正規化する。
+ *
+ * @param {Record<string, any>} payload
+ * @returns {Record<string, any>}
+ */
 const withOptionalDefaults = (payload = {}) => {
   const location = payload.location;
   const inferredMeetTime = inferStartTime(payload.work_time);
@@ -54,6 +66,12 @@ const withOptionalDefaults = (payload = {}) => {
   return normalized;
 };
 
+/**
+ * 募集一覧を取得する。
+ *
+ * @param {{ includeClosed?: boolean, filters?: { location?: string, department_id?: string } }} params
+ * @returns {Promise<{ data: any, error: any }>}
+ */
 export const fetchRecruits = async ({ includeClosed = false, filters = {} } = {}) => {
   let query = supabase.from('rinji_help_recruits').select('*').order('updated_at', { ascending: false });
 
@@ -73,6 +91,12 @@ export const fetchRecruits = async ({ includeClosed = false, filters = {} } = {}
   return { data, error };
 };
 
+/**
+ * 募集を新規作成する。
+ *
+ * @param {Record<string, any>} payload
+ * @returns {Promise<{ data: any, error: any }>}
+ */
 export const createRecruit = async (payload) => {
   const body = withOptionalDefaults(payload);
   const { data, error } = await supabase
@@ -83,6 +107,13 @@ export const createRecruit = async (payload) => {
   return { data, error };
 };
 
+/**
+ * 募集を更新する。
+ *
+ * @param {string} id
+ * @param {Record<string, any>} payload
+ * @returns {Promise<{ data: any, error: any }>}
+ */
 export const updateRecruit = async (id, payload) => {
   const body = withOptionalDefaults(payload);
   const { data, error } = await supabase
@@ -92,6 +123,12 @@ export const updateRecruit = async (id, payload) => {
   return { data, error };
 };
 
+/**
+ * 募集ステータスを closed に更新する。
+ *
+ * @param {string} id
+ * @returns {Promise<{ data: any, error: any }>}
+ */
 export const closeRecruit = async (id) => {
   const { data, error } = await supabase
     .from('rinji_help_recruits')
@@ -100,6 +137,12 @@ export const closeRecruit = async (id) => {
   return { data, error };
 };
 
+/**
+ * 募集ステータスを open に戻す。
+ *
+ * @param {string} id
+ * @returns {Promise<{ data: any, error: any }>}
+ */
 export const reopenRecruit = async (id) => {
   const { data, error } = await supabase
     .from('rinji_help_recruits')
@@ -108,6 +151,12 @@ export const reopenRecruit = async (id) => {
   return { data, error };
 };
 
+/**
+ * 指定募集への応募一覧を取得する。
+ *
+ * @param {string} recruitId
+ * @returns {Promise<{ data: any, error: any }>}
+ */
 export const fetchApplications = async (recruitId) => {
   const { data, error } = await supabase
     .from('rinji_help_applications')
@@ -117,6 +166,13 @@ export const fetchApplications = async (recruitId) => {
   return { data, error };
 };
 
+/**
+ * 募集へ応募する。
+ *
+ * @param {string} recruitId
+ * @param {string} applicantUserId
+ * @returns {Promise<{ data: any, error: any }>}
+ */
 export const applyRecruit = async (recruitId, applicantUserId) => {
   const { data, error } = await supabase
     .from('rinji_help_applications')

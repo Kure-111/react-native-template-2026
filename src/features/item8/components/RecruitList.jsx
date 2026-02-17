@@ -1,3 +1,7 @@
+/**
+ * 臨時ヘルプ募集の一覧表示コンポーネント。
+ * 募集カードの描画、管理者操作ボタン、ステータス表示を担当する。
+ */
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, Button } from 'react-native';
 import { OPTIONAL_FIELD_DEFAULTS, RINJI_STATUS } from '../constants.js';
@@ -15,6 +19,13 @@ const STATUS_LABELS = {
   [RINJI_STATUS.CLOSED]: '受付終了',
 };
 
+/**
+ * 16進カラーにアルファ値を付与する。
+ *
+ * @param {string} hexColor
+ * @param {string} alpha
+ * @returns {string}
+ */
 const withAlpha = (hexColor, alpha) => {
   if (typeof hexColor === 'string' && /^#[0-9A-Fa-f]{6}$/.test(hexColor)) {
     return `${hexColor}${alpha}`;
@@ -22,6 +33,13 @@ const withAlpha = (hexColor, alpha) => {
   return hexColor;
 };
 
+/**
+ * カラーを明るくする。
+ *
+ * @param {string} hexColor
+ * @param {number} ratio
+ * @returns {string}
+ */
 const brightenHex = (hexColor, ratio = 0.08) => {
   if (typeof hexColor !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(hexColor)) {
     return hexColor;
@@ -35,6 +53,13 @@ const brightenHex = (hexColor, ratio = 0.08) => {
   return `#${toHex(lift(r))}${toHex(lift(g))}${toHex(lift(b))}`;
 };
 
+/**
+ * テーマモードごとのカード背景色を決定する。
+ *
+ * @param {{surface: string}} theme
+ * @param {string} themeMode
+ * @returns {string}
+ */
 const getCardBackgroundColor = (theme, themeMode) => {
   if (themeMode === 'light') {
     // light は元の surface をそのまま使う（デフォルト色）
@@ -47,6 +72,12 @@ const getCardBackgroundColor = (theme, themeMode) => {
   return brightenHex(theme.surface, 0.08);
 };
 
+/**
+ * 作業時間文字列から開始時刻を推定する。
+ *
+ * @param {string | null | undefined} workTime
+ * @returns {string | null}
+ */
 const inferStartTime = (workTime) => {
   if (!workTime || typeof workTime !== 'string') return null;
   if (
@@ -62,12 +93,24 @@ const inferStartTime = (workTime) => {
   return /^\d{2}:\d{2}$/.test(start) ? start : null;
 };
 
+/**
+ * DB の任意項目を画面表示用に補完する。
+ *
+ * @param {Record<string, any>} recruit
+ * @returns {{meet_place: string, meet_time: string | null, belongings: string}}
+ */
 const formatOptional = (recruit) => ({
   meet_place: recruit.meet_place || OPTIONAL_FIELD_DEFAULTS.meet_place(recruit.location),
   meet_time: recruit.meet_time || inferStartTime(recruit.work_time) || null,
   belongings: recruit.belongings || OPTIONAL_FIELD_DEFAULTS.belongings,
 });
 
+/**
+ * description 文字列からタイトル・本文・途中参加可否メタデータを分解する。
+ *
+ * @param {string | null | undefined} raw
+ * @returns {{title: string, body: string, lateJoin: string | null}}
+ */
 const parseTitleAndDescription = (raw) => {
   if (!raw || typeof raw !== 'string') return { title: '募集', body: '', lateJoin: null };
   const metaIdx = raw.indexOf(META_SEPARATOR);
@@ -85,8 +128,24 @@ const parseTitleAndDescription = (raw) => {
   };
 };
 
+/**
+ * 内部ステータス値を表示用ラベルへ変換する。
+ *
+ * @param {string} status
+ * @returns {string}
+ */
 const getStatusLabel = (status) => STATUS_LABELS[status] || status;
 
+/**
+ * 募集カード内の情報行を描画する。
+ *
+ * @param {{
+ *   items: Array<{label: string, value: any}>,
+ *   size?: 'half' | 'third',
+ *   theme: Record<string, any>
+ * }} props
+ * @returns {JSX.Element}
+ */
 const InfoRow = ({ items, size = 'half', theme }) => (
   <View style={styles.row}>
     {items.map((item) => (
@@ -109,6 +168,12 @@ const InfoRow = ({ items, size = 'half', theme }) => (
   </View>
 );
 
+/**
+ * 募集1件分のカード UI。
+ *
+ * @param {Record<string, any>} props
+ * @returns {JSX.Element}
+ */
 const RecruitCard = ({
   recruit,
   isManager,
@@ -232,6 +297,12 @@ const RecruitCard = ({
   );
 };
 
+/**
+ * 募集一覧を表示する。
+ *
+ * @param {Record<string, any>} props
+ * @returns {JSX.Element}
+ */
 export const RecruitList = ({
   data,
   isManager = false,

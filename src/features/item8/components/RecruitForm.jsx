@@ -1,3 +1,7 @@
+/**
+ * 臨時ヘルプ募集の作成・編集フォーム。
+ * 必須入力の検証、日付/時刻ピッカー、送信 payload の組み立てを担当する。
+ */
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, TextInput, StyleSheet, Button, ScrollView, Pressable } from 'react-native';
 import { OPTIONAL_FIELD_DEFAULTS } from '../constants.js';
@@ -12,6 +16,9 @@ const LATE_JOIN_DENY = 'deny';
 const TIME_DROPDOWN_MIN_WIDTH = 280;
 const TIME_DROPDOWN_MAX_HEIGHT = 360;
 
+/**
+ * フォームの空状態。
+ */
 const emptyForm = {
   headcount: '',
   work_date: '',
@@ -26,6 +33,13 @@ const emptyForm = {
   department_id: '',
 };
 
+/**
+ * 16進カラーにアルファ値を付与する。
+ *
+ * @param {string} hexColor
+ * @param {string} alpha
+ * @returns {string}
+ */
 const withAlpha = (hexColor, alpha) => {
   if (typeof hexColor === 'string' && /^#[0-9A-Fa-f]{6}$/.test(hexColor)) {
     return `${hexColor}${alpha}`;
@@ -33,6 +47,17 @@ const withAlpha = (hexColor, alpha) => {
   return hexColor;
 };
 
+/**
+ * 募集フォーム本体。
+ *
+ * @param {{
+ *   initialValues?: Record<string, any>,
+ *   submitLabel?: string,
+ *   onSubmit?: (payload: Record<string, any>) => void,
+ *   disabled?: boolean
+ * }} props
+ * @returns {JSX.Element}
+ */
 export const RecruitForm = ({
   initialValues = {},
   submitLabel = '作成',
@@ -154,6 +179,11 @@ export const RecruitForm = ({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  /**
+   * 必須項目を検証し、エラー状態を更新する。
+   *
+   * @returns {boolean}
+   */
   const validate = () => {
     const newErrors = {};
     if (!form.headcount) newErrors.headcount = '募集人数は必須です';
@@ -169,6 +199,11 @@ export const RecruitForm = ({
     return Object.keys(newErrors).length === 0;
   };
 
+  /**
+   * 開始時刻と所要時間から work_time 文字列を生成する。
+   *
+   * @returns {string}
+   */
   const buildWorkTime = () => {
     if (isImmediateTime) return IMMEDIATE_TIME_LABEL;
     const start = `${startHour}:${startMinute}`;
@@ -185,6 +220,9 @@ export const RecruitForm = ({
     return `${start}〜終了時刻未定`;
   };
 
+  /**
+   * 「現在時刻」選択時に開始時刻を現在時刻へセットする。
+   */
   const selectImmediateNow = () => {
     const now = new Date();
     const hh = `${now.getHours()}`.padStart(2, '0');
@@ -195,6 +233,9 @@ export const RecruitForm = ({
     setTimePickerOpen(false);
   };
 
+  /**
+   * 「現在時刻」選択時に集合時刻を現在時刻へセットする。
+   */
   const selectMeetImmediateNow = () => {
     const now = new Date();
     const hh = `${now.getHours()}`.padStart(2, '0');
@@ -205,6 +246,9 @@ export const RecruitForm = ({
     setMeetTimePickerOpen(false);
   };
 
+  /**
+   * バリデーション後に submit 用 payload を構築して親へ通知する。
+   */
   const handleSubmit = () => {
     if (!validate()) return;
     const { title, ...restForm } = form;
@@ -231,6 +275,14 @@ export const RecruitForm = ({
     onSubmit?.(payload);
   };
 
+  /**
+   * テキスト入力フィールドを描画する。
+   *
+   * @param {string} label
+   * @param {string} key
+   * @param {Record<string, any>} props
+   * @returns {JSX.Element}
+   */
   const renderInput = (label, key, props = {}) => (
     <View style={[styles.field, props.containerStyle]} key={key}>
       <Text style={styles.label}>{label}</Text>
@@ -253,6 +305,13 @@ export const RecruitForm = ({
     </View>
   );
 
+  /**
+   * 入力フィールドを横並び行として描画する。
+   *
+   * @param {Array<{label: string, key: string, props?: Record<string, any>}>} fields
+   * @param {any} itemStyle
+   * @returns {JSX.Element}
+   */
   const renderRow = (fields, itemStyle = styles.half) => (
     <View style={styles.row}>
       {fields.map((f) =>
@@ -261,6 +320,12 @@ export const RecruitForm = ({
     </View>
   );
 
+  /**
+   * 募集日のドロップダウン付き入力を描画する。
+   *
+   * @param {any} containerStyle
+   * @returns {JSX.Element}
+   */
   const renderDatePicker = (containerStyle = styles.half) => {
     const selected = dateOptions.find((o) => o.value === form.work_date);
     return (
@@ -284,6 +349,12 @@ export const RecruitForm = ({
     );
   };
 
+  /**
+   * 時刻ドロップダウンの表示位置を算出する。
+   *
+   * @param {{x?: number, y?: number, width?: number, height?: number} | null} anchorLayout
+   * @returns {{top: number, left: number, width: number} | null}
+   */
   const getTimeDropdownPlacement = (anchorLayout) => {
     if (!anchorLayout) return null;
     const baseWidth = anchorLayout.width || 0;
@@ -625,6 +696,12 @@ export const RecruitForm = ({
   );
 };
 
+/**
+ * テーマ依存スタイルを生成する。
+ *
+ * @param {Record<string, any>} theme
+ * @returns {ReturnType<typeof StyleSheet.create>}
+ */
 const createStyles = (theme) =>
   StyleSheet.create({
     container: {

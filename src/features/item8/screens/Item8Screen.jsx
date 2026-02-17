@@ -1,3 +1,7 @@
+/**
+ * 臨時ヘルプ機能のメイン画面。
+ * 管理者/一般ユーザーの表示切り替えと、管理者向けフッタータブ制御を行う。
+ */
 import React, { useRef, useState } from 'react';
 import { SafeAreaView, ScrollView, View, Text, StyleSheet, Button, ActivityIndicator, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +23,13 @@ const MANAGER_TAB_OPTIONS = [
   { key: MANAGER_TABS.HISTORY, label: '募集履歴' },
 ];
 
+/**
+ * カラーを少し暗くする。
+ *
+ * @param {string} hexColor
+ * @param {number} ratio
+ * @returns {string}
+ */
 const darkenHex = (hexColor, ratio = 0.04) => {
   if (typeof hexColor !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(hexColor)) {
     return hexColor;
@@ -32,6 +43,9 @@ const darkenHex = (hexColor, ratio = 0.04) => {
   return `#${toHex(lower(r))}${toHex(lower(g))}${toHex(lower(b))}`;
 };
 
+/**
+ * item8 画面内で発生する描画エラーを閉じ込めるローカル境界。
+ */
 class LocalErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -72,6 +86,12 @@ class LocalErrorBoundary extends React.Component {
 
 const SCREEN_NAME = '臨時ヘルプ';
 
+/**
+ * item8 画面コンポーネント。
+ *
+ * @param {{navigation: any}} props
+ * @returns {JSX.Element}
+ */
 const Item8Screen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
@@ -95,6 +115,11 @@ const Item8Screen = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState(MANAGER_TABS.CREATE);
   const scrollViewRef = useRef(null);
 
+  /**
+   * 募集編集開始時に作成タブへ遷移し、先頭へスクロールする。
+   *
+   * @param {Record<string, any>} recruit
+   */
   const handleStartEdit = (recruit) => {
     setEditing(recruit);
     setActiveTab(MANAGER_TABS.CREATE);
@@ -103,6 +128,12 @@ const Item8Screen = ({ navigation }) => {
     }, 0);
   };
 
+  /**
+   * 新規作成/更新送信を実行し、成功時は一覧タブへ戻す。
+   *
+   * @param {Record<string, any>} payload
+   * @returns {Promise<void>}
+   */
   const onSubmit = async (payload) => {
     setSubmitting(true);
     const ok = editing ? await handleUpdate(editing.id, payload) : await handleCreate(payload);
@@ -113,9 +144,19 @@ const Item8Screen = ({ navigation }) => {
     }
   };
 
+  /**
+   * エラーメッセージ表示要素を返す。
+   *
+   * @returns {JSX.Element | null}
+   */
   const renderError = () => (error ? <Text style={[styles.error, { color: theme.error }]}>{error}</Text> : null);
   const listAndHistorySectionBackground = darkenHex(theme.surface, 0.04);
 
+  /**
+   * 募集作成/編集セクションを描画する。
+   *
+   * @returns {JSX.Element}
+   */
   const renderCreateSection = () => (
     <View
       style={[
@@ -142,6 +183,11 @@ const Item8Screen = ({ navigation }) => {
     </View>
   );
 
+  /**
+   * 募集一覧セクションを描画する。
+   *
+   * @returns {JSX.Element}
+   */
   const renderListSection = () => (
     <View
       style={[
@@ -170,6 +216,11 @@ const Item8Screen = ({ navigation }) => {
     </View>
   );
 
+  /**
+   * 募集履歴セクションを描画する。
+   *
+   * @returns {JSX.Element}
+   */
   const renderHistorySection = () => (
     <View
       style={[
@@ -200,6 +251,11 @@ const Item8Screen = ({ navigation }) => {
     </View>
   );
 
+  /**
+   * 管理者向けタブ状態に応じて表示セクションを切り替える。
+   *
+   * @returns {JSX.Element}
+   */
   const renderManagerTabContent = () => {
     if (activeTab === MANAGER_TABS.CREATE) return renderCreateSection();
     if (activeTab === MANAGER_TABS.HISTORY) return renderHistorySection();
