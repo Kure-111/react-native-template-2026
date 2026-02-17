@@ -16,7 +16,7 @@ import { DrawerContentScrollView } from '@react-navigation/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../shared/contexts/AuthContext';
 import { useTheme } from '../../shared/hooks/useTheme';
-import { canAccessScreen } from '../../services/supabase/permissionService';
+import { canAccessScreen, isAdmin } from '../../services/supabase/permissionService';
 
 /**
  * ドロワーアイテムコンポーネント
@@ -98,18 +98,6 @@ const CustomDrawerContent = (props) => {
    * 項目ラベルのマッピング
    * 項目番号に対応する表示名を定義
    */
-  /** 項目アイコンのマッピング */
-  const ITEM_ICONS = {
-    9: '\u{1F451}',   // 王冠 - 実長
-    10: '\u{1F3E2}',  // ビル - 本部
-    11: '\u{1F465}',  // 人々 - 当日部員
-    12: '\u{1F6B6}',  // 歩行者 - 巡回
-    13: '\u{1F4CB}',  // クリップボード - 本部サポート
-    14: '\u{1F4B0}',  // 金袋 - 会計
-    15: '\u{1F4E6}',  // 箱 - 物品
-    16: '\u{1F3AA}',  // テント - 企画者
-  };
-
   const ITEM_LABELS = {
     9: '実長機能',
     10: '本部',
@@ -146,10 +134,7 @@ const CustomDrawerContent = (props) => {
     const permissionName = PERMISSION_NAME_MAP[itemNumber] || `item${itemNumber}`;
     const isAccessible = canAccessScreen(userInfo?.roles || [], permissionName);
     // カスタムラベルがあればそれを使用、なければデフォルト
-    const icon = ITEM_ICONS[itemNumber] || '';
-    const label = icon
-      ? `${icon} ${ITEM_LABELS[itemNumber] || `項目${itemNumber}`}`
-      : ITEM_LABELS[itemNumber] || `項目${itemNumber}`;
+    const label = ITEM_LABELS[itemNumber] || `項目${itemNumber}`;
     // カスタム画面名があればそれを使用、なければデフォルト
     const navigationName = SCREEN_NAME_MAP[itemNumber] || `Item${itemNumber}`;
 
@@ -204,11 +189,30 @@ const CustomDrawerContent = (props) => {
           </View>
         )}
 
+        {/* 通知セクション */}
+        <View style={[styles.settingsSection, { borderTopColor: theme.border }]}>
+          <Text style={[styles.settingsSectionTitle, { color: theme.textSecondary }]}>通知</Text>
+          <DrawerItem
+            label="通知一覧"
+            isActive={currentRouteName === 'NotificationList'}
+            onPress={() => navigateTo('NotificationList')}
+            theme={theme}
+          />
+          {isAdmin(userInfo?.roles || []) && (
+            <DrawerItem
+              label="通知送信（管理者）"
+              isActive={currentRouteName === 'AdminTestNotification'}
+              onPress={() => navigateTo('AdminTestNotification')}
+              theme={theme}
+            />
+          )}
+        </View>
+
         {/* 設定セクション */}
         <View style={[styles.settingsSection, { borderTopColor: theme.border }]}>
           <Text style={[styles.settingsSectionTitle, { color: theme.textSecondary }]}>設定</Text>
           <DrawerItem
-            label="⚙️ テーマ設定"
+            label="テーマ設定"
             isActive={currentRouteName === 'SettingsTheme'}
             onPress={() => navigateTo('SettingsTheme')}
             theme={theme}

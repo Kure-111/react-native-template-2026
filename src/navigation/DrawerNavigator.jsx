@@ -29,6 +29,8 @@ import Item15Screen from '../features/item15/screens/Item15Screen';
 import Item16Screen from '../features/item16/screens/Item16Screen';
 import JimuShiftScreen from '../features/jimu-shift/screens/JimuShiftScreen';
 import SettingsThemeScreen from '../features/settings/screens/SettingsThemeScreen';
+import NotificationListScreen from '../features/notifications/screens/NotificationListScreen';
+import AdminTestNotificationScreen from '../features/admin/screens/AdminTestNotificationScreen';
 
 /** Drawerナビゲーター */
 const Drawer = createDrawerNavigator();
@@ -80,6 +82,8 @@ const WrappedItem15Screen = createWrappedScreen(Item15Screen, '物品対応');
 const WrappedItem16Screen = createWrappedScreen(Item16Screen, '企画者サポート');
 const WrappedJimuShiftScreen = createWrappedScreen(JimuShiftScreen, '当日部員');
 const WrappedSettingsThemeScreen = createWrappedScreen(SettingsThemeScreen, 'テーマ設定');
+const WrappedNotificationListScreen = createWrappedScreen(NotificationListScreen, '通知一覧');
+const WrappedAdminTestNotificationScreen = createWrappedScreen(AdminTestNotificationScreen, '通知送信（管理者）');
 
 /**
  * Drawerナビゲーターコンポーネント
@@ -148,6 +152,16 @@ const DrawerNavigator = () => {
       />
       <Drawer.Screen name="JimuShift" component={WrappedJimuShiftScreen} />
       <Drawer.Screen name="SettingsTheme" component={WrappedSettingsThemeScreen} />
+      <Drawer.Screen
+        name="NotificationList"
+        component={WrappedNotificationListScreen}
+        options={{ title: '通知一覧' }}
+      />
+      <Drawer.Screen
+        name="AdminTestNotification"
+        component={WrappedAdminTestNotificationScreen}
+        options={{ title: '通知送信（管理者）' }}
+      />
     </Drawer.Navigator>
   );
 };
