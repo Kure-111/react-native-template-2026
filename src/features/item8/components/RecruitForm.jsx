@@ -10,6 +10,7 @@ const META_SEPARATOR = '\n\n::META::\n\n';
 const LATE_JOIN_ALLOW = 'allow';
 const LATE_JOIN_DENY = 'deny';
 const TIME_DROPDOWN_MIN_WIDTH = 280;
+const TIME_DROPDOWN_MAX_HEIGHT = 360;
 
 const emptyForm = {
   headcount: '',
@@ -52,6 +53,11 @@ export const RecruitForm = ({
   const [durationMinutes, setDurationMinutes] = useState('未定');
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [timeLayout, setTimeLayout] = useState(null);
+  const [meetTimePickerOpen, setMeetTimePickerOpen] = useState(false);
+  const [meetTimeLayout, setMeetTimeLayout] = useState(null);
+  const [meetHour, setMeetHour] = useState('');
+  const [meetMinute, setMeetMinute] = useState('');
+  const [isImmediateMeetTime, setIsImmediateMeetTime] = useState(false);
   const [containerLayout, setContainerLayout] = useState(null);
 
   const dateOptions = [
@@ -123,11 +129,25 @@ export const RecruitForm = ({
       return parsed;
     };
 
+    const parseMeetTime = (value) => {
+      if (!value || typeof value !== 'string') return null;
+      if (value === IMMEDIATE_TIME_LABEL || value === LEGACY_IMMEDIATE_TIME_LABEL) {
+        return { immediate: true };
+      }
+      const m = value.match(/^(?<hh>\d{2}):(?<mm>\d{2})$/);
+      if (!m || !m.groups) return null;
+      return { hour: m.groups.hh, minute: m.groups.mm, immediate: false };
+    };
+
     const parsed = parseFromWorkTime(initialValues.work_time);
+    const parsedMeet = parseMeetTime(initialValues.meet_time);
     setIsImmediateTime(Boolean(parsed?.immediate));
     setStartHour(parsed?.startH || '');
     setStartMinute(parsed?.startM || '');
     setDurationMinutes(parsed?.duration ?? '未定');
+    setIsImmediateMeetTime(Boolean(parsedMeet?.immediate));
+    setMeetHour(parsedMeet?.hour || '');
+    setMeetMinute(parsedMeet?.minute || '');
   }, [initialValues]);
 
   const updateField = (key, value) => {
@@ -175,10 +195,25 @@ export const RecruitForm = ({
     setTimePickerOpen(false);
   };
 
+  const selectMeetImmediateNow = () => {
+    const now = new Date();
+    const hh = `${now.getHours()}`.padStart(2, '0');
+    const mm = `${now.getMinutes()}`.padStart(2, '0');
+    setIsImmediateMeetTime(false);
+    setMeetHour(hh);
+    setMeetMinute(mm);
+    setMeetTimePickerOpen(false);
+  };
+
   const handleSubmit = () => {
     if (!validate()) return;
     const { title, ...restForm } = form;
     const mergedDescription = `${form.title}${TITLE_SEPARATOR}${form.description}${META_SEPARATOR}${lateJoin}`;
+    const selectedMeetTime = isImmediateMeetTime
+      ? IMMEDIATE_TIME_LABEL
+      : meetHour && meetMinute
+        ? `${meetHour}:${meetMinute}`
+        : '';
     const payload = {
       ...restForm,
       work_time: buildWorkTime(),
@@ -187,7 +222,10 @@ export const RecruitForm = ({
       department_id: form.department_id || null,
       meet_place:
         form.meet_place || OPTIONAL_FIELD_DEFAULTS.meet_place(form.location),
-      meet_time: form.meet_time || (isImmediateTime ? IMMEDIATE_TIME_LABEL : `${startHour}:${startMinute}`),
+      meet_time:
+        selectedMeetTime ||
+        form.meet_time ||
+        (isImmediateTime ? IMMEDIATE_TIME_LABEL : `${startHour}:${startMinute}`),
       belongings: form.belongings || OPTIONAL_FIELD_DEFAULTS.belongings,
     };
     onSubmit?.(payload);
@@ -203,7 +241,10 @@ export const RecruitForm = ({
           props.inputStyle,
         ]}
         value={form[key]}
-        onChangeText={(text) => updateField(key, text)}
+        onChangeText={(text) => {
+          const normalized = key === 'headcount' ? text.replace(/[^0-9]/g, '') : text;
+          updateField(key, normalized);
+        }}
         editable={!disabled}
         placeholderTextColor={props.placeholderTextColor || theme.textSecondary}
         {...props}
@@ -232,6 +273,7 @@ export const RecruitForm = ({
           title={selected ? selected.label : '選択してください'}
           onPress={() => {
             setTimePickerOpen(false);
+            setMeetTimePickerOpen(false);
             setDatePickerOpen((v) => !v);
           }}
           disabled={disabled}
@@ -242,22 +284,32 @@ export const RecruitForm = ({
     );
   };
 
-  const getTimeDropdownPlacement = () => {
-    if (!timeLayout) return null;
-    const baseWidth = timeLayout.width || 0;
+  const getTimeDropdownPlacement = (anchorLayout) => {
+    if (!anchorLayout) return null;
+    const baseWidth = anchorLayout.width || 0;
     const widthCandidate = Math.max(baseWidth, TIME_DROPDOWN_MIN_WIDTH);
     const containerWidth = containerLayout?.width || widthCandidate;
+    const containerHeight = containerLayout?.height || 0;
     const width = Math.min(widthCandidate, containerWidth);
     const maxLeft = Math.max(0, containerWidth - width);
-    const left = Math.max(0, Math.min(timeLayout.x || 0, maxLeft));
+    const left = Math.max(0, Math.min(anchorLayout.x || 0, maxLeft));
+    const belowTop = (anchorLayout.y || 0) + (anchorLayout.height || 0) + 4;
+    const canPlaceBelow =
+      containerHeight === 0 || belowTop + TIME_DROPDOWN_MAX_HEIGHT <= containerHeight;
+    const top = canPlaceBelow
+      ? belowTop
+      : Math.max(0, (anchorLayout.y || 0) - TIME_DROPDOWN_MAX_HEIGHT - 4);
     return {
-      top: (timeLayout.y || 0) + (timeLayout.height || 0) + 4,
+      top,
       left,
       width,
     };
   };
 
-  const timeDropdownPlacement = getTimeDropdownPlacement();
+  const timeDropdownPlacement = getTimeDropdownPlacement(timeLayout);
+  const meetTimeDropdownPlacement = getTimeDropdownPlacement(meetTimeLayout);
+  const canConfirmTime = isImmediateTime || (Boolean(startHour) && Boolean(startMinute));
+  const canConfirmMeetTime = isImmediateMeetTime || (Boolean(meetHour) && Boolean(meetMinute));
 
   return (
     <View style={styles.container} onLayout={(e) => setContainerLayout(e.nativeEvent.layout)}>
@@ -290,6 +342,7 @@ export const RecruitForm = ({
             }
             onPress={() => {
               setDatePickerOpen(false);
+              setMeetTimePickerOpen(false);
               setTimePickerOpen((v) => !v);
             }}
             color={theme.primary}
@@ -319,10 +372,27 @@ export const RecruitForm = ({
           placeholder: 'カントリーマアム1個',
           containerStyle: styles.third,
         })}
-        {renderInput('集合時間（任意）', 'meet_time', {
-          placeholder: '08:45',
-          containerStyle: styles.third,
-        })}
+        <View
+          style={[styles.field, styles.third, meetTimePickerOpen && styles.fieldRaised]}
+          onLayout={(e) => setMeetTimeLayout(e.nativeEvent.layout)}
+        >
+          <Text style={styles.label}>集合時間（任意）</Text>
+          <Button
+            title={
+              isImmediateMeetTime
+                ? IMMEDIATE_TIME_LABEL
+                : meetHour && meetMinute
+                  ? `${meetHour}:${meetMinute}`
+                  : '集合時間を選択'
+            }
+            onPress={() => {
+              setDatePickerOpen(false);
+              setTimePickerOpen(false);
+              setMeetTimePickerOpen((v) => !v);
+            }}
+            color={theme.primary}
+          />
+        </View>
         {renderInput('持ち物（任意）', 'belongings', {
           placeholder: 'なし',
           containerStyle: styles.third,
@@ -448,6 +518,106 @@ export const RecruitForm = ({
                 </ScrollView>
               </View>
             </View>
+            <Pressable
+              style={[
+                styles.timeConfirmButton,
+                !canConfirmTime && styles.timeConfirmButtonDisabled,
+              ]}
+              onPress={() => {
+                if (canConfirmTime) {
+                  setTimePickerOpen(false);
+                }
+              }}
+              disabled={!canConfirmTime}
+            >
+              <Text
+                style={[
+                  styles.timeConfirmText,
+                  !canConfirmTime && styles.timeConfirmTextDisabled,
+                ]}
+              >
+                決定
+              </Text>
+            </Pressable>
+          </View>
+        </>
+      )}
+
+      {meetTimePickerOpen && (
+        <>
+          <Pressable style={styles.portalOverlay} onPress={() => setMeetTimePickerOpen(false)} />
+          <View
+            style={[
+              styles.timeDropdown,
+              meetTimeDropdownPlacement || {},
+            ]}
+          >
+            <Pressable style={styles.timeQuickOption} onPress={selectMeetImmediateNow}>
+              <Text style={styles.timeQuickText}>{IMMEDIATE_TIME_LABEL}</Text>
+            </Pressable>
+            <View style={styles.timeGrid}>
+              <View style={styles.timeColumn}>
+                <Text style={styles.timeHeader}>時</Text>
+                <ScrollView style={styles.timeScroll} nestedScrollEnabled>
+                  {hourOptions.map((opt) => (
+                    <Text
+                      key={`meet-hour-${opt.value}`}
+                      style={[
+                        styles.dropdownItem,
+                        !isImmediateMeetTime && opt.value === meetHour && styles.timeSelected,
+                      ]}
+                      onPress={() => {
+                        setIsImmediateMeetTime(false);
+                        setMeetHour(opt.value);
+                      }}
+                    >
+                      {opt.label}
+                    </Text>
+                  ))}
+                </ScrollView>
+              </View>
+              <View style={styles.timeColumn}>
+                <Text style={styles.timeHeader}>分</Text>
+                <ScrollView style={styles.timeScroll} nestedScrollEnabled>
+                  {minuteOptions.map((opt) => (
+                    <Text
+                      key={`meet-minute-${opt.value}`}
+                      style={[
+                        styles.dropdownItem,
+                        !isImmediateMeetTime && opt.value === meetMinute && styles.timeSelected,
+                      ]}
+                      onPress={() => {
+                        setIsImmediateMeetTime(false);
+                        setMeetMinute(opt.value);
+                      }}
+                    >
+                      {opt.label}
+                    </Text>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+            <Pressable
+              style={[
+                styles.timeConfirmButton,
+                !canConfirmMeetTime && styles.timeConfirmButtonDisabled,
+              ]}
+              onPress={() => {
+                if (canConfirmMeetTime) {
+                  setMeetTimePickerOpen(false);
+                }
+              }}
+              disabled={!canConfirmMeetTime}
+            >
+              <Text
+                style={[
+                  styles.timeConfirmText,
+                  !canConfirmMeetTime && styles.timeConfirmTextDisabled,
+                ]}
+              >
+                決定
+              </Text>
+            </Pressable>
           </View>
         </>
       )}
@@ -533,7 +703,7 @@ const createStyles = (theme) =>
       zIndex: 4200,
       padding: 8,
       gap: 8,
-      maxHeight: 260,
+      maxHeight: TIME_DROPDOWN_MAX_HEIGHT,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.25,
@@ -578,6 +748,28 @@ const createStyles = (theme) =>
       backgroundColor: withAlpha(theme.primary, '22'),
       color: theme.primary,
       fontWeight: '700',
+    },
+    timeConfirmButton: {
+      marginTop: 4,
+      borderWidth: 1,
+      borderColor: theme.primary,
+      backgroundColor: theme.primary,
+      borderRadius: theme.borderRadius,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 10,
+    },
+    timeConfirmButtonDisabled: {
+      borderColor: theme.border,
+      backgroundColor: theme.border,
+    },
+    timeConfirmText: {
+      color: '#FFFFFF',
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    timeConfirmTextDisabled: {
+      color: theme.textSecondary,
     },
     checkboxRow: {
       flexDirection: 'row',

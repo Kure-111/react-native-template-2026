@@ -214,7 +214,7 @@ const RecruitCard = ({
           <>
             <Button title="編集" color={theme.primary} onPress={() => onEdit?.(recruit)} />
             {recruit.status === RINJI_STATUS.OPEN ? (
-              <Button title="クローズ" color={theme.error} onPress={() => onClose?.(recruit.id)} />
+              <Button title="終了" color={theme.error} onPress={() => onClose?.(recruit.id)} />
             ) : (
               <Button title="再開" color={theme.success} onPress={() => onReopen?.(recruit.id)} />
             )}

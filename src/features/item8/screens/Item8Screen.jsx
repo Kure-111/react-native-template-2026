@@ -92,7 +92,7 @@ const Item8Screen = ({ navigation }) => {
 
   const [editing, setEditing] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState(MANAGER_TABS.LIST);
+  const [activeTab, setActiveTab] = useState(MANAGER_TABS.CREATE);
   const scrollViewRef = useRef(null);
 
   const handleStartEdit = (recruit) => {
