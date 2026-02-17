@@ -216,6 +216,24 @@ const HQKeyManagementPanel = ({ theme, user }) => {
       return;
     }
 
+    /** 確認ダイアログを表示 */
+    const confirmMessage = `「${selectedKey.label}」の鍵貸出を登録しますか？`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    } else {
+      const confirmed = await new Promise((resolve) => {
+        Alert.alert('確認', confirmMessage, [
+          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
+          { text: '登録', onPress: () => resolve(true) },
+        ]);
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     const { error } = await createKeyLoan({
       keyCode: selectedKey.keyCode,
@@ -252,6 +270,25 @@ const HQKeyManagementPanel = ({ theme, user }) => {
       return;
     }
 
+    /** 確認ダイアログを表示 */
+    const actionLabel = createLockTask ? '返却＋施錠確認依頼' : '返却のみ';
+    const confirmMessage = `鍵の${actionLabel}を実行しますか？`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    } else {
+      const confirmed = await new Promise((resolve) => {
+        Alert.alert('確認', confirmMessage, [
+          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
+          { text: '実行', onPress: () => resolve(true) },
+        ]);
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     const { error } = await returnKeyAndCreateLockTask({
       loanId,
@@ -285,6 +322,25 @@ const HQKeyManagementPanel = ({ theme, user }) => {
     if (!user?.id) {
       showMessage('操作エラー', 'ログイン情報が取得できません');
       return;
+    }
+
+    /** 確認ダイアログを表示 */
+    const actionLabel = status === 'approved' ? '承認' : '却下';
+    const confirmMessage = `鍵予約を「${actionLabel}」しますか？`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    } else {
+      const confirmed = await new Promise((resolve) => {
+        Alert.alert('確認', confirmMessage, [
+          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
+          { text: actionLabel, onPress: () => resolve(true) },
+        ]);
+      });
+      if (!confirmed) {
+        return;
+      }
     }
 
     setIsSubmitting(true);

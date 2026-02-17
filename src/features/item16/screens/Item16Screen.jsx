@@ -1,14 +1,13 @@
-﻿/**
+/**
  * 項目16画面
- * 企画者サポート画面
+ * 企画者サポート画面（コンテナコンポーネント）
+ * state管理とAPI呼び出しを担当し、子コンポーネントへpropsを渡す
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Picker } from '@react-native-picker/picker';
 import {
   Alert,
-  Image,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -38,7 +37,6 @@ import { useAuth } from '../../../shared/contexts/AuthContext';
 import {
   createTicketMessage,
   listTicketMessages,
-  SUPPORT_TICKET_STATUSES,
 } from '../../../services/supabase/supportTicketService';
 import { KEY_BUILDINGS, KEY_CATALOG } from '../data/keyCatalog';
 import { ensureKeysSeededFromCatalog } from '../../../services/supabase/keyMasterService';
@@ -50,41 +48,40 @@ import {
   MAX_ATTACHMENT_FILE_BYTES,
   uploadTicketAttachmentFile,
 } from '../../../services/supabase/ticketAttachmentService';
+import QuestionForm from '../components/QuestionForm';
+import EmergencyForm from '../components/EmergencyForm';
+import KeyPreApplyForm from '../components/KeyPreApplyForm';
+import EventStatusForm from '../components/EventStatusForm';
+import ContactHistory from '../components/ContactHistory';
+import OfflineBanner from '../../../shared/components/OfflineBanner';
 
-/** 連絡案件ステータス表示名 */
-const STATUS_LABELS = {
-  [SUPPORT_TICKET_STATUSES.NEW]: '新規',
-  [SUPPORT_TICKET_STATUSES.ACKNOWLEDGED]: '受領',
-  [SUPPORT_TICKET_STATUSES.IN_PROGRESS]: '対応中',
-  [SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL]: '外部待ち',
-  [SUPPORT_TICKET_STATUSES.RESOLVED]: '解決済み',
-  [SUPPORT_TICKET_STATUSES.CLOSED]: 'クローズ',
-};
-
+/** 全棟選択値 */
 const ALL_BUILDINGS_VALUE = 'all';
+
+/** 企画候補の表示上限 */
 const EVENT_QUICK_PICK_LIMIT = 30;
+
+/** 添付ファイルサイズ上限（MB表示用） */
 const MAX_ATTACHMENT_FILE_SIZE_MB = Math.floor(MAX_ATTACHMENT_FILE_BYTES / 1024 / 1024);
+
+/** 希望時刻パターン（HH:mm） */
 const REQUESTED_AT_TIME_PATTERN = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+
+/** 希望時刻パターン（YYYY-MM-DD HH:mm） */
 const REQUESTED_AT_DATE_TIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})\s+([01]\d|2[0-3]):([0-5]\d)$/;
-const FAQ_HINTS_BY_QUESTION_TYPE = {
-  rule_change: [
-    '案内資料との差分（何を、どの時間帯で変えるか）を先に整理すると回答が早くなります。',
-    '安全導線・音量・火気など運用制約に触れる変更は優先して明記してください。',
-  ],
-  layout_change: [
-    '変更前/変更後の動線（人・物の流れ）を文章で添えると確認がスムーズです。',
-    '通路幅・避難経路への影響がある場合は必ず詳細欄に記載してください。',
-  ],
-  distribution_change: [
-    '配布開始時刻と対象者の範囲を明記すると会計側の確認が早くなります。',
-    '既存ルールとの差分を先に書くと再確認が減ります。',
-  ],
-  damage_report: [
-    '破損物品名、現状、保管場所を先に書くと物品対応が早くなります。',
-    '写真添付（任意）をつけると状況判断がしやすくなります。',
-  ],
-};
+
+/**
+ * テキストを正規化（トリム）
+ * @param {string|null|undefined} value - 入力値
+ * @returns {string} 正規化後の値
+ */
 const normalizeText = (value) => (value || '').trim();
+
+/**
+ * 希望時刻入力を正規化
+ * @param {string} value - 入力値
+ * @returns {string} 正規化後の値
+ */
 const normalizeRequestedAtInput = (value) =>
   normalizeText(value).replace(/：/g, ':').replace(/\s+/g, ' ');
 
@@ -440,6 +437,24 @@ const Item16Screen = ({ navigation }) => {
       return;
     }
 
+    /** 確認ダイアログを表示 */
+    const confirmMessage = '追記を送信しますか？';
+    if (Platform.OS === 'web') {
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    } else {
+      const confirmed = await new Promise((resolve) => {
+        Alert.alert('確認', confirmMessage, [
+          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
+          { text: '送信', onPress: () => resolve(true) },
+        ]);
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+
     setIsSubmittingContactReply(true);
     const { error } = await createTicketMessage({
       ticketId: selectedContact.id,
@@ -610,6 +625,59 @@ const Item16Screen = ({ navigation }) => {
   }, [eventLocation, eventName, isHydrated]);
 
   /**
+   * フォームテキストフィールドの下書きを復元する
+   */
+  useEffect(() => {
+    const restoreDrafts = async () => {
+      try {
+        const keys = [
+          STORAGE_KEYS.DRAFT_QUESTION_DETAIL,
+          STORAGE_KEYS.DRAFT_EMERGENCY_DETAIL,
+          STORAGE_KEYS.DRAFT_KEY_REASON,
+          STORAGE_KEYS.DRAFT_EVENT_MEMO,
+        ];
+        const values = await AsyncStorage.multiGet(keys);
+        const drafts = Object.fromEntries(values.filter(([, v]) => v !== null));
+        if (drafts[STORAGE_KEYS.DRAFT_QUESTION_DETAIL]) {
+          setQuestionDetail(drafts[STORAGE_KEYS.DRAFT_QUESTION_DETAIL]);
+        }
+        if (drafts[STORAGE_KEYS.DRAFT_EMERGENCY_DETAIL]) {
+          setEmergencyDetail(drafts[STORAGE_KEYS.DRAFT_EMERGENCY_DETAIL]);
+        }
+        if (drafts[STORAGE_KEYS.DRAFT_KEY_REASON]) {
+          setKeyReason(drafts[STORAGE_KEYS.DRAFT_KEY_REASON]);
+        }
+        if (drafts[STORAGE_KEYS.DRAFT_EVENT_MEMO]) {
+          setEventMemo(drafts[STORAGE_KEYS.DRAFT_EVENT_MEMO]);
+        }
+      } catch (error) {
+        console.warn('下書き復元に失敗:', error);
+      }
+    };
+    restoreDrafts();
+  }, []);
+
+  /**
+   * フォームテキストフィールドの下書きを自動保存する
+   */
+  useEffect(() => {
+    if (!isHydrated) return;
+    const saveDrafts = async () => {
+      try {
+        await AsyncStorage.multiSet([
+          [STORAGE_KEYS.DRAFT_QUESTION_DETAIL, questionDetail],
+          [STORAGE_KEYS.DRAFT_EMERGENCY_DETAIL, emergencyDetail],
+          [STORAGE_KEYS.DRAFT_KEY_REASON, keyReason],
+          [STORAGE_KEYS.DRAFT_EVENT_MEMO, eventMemo],
+        ]);
+      } catch (error) {
+        console.warn('下書き保存に失敗:', error);
+      }
+    };
+    saveDrafts();
+  }, [questionDetail, emergencyDetail, keyReason, eventMemo, isHydrated]);
+
+  /**
    * 選択企画が変わったら企画名/場所を同期
    */
   useEffect(() => {
@@ -658,13 +726,6 @@ const Item16Screen = ({ navigation }) => {
   }, [myContacts, selectedContactId]);
 
   /**
-   * 選択中の質問種別
-   */
-  const selectedQuestion = useMemo(() => {
-    return QUESTION_TYPES.find((item) => item.key === questionType) || QUESTION_TYPES[0];
-  }, [questionType]);
-
-  /**
    * 検索語に応じた企画候補
    * 未検索時は先頭候補を表示し、候補が多い場合は検索を促す。
    */
@@ -691,6 +752,7 @@ const Item16Screen = ({ navigation }) => {
     });
   }, [eventOptions, eventSearchText, selectedEventId]);
 
+  /** 非表示の企画数 */
   const hiddenEventCount = useMemo(() => {
     if (normalizeText(eventSearchText)) {
       return 0;
@@ -855,6 +917,29 @@ const Item16Screen = ({ navigation }) => {
       return;
     }
 
+    /** 確認ダイアログを表示 */
+    const confirmMessage = `「${activeTabTitle}」の連絡案件を送信しますか？`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    } else {
+      Alert.alert('確認', confirmMessage, [
+        { text: 'キャンセル', style: 'cancel' },
+        { text: '送信', onPress: () => executeSubmit(normalizedKeyRequestedAt) },
+      ]);
+      return;
+    }
+
+    executeSubmit(normalizedKeyRequestedAt);
+  };
+
+  /**
+   * 送信実行処理（確認ダイアログ後に呼ばれる）
+   * @param {string} normalizedKeyRequestedAt - 正規化済み希望時刻
+   * @returns {void}
+   */
+  const executeSubmit = (normalizedKeyRequestedAt) => {
     let payload = {};
 
     if (activeTab === SUPPORT_TAB_TYPES.QUESTION) {
@@ -957,19 +1042,23 @@ const Item16Screen = ({ navigation }) => {
         return;
       }
 
-      // 送信後は現在のタブ入力をリセット
+      // 送信後は現在のタブ入力をリセット（AsyncStorage下書きも削除）
       if (activeTab === SUPPORT_TAB_TYPES.QUESTION) {
         setQuestionDetail('');
+        AsyncStorage.removeItem(STORAGE_KEYS.DRAFT_QUESTION_DETAIL).catch(() => {});
       } else if (activeTab === SUPPORT_TAB_TYPES.EMERGENCY) {
         setEmergencyDetail('');
+        AsyncStorage.removeItem(STORAGE_KEYS.DRAFT_EMERGENCY_DETAIL).catch(() => {});
       } else if (activeTab === SUPPORT_TAB_TYPES.KEY_PREAPPLY) {
         setSelectedKeyIds([]);
         setKeyBuilding(ALL_BUILDINGS_VALUE);
         setKeySelectedId('');
         setKeyRequestedAt('');
         setKeyReason('');
+        AsyncStorage.removeItem(STORAGE_KEYS.DRAFT_KEY_REASON).catch(() => {});
       } else if (activeTab === SUPPORT_TAB_TYPES.EVENT_STATUS) {
         setEventMemo('');
+        AsyncStorage.removeItem(STORAGE_KEYS.DRAFT_EVENT_MEMO).catch(() => {});
       }
       setAttachmentFile(null);
       setAttachmentCaption('');
@@ -990,6 +1079,7 @@ const Item16Screen = ({ navigation }) => {
    * @param {Array<{key: string, label: string}>} options - 選択肢
    * @param {string} selectedValue - 選択値
    * @param {(value: string) => void} onSelect - 選択時コールバック
+   * @param {((option: Object) => string)|null} renderSubLabel - サブラベル描画関数
    * @returns {JSX.Element} 選択UI
    */
   const renderOptionButtons = (options, selectedValue, onSelect, renderSubLabel = null) => {
@@ -1041,255 +1131,68 @@ const Item16Screen = ({ navigation }) => {
   const renderActiveForm = () => {
     if (activeTab === SUPPORT_TAB_TYPES.QUESTION) {
       return (
-        <View style={styles.formSection}>
-          <Text style={[styles.label, { color: theme.text }]}>質問種別</Text>
-          {renderOptionButtons(QUESTION_TYPES, questionType, setQuestionType, (option) => {
-            return `対応: ${option.targetLabel}`;
-          })}
-          <Text style={[styles.questionTargetHint, { color: theme.textSecondary }]}>
-            現在の対応先: {selectedQuestion.targetLabel}
-          </Text>
-          {(FAQ_HINTS_BY_QUESTION_TYPE[selectedQuestion.key] || []).length > 0 ? (
-            <View
-              style={[
-                styles.faqHintBox,
-                { borderColor: theme.border, backgroundColor: theme.background },
-              ]}
-            >
-              <Text style={[styles.faqHintTitle, { color: theme.text }]}>FAQ/入力ヒント</Text>
-              {(FAQ_HINTS_BY_QUESTION_TYPE[selectedQuestion.key] || []).map((hint) => (
-                <Text key={hint} style={[styles.faqHintItem, { color: theme.textSecondary }]}>
-                  ・{hint}
-                </Text>
-              ))}
-            </View>
-          ) : null}
-
-          <Text style={[styles.label, { color: theme.text }]}>詳細</Text>
-          <TextInput
-            value={questionDetail}
-            onChangeText={setQuestionDetail}
-            multiline
-            placeholder="内容を入力してください"
-            placeholderTextColor={theme.textSecondary}
-            style={[
-              styles.multilineInput,
-              {
-                backgroundColor: theme.background,
-                borderColor: theme.border,
-                color: theme.text,
-              },
-            ]}
-          />
-        </View>
+        <QuestionForm
+          theme={theme}
+          questionType={questionType}
+          onChangeQuestionType={setQuestionType}
+          questionDetail={questionDetail}
+          onChangeQuestionDetail={setQuestionDetail}
+          renderOptionButtons={renderOptionButtons}
+        />
       );
     }
 
     if (activeTab === SUPPORT_TAB_TYPES.EMERGENCY) {
       return (
-        <View style={styles.formSection}>
-          <Text style={[styles.label, { color: theme.text }]}>優先度</Text>
-          {renderOptionButtons(EMERGENCY_PRIORITIES, emergencyPriority, setEmergencyPriority)}
-
-          <Text style={[styles.label, { color: theme.text }]}>緊急内容</Text>
-          <TextInput
-            value={emergencyDetail}
-            onChangeText={setEmergencyDetail}
-            multiline
-            placeholder="緊急内容を入力してください"
-            placeholderTextColor={theme.textSecondary}
-            style={[
-              styles.multilineInput,
-              {
-                backgroundColor: theme.background,
-                borderColor: theme.border,
-                color: theme.text,
-              },
-            ]}
-          />
-        </View>
+        <EmergencyForm
+          theme={theme}
+          emergencyPriority={emergencyPriority}
+          onChangePriority={setEmergencyPriority}
+          emergencyDetail={emergencyDetail}
+          onChangeDetail={setEmergencyDetail}
+          renderOptionButtons={renderOptionButtons}
+        />
       );
     }
 
     if (activeTab === SUPPORT_TAB_TYPES.KEY_PREAPPLY) {
       return (
-        <View style={styles.formSection}>
-          <Text style={[styles.label, { color: theme.text }]}>棟を選択</Text>
-          <View
-            style={[
-              styles.pickerContainer,
-              { backgroundColor: theme.background, borderColor: theme.border },
-            ]}
-          >
-            <Picker
-              selectedValue={keyBuilding}
-              onValueChange={(value) => setKeyBuilding(value)}
-              style={[
-                styles.picker,
-                styles.themedPicker,
-                {
-                  color: theme.text,
-                  backgroundColor: theme.surface,
-                },
-              ]}
-              itemStyle={{ color: theme.text }}
-              dropdownIconColor={theme.text}
-            >
-              <Picker.Item label="すべての棟" value={ALL_BUILDINGS_VALUE} color={theme.text} />
-              {KEY_BUILDINGS.map((building) => (
-                <Picker.Item key={building} label={building} value={building} color={theme.text} />
-              ))}
-            </Picker>
-          </View>
-
-          <Text style={[styles.label, { color: theme.text }]}>鍵を選択</Text>
-          <View
-            style={[
-              styles.pickerContainer,
-              { backgroundColor: theme.background, borderColor: theme.border },
-            ]}
-          >
-            <Picker
-              selectedValue={keySelectedId}
-              onValueChange={(value) => setKeySelectedId(value)}
-              style={[
-                styles.picker,
-                styles.themedPicker,
-                {
-                  color: theme.text,
-                  backgroundColor: theme.surface,
-                },
-              ]}
-              itemStyle={{ color: theme.text }}
-              dropdownIconColor={theme.text}
-            >
-              {filteredKeyCatalog.length === 0 ? (
-                <Picker.Item label="選択できる鍵がありません" value="" color={theme.text} />
-              ) : (
-                filteredKeyCatalog.map((item) => (
-                  <Picker.Item
-                    key={item.id}
-                    label={`${item.building} / ${item.name}`}
-                    value={item.id}
-                    color={theme.text}
-                  />
-                ))
-              )}
-            </Picker>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.addKeyButton, { borderColor: theme.border, backgroundColor: theme.background }]}
-            onPress={addSelectedKey}
-          >
-            <Text style={[styles.addKeyButtonText, { color: theme.textSecondary }]}>この鍵を追加</Text>
-          </TouchableOpacity>
-
-          <Text style={[styles.selectedKeyTitle, { color: theme.text }]}>
-            申請対象（{selectedKeyItems.length}件）
-          </Text>
-
-          {selectedKeyItems.length === 0 ? (
-            <Text style={[styles.selectedKeyEmpty, { color: theme.textSecondary }]}>
-              まだ鍵が追加されていません
-            </Text>
-          ) : (
-            <View style={styles.selectedKeyList}>
-              {selectedKeyItems.map((item) => (
-                <View
-                  key={item.id}
-                  style={[
-                    styles.selectedKeyRow,
-                    { borderColor: theme.border, backgroundColor: theme.background },
-                  ]}
-                >
-                  <Text style={[styles.selectedKeyText, { color: theme.text }]} numberOfLines={1}>
-                    {item.building} / {item.name}
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.removeKeyButton, { borderColor: theme.border }]}
-                    onPress={() => removeSelectedKey(item.id)}
-                  >
-                    <Text style={[styles.removeKeyButtonText, { color: theme.textSecondary }]}>削除</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-
-          <Text style={[styles.label, { color: theme.text }]}>希望時刻</Text>
-          <TextInput
-            value={keyRequestedAt}
-            onChangeText={setKeyRequestedAt}
-            onBlur={() => {
-              const normalized = normalizeRequestedAtInput(keyRequestedAt);
-              if (normalized !== keyRequestedAt) {
-                setKeyRequestedAt(normalized);
-              }
-            }}
-            placeholder="例）10:30 または 2026-02-16 10:30"
-            placeholderTextColor={theme.textSecondary}
-            style={[
-              styles.input,
-              {
-                backgroundColor: theme.background,
-                borderColor: theme.border,
-                color: theme.text,
-              },
-            ]}
-          />
-          <Text style={[styles.questionTargetHint, { color: theme.textSecondary }]}>
-            入力形式: HH:mm または YYYY-MM-DD HH:mm
-          </Text>
-
-          <Text style={[styles.label, { color: theme.text }]}>理由</Text>
-          <TextInput
-            value={keyReason}
-            onChangeText={setKeyReason}
-            multiline
-            placeholder="利用目的を入力してください"
-            placeholderTextColor={theme.textSecondary}
-            style={[
-              styles.multilineInput,
-              {
-                backgroundColor: theme.background,
-                borderColor: theme.border,
-                color: theme.text,
-              },
-            ]}
-          />
-        </View>
+        <KeyPreApplyForm
+          theme={theme}
+          keyBuilding={keyBuilding}
+          onChangeKeyBuilding={setKeyBuilding}
+          keySelectedId={keySelectedId}
+          onChangeKeySelectedId={setKeySelectedId}
+          onAddSelectedKey={addSelectedKey}
+          onRemoveSelectedKey={removeSelectedKey}
+          selectedKeyItems={selectedKeyItems}
+          filteredKeyCatalog={filteredKeyCatalog}
+          keyBuildings={KEY_BUILDINGS}
+          allBuildingsValue={ALL_BUILDINGS_VALUE}
+          keyRequestedAt={keyRequestedAt}
+          onChangeKeyRequestedAt={setKeyRequestedAt}
+          keyReason={keyReason}
+          onChangeKeyReason={setKeyReason}
+        />
       );
     }
 
     return (
-      <View style={styles.formSection}>
-        <Text style={[styles.label, { color: theme.text }]}>報告種別</Text>
-        {renderOptionButtons(EVENT_STATUS_OPTIONS, eventStatus, setEventStatus)}
-
-        <Text style={[styles.label, { color: theme.text }]}>メモ（任意）</Text>
-        <TextInput
-          value={eventMemo}
-          onChangeText={setEventMemo}
-          multiline
-          placeholder="補足事項があれば入力してください"
-          placeholderTextColor={theme.textSecondary}
-          style={[
-            styles.multilineInput,
-            {
-              backgroundColor: theme.background,
-              borderColor: theme.border,
-              color: theme.text,
-            },
-          ]}
-        />
-      </View>
+      <EventStatusForm
+        theme={theme}
+        eventStatus={eventStatus}
+        onChangeEventStatus={setEventStatus}
+        eventMemo={eventMemo}
+        onChangeEventMemo={setEventMemo}
+        renderOptionButtons={renderOptionButtons}
+      />
     );
   };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <ThemedHeader title={SCREEN_NAME} navigation={navigation} />
+      <OfflineBanner />
       <KeyboardAvoidingView
         style={styles.body}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -1297,6 +1200,47 @@ const Item16Screen = ({ navigation }) => {
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
           <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <Text style={[styles.description, { color: theme.textSecondary }]}>{SCREEN_DESCRIPTION}</Text>
+          </View>
+
+          {/* よくある質問セクション（常時表示） */}
+          <View style={[styles.card, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}>
+            <Text style={[styles.sectionTitle, { color: '#0369A1' }]}>
+              {'\u2753'} よくある質問
+            </Text>
+            <View style={styles.faqList}>
+              <View style={styles.faqItem}>
+                <Text style={[styles.faqQuestion, { color: '#0C4A6E' }]}>
+                  Q. 企画内容を変更したいのですが？
+                </Text>
+                <Text style={[styles.faqAnswer, { color: '#475569' }]}>
+                  「質問」タブから「企画内容の変更」を選択し、変更内容を詳細に記載してください。
+                </Text>
+              </View>
+              <View style={styles.faqItem}>
+                <Text style={[styles.faqQuestion, { color: '#0C4A6E' }]}>
+                  Q. 鍵の申請はいつまでにすればよいですか？
+                </Text>
+                <Text style={[styles.faqAnswer, { color: '#475569' }]}>
+                  使用開始の30分前までに「鍵申請」タブから申請してください。
+                </Text>
+              </View>
+              <View style={styles.faqItem}>
+                <Text style={[styles.faqQuestion, { color: '#0C4A6E' }]}>
+                  Q. 緊急の場合はどうすれば？
+                </Text>
+                <Text style={[styles.faqAnswer, { color: '#475569' }]}>
+                  「緊急」タブから緊急度を選択して送信してください。本部が最優先で対応します。
+                </Text>
+              </View>
+              <View style={styles.faqItem}>
+                <Text style={[styles.faqQuestion, { color: '#0C4A6E' }]}>
+                  Q. 企画の開始/終了報告は必要ですか？
+                </Text>
+                <Text style={[styles.faqAnswer, { color: '#475569' }]}>
+                  はい。「開始終了」タブから企画の開始・終了を報告してください。巡回確認の参考になります。
+                </Text>
+              </View>
+            </View>
           </View>
 
           <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -1489,270 +1433,36 @@ const Item16Screen = ({ navigation }) => {
             </Text>
           </TouchableOpacity>
 
-          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <View style={styles.historyHeader}>
-              <Text style={[styles.sectionTitle, styles.historyTitle, { color: theme.text }]}>
-                最近の連絡案件
-              </Text>
-              <TouchableOpacity
-                style={[styles.refreshButton, { borderColor: theme.border }]}
-                onPress={loadMyContacts}
-              >
-                <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-              </TouchableOpacity>
-            </View>
-
-            {isLoadingContacts ? (
-              <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>読み込み中...</Text>
-            ) : myContacts.length === 0 ? (
-              <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
-                まだ送信された連絡案件はありません
-              </Text>
-            ) : (
-              <View style={styles.historyList}>
-                {myContacts.map((contact) => (
-                  <Pressable
-                    key={contact.id}
-                    style={[
-                      styles.historyItem,
-                      {
-                        borderColor:
-                          contact.id === selectedContactId ? theme.primary : theme.border,
-                        backgroundColor:
-                          contact.id === selectedContactId
-                            ? `${theme.primary}14`
-                            : theme.background,
-                      },
-                    ]}
-                    onPress={() => setSelectedContactId(contact.id)}
-                  >
-                    <Text style={[styles.historyItemTitle, { color: theme.text }]} numberOfLines={1}>
-                      {contact.title}
-                    </Text>
-                    <Text style={[styles.historyItemMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                      {(STATUS_LABELS[contact.ticket_status] || contact.ticket_status) +
-                        ' / ' +
-                        new Date(contact.created_at).toLocaleString('ja-JP')}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-          </View>
-
-          {selectedContact ? (
-            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <View style={styles.historyHeader}>
-                <Text style={[styles.sectionTitle, styles.historyTitle, { color: theme.text }]}>
-                  連絡詳細・回答
-                </Text>
-                <TouchableOpacity
-                  style={[styles.refreshButton, { borderColor: theme.border }]}
-                  onPress={() => {
-                    loadContactMessages(selectedContact.id);
-                    loadContactAttachments(selectedContact.id);
-                  }}
-                >
-                  <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-                </TouchableOpacity>
-              </View>
-
-              <Text style={[styles.historyItemTitle, { color: theme.text }]}>{selectedContact.title}</Text>
-              <Text style={[styles.historyItemMeta, { color: theme.textSecondary }]}>
-                状態: {STATUS_LABELS[selectedContact.ticket_status] || selectedContact.ticket_status}
-              </Text>
-              <Text
-                style={[
-                  styles.requestText,
-                  {
-                    color: theme.text,
-                    borderColor: theme.border,
-                    backgroundColor: theme.background,
-                  },
-                ]}
-              >
-                {selectedContact.description}
-              </Text>
-
-              <Text style={[styles.label, { color: theme.text }]}>添付</Text>
-              {isLoadingContactAttachments ? (
-                <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>読み込み中...</Text>
-              ) : contactAttachments.length === 0 ? (
-                <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
-                  添付はありません
-                </Text>
-              ) : (
-                <View style={styles.messageList}>
-                  {contactAttachments.map((attachment) => {
-                    const isImage = normalizeText(attachment.mime_type).startsWith('image/');
-                    const fileName = normalizeText(attachment.storage_path).split('/').pop() || '添付ファイル';
-                    return (
-                      <View
-                        key={attachment.id}
-                        style={[
-                          styles.messageItem,
-                          {
-                            borderColor: theme.border,
-                            backgroundColor: theme.background,
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.messageBody, { color: theme.text }]}>
-                          {attachment.caption || fileName}
-                        </Text>
-                        <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
-                          {fileName} / {formatFileSize(attachment.file_size_bytes)} /{' '}
-                          {attachment.mime_type || 'application/octet-stream'}
-                        </Text>
-                        {isImage && attachment.signedUrl ? (
-                          <Image
-                            source={{ uri: attachment.signedUrl }}
-                            style={styles.inlineAttachmentPreview}
-                            resizeMode="cover"
-                          />
-                        ) : null}
-                        <TouchableOpacity
-                          style={[styles.attachPickerButton, { borderColor: theme.border, backgroundColor: theme.surface }]}
-                          onPress={() => openAttachment(attachment)}
-                          disabled={!attachment.signedUrl}
-                        >
-                          <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
-                            {attachment.signedUrl ? '添付を開く' : 'URL生成失敗'}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-
-              <Text style={[styles.label, { color: theme.text }]}>対応メッセージ</Text>
-              {isLoadingContactMessages ? (
-                <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>読み込み中...</Text>
-              ) : contactMessages.length === 0 ? (
-                <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
-                  まだ回答メッセージはありません
-                </Text>
-              ) : (
-                <View style={styles.messageList}>
-                  {contactMessages.map((message) => {
-                    const isMine = message.author_id === user?.id;
-                    return (
-                      <View
-                        key={message.id}
-                        style={[
-                          styles.messageItem,
-                          {
-                            borderColor: isMine ? theme.primary : theme.border,
-                            backgroundColor: isMine ? `${theme.primary}14` : theme.background,
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.messageAuthor, { color: theme.textSecondary }]}>
-                          {isMine ? 'あなた' : '担当者'}
-                        </Text>
-                        <Text style={[styles.messageBody, { color: theme.text }]}>{message.body}</Text>
-                        <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
-                          {new Date(message.created_at).toLocaleString('ja-JP')}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-
-              <Text style={[styles.label, { color: theme.text }]}>追記投稿</Text>
-              <TextInput
-                value={contactReplyBody}
-                onChangeText={setContactReplyBody}
-                multiline
-                placeholder="担当者への追記内容を入力してください"
-                placeholderTextColor={theme.textSecondary}
-                style={[
-                  styles.multilineInput,
-                  {
-                    backgroundColor: theme.background,
-                    borderColor: theme.border,
-                    color: theme.text,
-                    minHeight: 88,
-                  },
-                ]}
-              />
-              <TouchableOpacity
-                style={[styles.submitButton, { backgroundColor: theme.primary }]}
-                onPress={handleSubmitContactReply}
-                disabled={isSubmittingContactReply}
-              >
-                <Text style={styles.submitButtonText}>
-                  {isSubmittingContactReply ? '送信中...' : '追記を送信'}
-                </Text>
-              </TouchableOpacity>
-
-              <Text style={[styles.label, { color: theme.text }]}>添付追加（必要時）</Text>
-              <TouchableOpacity
-                style={[
-                  styles.attachPickerButton,
-                  { borderColor: theme.border, backgroundColor: theme.background },
-                ]}
-                onPress={pickFollowupAttachmentFile}
-              >
-                <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
-                  {followupAttachmentFile ? '別の添付を選択' : '添付を選択'}
-                </Text>
-              </TouchableOpacity>
-
-              {followupAttachmentFile ? (
-                <View
-                  style={[
-                    styles.attachmentSummary,
-                    { borderColor: theme.border, backgroundColor: theme.background },
-                  ]}
-                >
-                  <Text style={[styles.attachmentSummaryName, { color: theme.text }]} numberOfLines={1}>
-                    {followupAttachmentFile.name || 'attachment.bin'}
-                  </Text>
-                  <Text style={[styles.attachmentSummaryMeta, { color: theme.textSecondary }]}>
-                    {formatFileSize(followupAttachmentFile.size)} /{' '}
-                    {followupAttachmentFile.type || 'application/octet-stream'}
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.removeKeyButton, { borderColor: theme.border }]}
-                    onPress={clearFollowupAttachment}
-                  >
-                    <Text style={[styles.removeKeyButtonText, { color: theme.textSecondary }]}>添付解除</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
-                  添付未選択（任意）
-                </Text>
-              )}
-
-              <TextInput
-                value={followupAttachmentCaption}
-                onChangeText={setFollowupAttachmentCaption}
-                placeholder="添付メモ（任意）"
-                placeholderTextColor={theme.textSecondary}
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: theme.background,
-                    borderColor: theme.border,
-                    color: theme.text,
-                  },
-                ]}
-              />
-              <TouchableOpacity
-                style={[styles.submitButton, { backgroundColor: theme.primary }]}
-                onPress={handleSubmitFollowupAttachment}
-                disabled={isSubmittingFollowupAttachment}
-              >
-                <Text style={styles.submitButtonText}>
-                  {isSubmittingFollowupAttachment ? '登録中...' : '添付を追加'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
+          <ContactHistory
+            theme={theme}
+            user={user}
+            isLoadingContacts={isLoadingContacts}
+            myContacts={myContacts}
+            selectedContactId={selectedContactId}
+            onSelectContact={setSelectedContactId}
+            selectedContact={selectedContact}
+            onRefreshContacts={loadMyContacts}
+            isLoadingContactMessages={isLoadingContactMessages}
+            contactMessages={contactMessages}
+            isLoadingContactAttachments={isLoadingContactAttachments}
+            contactAttachments={contactAttachments}
+            onOpenAttachment={openAttachment}
+            onRefreshDetail={() => {
+              loadContactMessages(selectedContact.id);
+              loadContactAttachments(selectedContact.id);
+            }}
+            contactReplyBody={contactReplyBody}
+            onChangeContactReplyBody={setContactReplyBody}
+            onSubmitContactReply={handleSubmitContactReply}
+            isSubmittingContactReply={isSubmittingContactReply}
+            followupAttachmentFile={followupAttachmentFile}
+            onPickFollowupAttachment={pickFollowupAttachmentFile}
+            onClearFollowupAttachment={clearFollowupAttachment}
+            followupAttachmentCaption={followupAttachmentCaption}
+            onChangeFollowupAttachmentCaption={setFollowupAttachmentCaption}
+            onSubmitFollowupAttachment={handleSubmitFollowupAttachment}
+            isSubmittingFollowupAttachment={isSubmittingFollowupAttachment}
+          />
         </ScrollView>
 
         <View style={[styles.bottomArea, { borderTopColor: theme.border, backgroundColor: theme.background }]}>
@@ -1818,9 +1528,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  formSection: {
-    gap: 10,
-  },
   label: {
     fontSize: 13,
     fontWeight: '600',
@@ -1831,27 +1538,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
-  },
-  pickerContainer: {
-    borderWidth: 1,
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  picker: {
-    height: 52,
-  },
-  themedPicker: {
-    borderWidth: 0,
-  },
-  addKeyButton: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  addKeyButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
   },
   attachPickerButton: {
     borderWidth: 1,
@@ -1877,32 +1563,6 @@ const styles = StyleSheet.create({
   attachmentSummaryMeta: {
     fontSize: 12,
   },
-  selectedKeyTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  selectedKeyEmpty: {
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  selectedKeyList: {
-    gap: 8,
-  },
-  selectedKeyRow: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  selectedKeyText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '500',
-  },
   removeKeyButton: {
     borderWidth: 1,
     borderRadius: 999,
@@ -1912,15 +1572,6 @@ const styles = StyleSheet.create({
   removeKeyButtonText: {
     fontSize: 12,
     fontWeight: '600',
-  },
-  multilineInput: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    minHeight: 100,
-    textAlignVertical: 'top',
   },
   optionGroup: {
     flexDirection: 'row',
@@ -1945,21 +1596,6 @@ const styles = StyleSheet.create({
   questionTargetHint: {
     fontSize: 12,
     marginTop: -2,
-  },
-  faqHintBox: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 4,
-  },
-  faqHintTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  faqHintItem: {
-    fontSize: 12,
-    lineHeight: 18,
   },
   submitButton: {
     borderRadius: 12,
@@ -1991,63 +1627,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  historyList: {
-    gap: 8,
-  },
-  historyItem: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-  },
-  historyItemTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  historyItemMeta: {
-    fontSize: 12,
-  },
-  requestText: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 8,
-    marginBottom: 10,
-  },
   historyEmptyText: {
     fontSize: 13,
     lineHeight: 20,
   },
-  messageList: {
-    gap: 8,
+  faqList: {
+    gap: 10,
   },
-  messageItem: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+  faqItem: {
+    gap: 2,
   },
-  messageAuthor: {
-    fontSize: 11,
-    marginBottom: 2,
+  faqQuestion: {
+    fontSize: 13,
+    fontWeight: '700',
   },
-  messageBody: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  messageDate: {
-    fontSize: 11,
-    marginTop: 4,
-  },
-  inlineAttachmentPreview: {
-    width: '100%',
-    height: 132,
-    borderRadius: 8,
-    marginTop: 6,
+  faqAnswer: {
+    fontSize: 12,
+    lineHeight: 18,
+    paddingLeft: 8,
   },
   bottomArea: {
     borderTopWidth: 1,

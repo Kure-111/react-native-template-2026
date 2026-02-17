@@ -98,6 +98,18 @@ const CustomDrawerContent = (props) => {
    * 項目ラベルのマッピング
    * 項目番号に対応する表示名を定義
    */
+  /** 項目アイコンのマッピング */
+  const ITEM_ICONS = {
+    9: '\u{1F451}',   // 王冠 - 実長
+    10: '\u{1F3E2}',  // ビル - 本部
+    11: '\u{1F465}',  // 人々 - 当日部員
+    12: '\u{1F6B6}',  // 歩行者 - 巡回
+    13: '\u{1F4CB}',  // クリップボード - 本部サポート
+    14: '\u{1F4B0}',  // 金袋 - 会計
+    15: '\u{1F4E6}',  // 箱 - 物品
+    16: '\u{1F3AA}',  // テント - 企画者
+  };
+
   const ITEM_LABELS = {
     9: '実長機能',
     10: '本部',
@@ -134,7 +146,10 @@ const CustomDrawerContent = (props) => {
     const permissionName = PERMISSION_NAME_MAP[itemNumber] || `item${itemNumber}`;
     const isAccessible = canAccessScreen(userInfo?.roles || [], permissionName);
     // カスタムラベルがあればそれを使用、なければデフォルト
-    const label = ITEM_LABELS[itemNumber] || `項目${itemNumber}`;
+    const icon = ITEM_ICONS[itemNumber] || '';
+    const label = icon
+      ? `${icon} ${ITEM_LABELS[itemNumber] || `項目${itemNumber}`}`
+      : ITEM_LABELS[itemNumber] || `項目${itemNumber}`;
     // カスタム画面名があればそれを使用、なければデフォルト
     const navigationName = SCREEN_NAME_MAP[itemNumber] || `Item${itemNumber}`;
 

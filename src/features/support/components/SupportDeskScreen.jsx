@@ -3,7 +3,8 @@
  * 本部/会計/物品の連絡案件対応UI
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -18,6 +19,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { useAuth } from '../../../shared/contexts/AuthContext';
@@ -30,6 +32,9 @@ import {
   updateTicketStatus,
 } from '../../../services/supabase/supportTicketService';
 import HQKeyManagementPanel from './HQKeyManagementPanel';
+import SkeletonLoader from '../../../shared/components/SkeletonLoader';
+import EmptyState from '../../../shared/components/EmptyState';
+import OfflineBanner from '../../../shared/components/OfflineBanner';
 import { createRadioLog, listRadioLogs } from '../../../services/supabase/radioLogService';
 import {
   assignPatrolTask,
@@ -82,6 +87,45 @@ const TICKET_STATUS_FILTERS = [
   { key: 'done', label: '完了' },
 ];
 
+/** 会計/物品向け緊急度フィルタ */
+const TICKET_URGENCY_FILTERS = [
+  { key: 'all', label: '全て' },
+  { key: 'urgent', label: '緊急のみ' },
+  { key: 'normal', label: '通常のみ' },
+];
+
+/** 緊急チケット種別: ticket_typeがemergencyまたはpriorityがhighを緊急と判定 */
+const isUrgentTicket = (ticket) => {
+  return ticket.ticket_type === 'emergency' || ticket.priority === 'high';
+};
+
+/** AsyncStorageキープレフィックス: 最終閲覧時刻の保存に使用 */
+const LAST_VIEWED_KEY_PREFIX = 'supportDesk_lastViewedAt_';
+
+/**
+ * 最終閲覧時刻を保存するAsyncStorageキーを生成
+ * @param {string} roleType - 役割種別
+ * @returns {string} AsyncStorageキー
+ */
+const buildLastViewedKey = (roleType) => `${LAST_VIEWED_KEY_PREFIX}${roleType}`;
+
+/**
+ * チケットが未読かどうかを判定
+ * @param {Object} ticket - チケットオブジェクト
+ * @param {number|null} lastViewedAtMs - 最終閲覧時刻（ミリ秒）
+ * @returns {boolean} 未読かどうか
+ */
+const isTicketUnread = (ticket, lastViewedAtMs) => {
+  if (lastViewedAtMs === null) {
+    return false;
+  }
+  const updatedAtMs = new Date(ticket.updated_at).getTime();
+  if (!Number.isFinite(updatedAtMs)) {
+    return false;
+  }
+  return updatedAtMs > lastViewedAtMs;
+};
+
 const PATROL_TASK_STATUS_LABELS = {
   open: '未対応',
   accepted: '受諾',
@@ -107,6 +151,69 @@ const EVALUATION_STATUS_LABELS = {
 };
 
 const PATROL_ROLE_NAMES = ['警備部', '企画管理部'];
+
+/** 経過時間アラート閾値（分） */
+const ELAPSED_WARNING_MINUTES = 15;
+const ELAPSED_DANGER_MINUTES = 30;
+
+/** 経過時間アラート色 */
+const ELAPSED_COLORS = {
+  normal: null,
+  warning: '#9F6E00',
+  danger: '#D1242F',
+};
+
+/** メッセージ送信者ロール別色 */
+const MESSAGE_ROLE_COLORS = {
+  self: '#0969DA',
+  hq: '#0969DA',
+  exhibitor: '#1A7F37',
+  accounting: '#BF6A02',
+  property: '#8250DF',
+  other: '#57606A',
+};
+
+/**
+ * 経過時間（分）を表示文字列に変換
+ * @param {number} minutes - 経過分数
+ * @returns {string} 表示文字列
+ */
+const formatElapsedMinutes = (minutes) => {
+  if (!Number.isFinite(minutes) || minutes < 0) {
+    return '-';
+  }
+  if (minutes < 60) {
+    return `${Math.floor(minutes)}分`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainMinutes = Math.floor(minutes % 60);
+  return `${hours}時間${remainMinutes}分`;
+};
+
+/**
+ * 経過時間に応じたアラート色を返す
+ * @param {string} createdAt - 作成日時文字列
+ * @param {string} ticketStatus - チケットステータス
+ * @returns {{color: string|null, elapsedMinutes: number}} アラート色と経過分数
+ */
+const getElapsedAlertInfo = (createdAt, ticketStatus) => {
+  /** 解決済み/クローズ済みはアラートなし */
+  if ([SUPPORT_TICKET_STATUSES.RESOLVED, SUPPORT_TICKET_STATUSES.CLOSED].includes(ticketStatus)) {
+    return { color: null, elapsedMinutes: 0 };
+  }
+  const createdAtMs = new Date(createdAt).getTime();
+  if (!Number.isFinite(createdAtMs)) {
+    return { color: null, elapsedMinutes: 0 };
+  }
+  const elapsedMinutes = (Date.now() - createdAtMs) / (60 * 1000);
+  if (elapsedMinutes >= ELAPSED_DANGER_MINUTES) {
+    return { color: ELAPSED_COLORS.danger, elapsedMinutes };
+  }
+  if (elapsedMinutes >= ELAPSED_WARNING_MINUTES) {
+    return { color: ELAPSED_COLORS.warning, elapsedMinutes };
+  }
+  return { color: ELAPSED_COLORS.normal, elapsedMinutes };
+};
 
 const normalizeText = (value) => (value || '').trim();
 const formatFileSize = (fileSizeBytes) => {
@@ -147,6 +254,13 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [ticketStatusFilter, setTicketStatusFilter] = useState(TICKET_STATUS_FILTERS[0].key);
+  /** 緊急度フィルター状態: 'all' | 'urgent' | 'normal' */
+  const [ticketUrgencyFilter, setTicketUrgencyFilter] = useState(TICKET_URGENCY_FILTERS[0].key);
+  /**
+   * 最終閲覧時刻（ミリ秒）
+   * nullの場合は初回ロード前（未読判定しない）
+   */
+  const [lastViewedAtMs, setLastViewedAtMs] = useState(null);
 
   const [radioLogs, setRadioLogs] = useState([]);
   const [isLoadingRadioLogs, setIsLoadingRadioLogs] = useState(false);
@@ -191,26 +305,33 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
       return tickets;
     }
 
+    /** ステータスフィルターを適用 */
+    let result = tickets;
     if (ticketStatusFilter === 'todo') {
-      return tickets.filter((ticket) =>
+      result = result.filter((ticket) =>
         [SUPPORT_TICKET_STATUSES.NEW, SUPPORT_TICKET_STATUSES.ACKNOWLEDGED].includes(ticket.ticket_status)
       );
-    }
-    if (ticketStatusFilter === 'working') {
-      return tickets.filter((ticket) =>
+    } else if (ticketStatusFilter === 'working') {
+      result = result.filter((ticket) =>
         [SUPPORT_TICKET_STATUSES.IN_PROGRESS, SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL].includes(
           ticket.ticket_status
         )
       );
-    }
-    if (ticketStatusFilter === 'done') {
-      return tickets.filter((ticket) =>
+    } else if (ticketStatusFilter === 'done') {
+      result = result.filter((ticket) =>
         [SUPPORT_TICKET_STATUSES.RESOLVED, SUPPORT_TICKET_STATUSES.CLOSED].includes(ticket.ticket_status)
       );
     }
 
-    return tickets;
-  }, [isDepartmentRole, ticketStatusFilter, tickets]);
+    /** 緊急度フィルターを適用 */
+    if (ticketUrgencyFilter === 'urgent') {
+      result = result.filter((ticket) => isUrgentTicket(ticket));
+    } else if (ticketUrgencyFilter === 'normal') {
+      result = result.filter((ticket) => !isUrgentTicket(ticket));
+    }
+
+    return result;
+  }, [isDepartmentRole, ticketStatusFilter, ticketUrgencyFilter, tickets]);
 
   const selectedTicket = useMemo(() => {
     return filteredTickets.find((ticket) => ticket.id === selectedTicketId) || null;
@@ -254,6 +375,52 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
       recentRadioLogs,
     };
   }, [hqPatrolTasks, radioLogs, tickets]);
+
+  /**
+   * AsyncStorageから最終閲覧時刻を読み込む
+   * @returns {Promise<void>} 読み込み処理
+   */
+  const loadLastViewedAt = useCallback(async () => {
+    if (!isDepartmentRole) {
+      return;
+    }
+    try {
+      const key = buildLastViewedKey(roleType);
+      const stored = await AsyncStorage.getItem(key);
+      if (stored !== null) {
+        const parsed = parseInt(stored, 10);
+        if (Number.isFinite(parsed)) {
+          setLastViewedAtMs(parsed);
+        }
+      } else {
+        /** 初回: 現在時刻を保存して既読扱いにする */
+        const now = Date.now();
+        await AsyncStorage.setItem(key, String(now));
+        setLastViewedAtMs(now);
+      }
+    } catch (error) {
+      console.error('最終閲覧時刻の読み込みに失敗:', error);
+    }
+  }, [isDepartmentRole, roleType]);
+
+  /**
+   * 現在時刻をAsyncStorageに最終閲覧時刻として保存する
+   * チケット一覧を表示・更新したときに呼ぶ
+   * @returns {Promise<void>} 保存処理
+   */
+  const saveLastViewedAt = useCallback(async () => {
+    if (!isDepartmentRole) {
+      return;
+    }
+    try {
+      const now = Date.now();
+      const key = buildLastViewedKey(roleType);
+      await AsyncStorage.setItem(key, String(now));
+      setLastViewedAtMs(now);
+    } catch (error) {
+      console.error('最終閲覧時刻の保存に失敗:', error);
+    }
+  }, [isDepartmentRole, roleType]);
 
   /**
    * 案件一覧を取得
@@ -394,6 +561,24 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
       return;
     }
 
+    /** 確認ダイアログを表示 */
+    const confirmMessage = '回答を送信しますか？';
+    if (Platform.OS === 'web') {
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    } else {
+      const confirmed = await new Promise((resolve) => {
+        Alert.alert('確認', confirmMessage, [
+          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
+          { text: '送信', onPress: () => resolve(true) },
+        ]);
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+
     setIsSendingReply(true);
     const result = await createTicketMessage({
       ticketId: selectedTicket.id,
@@ -430,6 +615,25 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   const handleStatusUpdate = async (nextStatus) => {
     if (!selectedTicket) {
       return;
+    }
+
+    /** 確認ダイアログを表示 */
+    const statusLabel = STATUS_LABELS[nextStatus] || nextStatus;
+    const confirmMessage = `ステータスを「${statusLabel}」に更新しますか？`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    } else {
+      const confirmed = await new Promise((resolve) => {
+        Alert.alert('確認', confirmMessage, [
+          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
+          { text: '更新', onPress: () => resolve(true) },
+        ]);
+      });
+      if (!confirmed) {
+        return;
+      }
     }
 
     setIsUpdatingStatus(true);
@@ -648,6 +852,25 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
       return;
     }
 
+    /** 確認ダイアログを表示 */
+    const statusLabel = EVALUATION_STATUS_LABELS[nextStatus] || nextStatus;
+    const confirmMessage = `評価を「${statusLabel}」に更新しますか？`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    } else {
+      const confirmed = await new Promise((resolve) => {
+        Alert.alert('確認', confirmMessage, [
+          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
+          { text: '更新', onPress: () => resolve(true) },
+        ]);
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+
     setIsReviewingEvaluation(true);
     const { error } = await reviewEvaluationCheck({
       evaluationId,
@@ -698,6 +921,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   };
 
   useEffect(() => {
+    loadLastViewedAt();
     loadTickets();
     loadRadioLogs();
     loadHqPatrolTasks();
@@ -732,6 +956,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}> 
       <ThemedHeader title={screenName} navigation={navigation} />
+      <OfflineBanner />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}> 
           <Text style={[styles.description, { color: theme.textSecondary }]}>{screenDescription}</Text>
@@ -796,9 +1021,16 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
             </View>
 
             {isLoadingHqPatrolTasks ? (
-              <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
+              <SkeletonLoader lines={3} baseColor={theme.border} />
             ) : hqPatrolTasks.length === 0 ? (
-              <Text style={[styles.helpText, { color: theme.textSecondary }]}>巡回タスクはありません</Text>
+              <EmptyState
+                icon={'\u{1F6B6}'}
+                title="巡回タスクはありません"
+                description="新しいタスクが作成されると表示されます。"
+                actionLabel="更新する"
+                onAction={() => loadHqPatrolTasks()}
+                theme={theme}
+              />
             ) : (
               <View style={styles.ticketList}>
                 {hqPatrolTasks.slice(0, 18).map((task) => {
@@ -907,9 +1139,14 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
             </View>
 
             {isLoadingPendingEvaluations ? (
-              <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
+              <SkeletonLoader lines={2} baseColor={theme.border} />
             ) : pendingEvaluations.length === 0 ? (
-              <Text style={[styles.helpText, { color: theme.textSecondary }]}>承認待ちの評価はありません</Text>
+              <EmptyState
+                icon={'\u{2705}'}
+                title="承認待ちの評価はありません"
+                description="巡回担当が評価を登録すると表示されます。"
+                theme={theme}
+              />
             ) : (
               <View style={styles.messageList}>
                 {pendingEvaluations.map((evaluation) => (
@@ -1042,52 +1279,98 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
             <Text style={[styles.sectionTitle, { color: theme.text }]}>対象連絡案件</Text>
             <TouchableOpacity
               style={[styles.refreshButton, { borderColor: theme.border }]}
-              onPress={() => loadTickets(selectedTicketId)}
+              onPress={async () => {
+                await saveLastViewedAt();
+                loadTickets(selectedTicketId);
+              }}
             >
               <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
             </TouchableOpacity>
           </View>
 
           {isDepartmentRole ? (
-            <View style={styles.filterRow}>
-              {TICKET_STATUS_FILTERS.map((filter) => {
-                const isActive = filter.key === ticketStatusFilter;
-                return (
-                  <Pressable
-                    key={filter.key}
-                    style={[
-                      styles.filterChip,
-                      {
-                        borderColor: isActive ? theme.primary : theme.border,
-                        backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
-                      },
-                    ]}
-                    onPress={() => setTicketStatusFilter(filter.key)}
-                  >
-                    <Text
+            <>
+              {/* 対応状況フィルター */}
+              <View style={styles.filterRow}>
+                {TICKET_STATUS_FILTERS.map((filter) => {
+                  const isActive = filter.key === ticketStatusFilter;
+                  return (
+                    <Pressable
+                      key={filter.key}
                       style={[
-                        styles.filterChipText,
-                        { color: isActive ? theme.primary : theme.textSecondary },
+                        styles.filterChip,
+                        {
+                          borderColor: isActive ? theme.primary : theme.border,
+                          backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
+                        },
                       ]}
+                      onPress={() => setTicketStatusFilter(filter.key)}
                     >
-                      {filter.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+                      <Text
+                        style={[
+                          styles.filterChipText,
+                          { color: isActive ? theme.primary : theme.textSecondary },
+                        ]}
+                      >
+                        {filter.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {/* 緊急度フィルター */}
+              <View style={styles.filterRow}>
+                {TICKET_URGENCY_FILTERS.map((filter) => {
+                  const isActive = filter.key === ticketUrgencyFilter;
+                  return (
+                    <Pressable
+                      key={filter.key}
+                      style={[
+                        styles.filterChip,
+                        {
+                          borderColor: isActive ? '#D1242F' : theme.border,
+                          backgroundColor: isActive ? '#D1242F1A' : theme.background,
+                        },
+                      ]}
+                      onPress={() => setTicketUrgencyFilter(filter.key)}
+                    >
+                      <Text
+                        style={[
+                          styles.filterChipText,
+                          { color: isActive ? '#D1242F' : theme.textSecondary },
+                        ]}
+                      >
+                        {filter.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
           ) : null}
 
           {isLoadingTickets ? (
-            <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
+            <SkeletonLoader lines={4} baseColor={theme.border} />
           ) : filteredTickets.length === 0 ? (
-            <Text style={[styles.helpText, { color: theme.textSecondary }]}> 
-              {isDepartmentRole ? 'この条件に一致する連絡案件はありません' : '対象の連絡案件はありません'}
-            </Text>
+            <EmptyState
+              icon={'\u{1F4E8}'}
+              title={isDepartmentRole ? 'この条件に一致する連絡案件はありません' : '対象の連絡案件はありません'}
+              description="新しい連絡案件が届くとここに表示されます。"
+              actionLabel="更新する"
+              onAction={() => loadTickets(selectedTicketId)}
+              theme={theme}
+            />
           ) : (
             <View style={styles.ticketList}>
               {filteredTickets.map((ticket) => {
                 const isActive = ticket.id === selectedTicketId;
+                const alertInfo = getElapsedAlertInfo(ticket.created_at, ticket.ticket_status);
+                /** 未読かどうか（部署ロールのみ判定） */
+                const isUnread = isDepartmentRole && isTicketUnread(ticket, lastViewedAtMs);
+                /** 経過時間アラートによる左ボーダー色 */
+                const alertBorderColor = alertInfo.color || (isActive ? theme.primary : theme.border);
+                /** 未読の場合は左ボーダーを青色ドットで強調 */
+                const leftBorderColor = isUnread && !alertInfo.color ? '#0969DA' : alertBorderColor;
                 return (
                   <Pressable
                     key={ticket.id}
@@ -1096,13 +1379,27 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
                       {
                         borderColor: isActive ? theme.primary : theme.border,
                         backgroundColor: isActive ? `${theme.primary}18` : theme.background,
+                        borderLeftWidth: isUnread || alertInfo.color ? 4 : 1,
+                        borderLeftColor: leftBorderColor,
                       },
                     ]}
                     onPress={() => setSelectedTicketId(ticket.id)}
                   >
-                    <Text style={[styles.ticketTitle, { color: theme.text }]} numberOfLines={1}>
-                      {ticket.title}
-                    </Text>
+                    <View style={styles.ticketTitleRow}>
+                      {isUnread ? (
+                        <Text style={styles.unreadDot}>●</Text>
+                      ) : null}
+                      <Text
+                        style={[
+                          styles.ticketTitle,
+                          { color: theme.text },
+                          isUnread ? styles.ticketTitleUnread : null,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {ticket.title}
+                      </Text>
+                    </View>
                     <Text style={[styles.ticketMeta, { color: theme.textSecondary }]} numberOfLines={1}>
                       {ticket.event_name} / {ticket.event_location}
                     </Text>
@@ -1111,6 +1408,11 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
                       {STATUS_LABELS[ticket.ticket_status] || ticket.ticket_status} /{' '}
                       {new Date(ticket.created_at).toLocaleString('ja-JP')}
                     </Text>
+                    {alertInfo.color ? (
+                      <Text style={[styles.elapsedAlert, { color: alertInfo.color }]}>
+                        {formatElapsedMinutes(alertInfo.elapsedMinutes)} 経過
+                      </Text>
+                    ) : null}
                   </Pressable>
                 );
               })}
@@ -1236,13 +1538,20 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
             </View>
 
             {isLoadingMessages ? (
-              <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
+              <SkeletonLoader lines={3} baseColor={theme.border} />
             ) : messages.length === 0 ? (
-              <Text style={[styles.helpText, { color: theme.textSecondary }]}>まだ対応メッセージはありません</Text>
+              <EmptyState
+                icon={'\u{1F4AC}'}
+                title="まだ対応メッセージはありません"
+                description="回答を送信するとここに表示されます。"
+                theme={theme}
+              />
             ) : (
               <View style={styles.messageList}>
                 {messages.map((message) => {
                   const isMine = message.author_id === user?.id;
+                  /** ロール別色分け: 自分=青、相手=グレー */
+                  const roleColor = isMine ? MESSAGE_ROLE_COLORS.self : MESSAGE_ROLE_COLORS.other;
                   return (
                     <View
                       key={message.id}
@@ -1251,14 +1560,16 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
                         {
                           borderColor: isMine ? theme.primary : theme.border,
                           backgroundColor: isMine ? `${theme.primary}14` : theme.background,
+                          borderLeftWidth: 3,
+                          borderLeftColor: roleColor,
                         },
                       ]}
                     >
-                      <Text style={[styles.messageAuthor, { color: theme.textSecondary }]}> 
+                      <Text style={[styles.messageAuthor, { color: roleColor }]}>
                         {isMine ? 'あなた' : '相手'}
                       </Text>
                       <Text style={[styles.messageBody, { color: theme.text }]}>{message.body}</Text>
-                      <Text style={[styles.messageDate, { color: theme.textSecondary }]}> 
+                      <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
                         {new Date(message.created_at).toLocaleString('ja-JP')}
                       </Text>
                     </View>
@@ -1288,30 +1599,36 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
               <Text style={styles.sendButtonText}>{isSendingReply ? '送信中...' : '回答を送信'}</Text>
             </TouchableOpacity>
 
-            <View style={styles.statusActions}>
-              {isEventStatusTicket ? (
-                <TouchableOpacity
-                  style={[styles.statusButton, { borderColor: theme.border, backgroundColor: theme.background }]}
-                  onPress={() => handleStatusUpdate(SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL)}
-                  disabled={isUpdatingStatus}
-                >
-                  <Text style={[styles.statusButtonText, { color: theme.textSecondary }]}>巡回確認待ちにする</Text>
-                </TouchableOpacity>
-              ) : null}
-              <TouchableOpacity
-                style={[styles.statusButton, { borderColor: theme.border, backgroundColor: theme.background }]}
-                onPress={() => handleStatusUpdate(SUPPORT_TICKET_STATUSES.IN_PROGRESS)}
-                disabled={isUpdatingStatus}
+            {/* ステータス変更Picker */}
+            <View
+              style={[
+                styles.statusPickerContainer,
+                { borderColor: theme.border, backgroundColor: theme.background },
+              ]}
+            >
+              <Text style={[styles.statusPickerLabel, { color: theme.textSecondary }]}>
+                {isUpdatingStatus ? 'ステータス更新中...' : 'ステータスを変更'}
+              </Text>
+              <Picker
+                selectedValue={selectedTicket.ticket_status}
+                onValueChange={(value) => {
+                  /** 現在のステータスと同じ値が選択された場合は何もしない */
+                  if (value === selectedTicket.ticket_status) {
+                    return;
+                  }
+                  handleStatusUpdate(value);
+                }}
+                enabled={!isUpdatingStatus}
+                style={[styles.picker, { color: theme.text, backgroundColor: theme.background }]}
               >
-                <Text style={[styles.statusButtonText, { color: theme.textSecondary }]}>対応中にする</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.statusButton, { borderColor: theme.border, backgroundColor: theme.background }]}
-                onPress={() => handleStatusUpdate(SUPPORT_TICKET_STATUSES.RESOLVED)}
-                disabled={isUpdatingStatus}
-              >
-                <Text style={[styles.statusButtonText, { color: theme.textSecondary }]}>解決済みにする</Text>
-              </TouchableOpacity>
+                <Picker.Item label={`受領 (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.ACKNOWLEDGED]})`} value={SUPPORT_TICKET_STATUSES.ACKNOWLEDGED} />
+                <Picker.Item label={`対応中 (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.IN_PROGRESS]})`} value={SUPPORT_TICKET_STATUSES.IN_PROGRESS} />
+                {isEventStatusTicket ? (
+                  <Picker.Item label={`巡回確認待ち (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL]})`} value={SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL} />
+                ) : null}
+                <Picker.Item label={`解決済み (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.RESOLVED]})`} value={SUPPORT_TICKET_STATUSES.RESOLVED} />
+                <Picker.Item label={`クローズ (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.CLOSED]})`} value={SUPPORT_TICKET_STATUSES.CLOSED} />
+              </Picker>
             </View>
           </View>
         ) : null}
@@ -1424,10 +1741,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+  /** チケットタイトル行: 未読ドットとタイトルを横並びで表示 */
+  ticketTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  /** 未読ドット（●）: 青色で左端に表示 */
+  unreadDot: {
+    fontSize: 10,
+    color: '#0969DA',
+    lineHeight: 14,
+  },
   ticketTitle: {
+    flex: 1,
     fontSize: 14,
     fontWeight: '700',
-    marginBottom: 4,
+  },
+  /** 未読チケットのタイトルを太字・濃いテキストで強調 */
+  ticketTitleUnread: {
+    fontWeight: '800',
   },
   ticketMeta: {
     fontSize: 12,
@@ -1542,6 +1876,30 @@ const styles = StyleSheet.create({
   statusButtonText: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  /** ステータス変更Pickerのコンテナ */
+  statusPickerContainer: {
+    borderWidth: 1,
+    borderRadius: 10,
+    marginTop: 10,
+    paddingHorizontal: 4,
+    paddingTop: 8,
+  },
+  /** ステータス変更Pickerのラベル */
+  statusPickerLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 8,
+    marginBottom: 2,
+  },
+  /** ステータス変更Picker本体 */
+  picker: {
+    width: '100%',
+  },
+  elapsedAlert: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 4,
   },
 });
 

@@ -1,19 +1,17 @@
 /**
  * 項目12画面
  * 巡回サポート（patrol_tasks ベース）
+ * state管理とAPI呼び出しを集約するコンテナコンポーネント
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Platform,
-  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
@@ -38,27 +36,48 @@ import {
 } from '../../../services/supabase/patrolCheckService';
 import {
   createEvaluationCheck,
-  EVALUATION_STATUSES,
   listEvaluationChecks,
 } from '../../../services/supabase/evaluationService';
+import PatrolTaskList from '../components/PatrolTaskList';
+import PatrolTaskDetail from '../components/PatrolTaskDetail';
+import PatrolCheckForm from '../components/PatrolCheckForm';
+import UnvisitedAlertList from '../components/UnvisitedAlertList';
+import PatrolEvaluationForm from '../components/PatrolEvaluationForm';
+import OfflineBanner from '../../../shared/components/OfflineBanner';
 
-/** タスク状態表示名 */
-const TASK_STATUS_LABELS = {
-  [PATROL_TASK_STATUSES.OPEN]: '未対応',
-  [PATROL_TASK_STATUSES.ACCEPTED]: '受諾',
-  [PATROL_TASK_STATUSES.EN_ROUTE]: '移動中',
-  [PATROL_TASK_STATUSES.DONE]: '完了',
-  [PATROL_TASK_STATUSES.CANCELED]: '取消',
+/** 種別ごとの完了結果候補 */
+const RESULT_OPTIONS_BY_TASK_TYPE = {
+  [PATROL_TASK_TYPES.CONFIRM_START]: [
+    { key: PATROL_RESULT_CODES.OK, label: '問題なし' },
+    { key: PATROL_RESULT_CODES.NOT_STARTED, label: '開始していない' },
+    { key: PATROL_RESULT_CODES.NEED_SUPPORT, label: '別対応必要' },
+  ],
+  [PATROL_TASK_TYPES.CONFIRM_END]: [
+    { key: PATROL_RESULT_CODES.OK, label: '問題なし' },
+    { key: PATROL_RESULT_CODES.NOT_ENDED, label: '終了していない' },
+    { key: PATROL_RESULT_CODES.NEED_SUPPORT, label: '別対応必要' },
+  ],
+  [PATROL_TASK_TYPES.LOCK_CHECK]: [
+    { key: PATROL_RESULT_CODES.LOCKED, label: '施錠済' },
+    { key: PATROL_RESULT_CODES.UNLOCKED, label: '未施錠' },
+    { key: PATROL_RESULT_CODES.CANNOT_CONFIRM, label: '確認不可' },
+  ],
 };
 
-/** タスク種別表示名 */
-const TASK_TYPE_LABELS = {
-  [PATROL_TASK_TYPES.CONFIRM_START]: '企画開始確認',
-  [PATROL_TASK_TYPES.CONFIRM_END]: '企画終了確認',
-  [PATROL_TASK_TYPES.LOCK_CHECK]: '施錠確認',
-  [PATROL_TASK_TYPES.EMERGENCY_SUPPORT]: '緊急対応',
-  [PATROL_TASK_TYPES.ROUTINE_PATROL]: '定常巡回',
-  [PATROL_TASK_TYPES.OTHER]: 'その他',
+/** デフォルトの完了結果候補 */
+const DEFAULT_RESULT_OPTIONS = [
+  { key: PATROL_RESULT_CODES.OK, label: '問題なし' },
+  { key: PATROL_RESULT_CODES.NEED_SUPPORT, label: '別対応必要' },
+];
+
+/** 種別ごとの「向かいます」メッセージ */
+const GO_MESSAGES = {
+  [PATROL_TASK_TYPES.CONFIRM_START]: '巡回担当が企画開始確認のため現地へ向かいます。',
+  [PATROL_TASK_TYPES.CONFIRM_END]: '巡回担当が企画終了確認のため現地へ向かいます。',
+  [PATROL_TASK_TYPES.LOCK_CHECK]: '巡回担当が施錠確認のため現地へ向かいます。',
+  [PATROL_TASK_TYPES.EMERGENCY_SUPPORT]: '巡回担当が緊急対応のため現地へ向かいます。',
+  [PATROL_TASK_TYPES.ROUTINE_PATROL]: '巡回担当が定常巡回のため現地へ向かいます。',
+  [PATROL_TASK_TYPES.OTHER]: '巡回担当が現地へ向かいます。',
 };
 
 /** 結果コードごとの表示名 */
@@ -72,60 +91,33 @@ const RESULT_LABELS = {
   [PATROL_RESULT_CODES.CANNOT_CONFIRM]: '確認不可',
 };
 
-/** 種別ごとの完了結果候補 */
-const RESULT_OPTIONS_BY_TASK_TYPE = {
-  [PATROL_TASK_TYPES.CONFIRM_START]: [
-    { key: PATROL_RESULT_CODES.OK, label: RESULT_LABELS[PATROL_RESULT_CODES.OK] },
-    { key: PATROL_RESULT_CODES.NOT_STARTED, label: RESULT_LABELS[PATROL_RESULT_CODES.NOT_STARTED] },
-    { key: PATROL_RESULT_CODES.NEED_SUPPORT, label: RESULT_LABELS[PATROL_RESULT_CODES.NEED_SUPPORT] },
-  ],
-  [PATROL_TASK_TYPES.CONFIRM_END]: [
-    { key: PATROL_RESULT_CODES.OK, label: RESULT_LABELS[PATROL_RESULT_CODES.OK] },
-    { key: PATROL_RESULT_CODES.NOT_ENDED, label: RESULT_LABELS[PATROL_RESULT_CODES.NOT_ENDED] },
-    { key: PATROL_RESULT_CODES.NEED_SUPPORT, label: RESULT_LABELS[PATROL_RESULT_CODES.NEED_SUPPORT] },
-  ],
-  [PATROL_TASK_TYPES.LOCK_CHECK]: [
-    { key: PATROL_RESULT_CODES.LOCKED, label: RESULT_LABELS[PATROL_RESULT_CODES.LOCKED] },
-    { key: PATROL_RESULT_CODES.UNLOCKED, label: RESULT_LABELS[PATROL_RESULT_CODES.UNLOCKED] },
-    { key: PATROL_RESULT_CODES.CANNOT_CONFIRM, label: RESULT_LABELS[PATROL_RESULT_CODES.CANNOT_CONFIRM] },
-  ],
+/** タスク種別表示名 */
+const TASK_TYPE_LABELS = {
+  [PATROL_TASK_TYPES.CONFIRM_START]: '企画開始確認',
+  [PATROL_TASK_TYPES.CONFIRM_END]: '企画終了確認',
+  [PATROL_TASK_TYPES.LOCK_CHECK]: '施錠確認',
+  [PATROL_TASK_TYPES.EMERGENCY_SUPPORT]: '緊急対応',
+  [PATROL_TASK_TYPES.ROUTINE_PATROL]: '定常巡回',
+  [PATROL_TASK_TYPES.OTHER]: 'その他',
 };
 
-const DEFAULT_RESULT_OPTIONS = [
-  { key: PATROL_RESULT_CODES.OK, label: RESULT_LABELS[PATROL_RESULT_CODES.OK] },
-  { key: PATROL_RESULT_CODES.NEED_SUPPORT, label: RESULT_LABELS[PATROL_RESULT_CODES.NEED_SUPPORT] },
-];
-
-const GO_MESSAGES = {
-  [PATROL_TASK_TYPES.CONFIRM_START]: '巡回担当が企画開始確認のため現地へ向かいます。',
-  [PATROL_TASK_TYPES.CONFIRM_END]: '巡回担当が企画終了確認のため現地へ向かいます。',
-  [PATROL_TASK_TYPES.LOCK_CHECK]: '巡回担当が施錠確認のため現地へ向かいます。',
-  [PATROL_TASK_TYPES.EMERGENCY_SUPPORT]: '巡回担当が緊急対応のため現地へ向かいます。',
-  [PATROL_TASK_TYPES.ROUTINE_PATROL]: '巡回担当が定常巡回のため現地へ向かいます。',
-  [PATROL_TASK_TYPES.OTHER]: '巡回担当が現地へ向かいます。',
-};
-
-const PATROL_CHECK_ITEM_OPTIONS = [
-  '導線安全',
-  '混雑状況確認',
-  '火気・危険物なし',
-  '設備異常なし',
-  '清掃・衛生確認',
-];
-
+/** 未巡回アラートのデフォルト閾値（分） */
 const DEFAULT_UNVISITED_ALERT_MINUTES = 90;
-const UNVISITED_ALERT_OPTIONS = [30, 60, 90, 120];
-const EVALUATION_STATUS_LABELS = {
-  [EVALUATION_STATUSES.PENDING]: '承認待ち',
-  [EVALUATION_STATUSES.APPROVED]: '承認済み',
-  [EVALUATION_STATUSES.REJECTED]: '却下',
-  [EVALUATION_STATUSES.REWORK]: '差戻し',
-};
 
+/**
+ * タスク種別に応じた結果候補を取得
+ * @param {string} taskType - タスク種別
+ * @returns {Array} 結果候補配列
+ */
 const getResultOptionsByTaskType = (taskType) => {
   return RESULT_OPTIONS_BY_TASK_TYPE[taskType] || DEFAULT_RESULT_OPTIONS;
 };
 
+/**
+ * タスク種別に応じた「向かいます」メッセージを取得
+ * @param {string} taskType - タスク種別
+ * @returns {string} メッセージ文字列
+ */
 const getGoMessageByTaskType = (taskType) => {
   return GO_MESSAGES[taskType] || GO_MESSAGES[PATROL_TASK_TYPES.OTHER];
 };
@@ -139,9 +131,13 @@ const getGoMessageByTaskType = (taskType) => {
 const Item12Screen = ({ navigation }) => {
   const { theme } = useTheme();
   const { user } = useAuth();
+
+  /* ---- タスク一覧関連 ---- */
   const [tasks, setTasks] = useState([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState(null);
+
+  /* ---- タスク詳細関連 ---- */
   const [taskResults, setTaskResults] = useState([]);
   const [isLoadingTaskResults, setIsLoadingTaskResults] = useState(false);
   const [sourceMessages, setSourceMessages] = useState([]);
@@ -149,6 +145,8 @@ const Item12Screen = ({ navigation }) => {
   const [patrolMemo, setPatrolMemo] = useState('');
   const [resultCode, setResultCode] = useState(PATROL_RESULT_CODES.OK);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  /* ---- 巡回チェック関連 ---- */
   const [patrolLocations, setPatrolLocations] = useState([]);
   const [selectedPatrolLocationId, setSelectedPatrolLocationId] = useState('');
   const [patrolLocationText, setPatrolLocationText] = useState('');
@@ -157,9 +155,13 @@ const Item12Screen = ({ navigation }) => {
   const [isSubmittingPatrolCheck, setIsSubmittingPatrolCheck] = useState(false);
   const [recentPatrolChecks, setRecentPatrolChecks] = useState([]);
   const [isLoadingRecentPatrolChecks, setIsLoadingRecentPatrolChecks] = useState(false);
+
+  /* ---- 未巡回アラート関連 ---- */
   const [unvisitedLocations, setUnvisitedLocations] = useState([]);
   const [isLoadingUnvisitedLocations, setIsLoadingUnvisitedLocations] = useState(false);
   const [unvisitedAlertMinutes, setUnvisitedAlertMinutes] = useState(DEFAULT_UNVISITED_ALERT_MINUTES);
+
+  /* ---- 評価関連 ---- */
   const [evaluationScore, setEvaluationScore] = useState(3);
   const [evaluationComment, setEvaluationComment] = useState('');
   const [isSubmittingEvaluation, setIsSubmittingEvaluation] = useState(false);
@@ -180,16 +182,12 @@ const Item12Screen = ({ navigation }) => {
     Alert.alert(title, message);
   };
 
-  /**
-   * 選択中タスク
-   */
+  /** 選択中タスク */
   const selectedTask = useMemo(() => {
     return tasks.find((task) => task.id === selectedTaskId) || null;
   }, [selectedTaskId, tasks]);
 
-  /**
-   * 選択中タスクの結果候補
-   */
+  /** 選択中タスクの結果候補 */
   const resultOptions = useMemo(() => {
     return getResultOptionsByTaskType(selectedTask?.task_type);
   }, [selectedTask?.task_type]);
@@ -398,6 +396,16 @@ const Item12Screen = ({ navigation }) => {
   };
 
   /**
+   * 巡回場所選択ハンドラ
+   * @param {Object} location - 選択された場所オブジェクト
+   * @returns {void}
+   */
+  const handleSelectLocation = (location) => {
+    setSelectedPatrolLocationId(location.id);
+    setPatrolLocationText(location.label || location.name || '');
+  };
+
+  /**
    * 巡回チェックを登録
    * @returns {Promise<void>} 登録処理
    */
@@ -413,6 +421,24 @@ const Item12Screen = ({ navigation }) => {
     if (!locationText) {
       showMessage('入力不足', '巡回場所を入力してください');
       return;
+    }
+
+    /** 確認ダイアログを表示 */
+    const confirmMessage = `「${locationText}」の巡回チェックを記録しますか？`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    } else {
+      const confirmed = await new Promise((resolve) => {
+        Alert.alert('確認', confirmMessage, [
+          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
+          { text: '記録', onPress: () => resolve(true) },
+        ]);
+      });
+      if (!confirmed) {
+        return;
+      }
     }
 
     setIsSubmittingPatrolCheck(true);
@@ -458,6 +484,24 @@ const Item12Screen = ({ navigation }) => {
       return;
     }
 
+    /** 確認ダイアログを表示 */
+    const confirmMessage = `${evaluationScore}点の評価を承認待ちとして登録しますか？`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    } else {
+      const confirmed = await new Promise((resolve) => {
+        Alert.alert('確認', confirmMessage, [
+          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
+          { text: '登録', onPress: () => resolve(true) },
+        ]);
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+
     const sourceTicket = Array.isArray(selectedTask.source_ticket)
       ? selectedTask.source_ticket[0] || null
       : selectedTask.source_ticket || null;
@@ -491,6 +535,25 @@ const Item12Screen = ({ navigation }) => {
     if (!selectedTask || !user?.id) {
       showMessage('操作エラー', 'タスクまたはログイン情報が不足しています');
       return;
+    }
+
+    /** 確認ダイアログを表示 */
+    const taskLabel = TASK_TYPE_LABELS[selectedTask.task_type] || selectedTask.task_type;
+    const confirmMessage = `「${taskLabel}」の受諾（向かいます）を実行しますか？`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    } else {
+      const confirmed = await new Promise((resolve) => {
+        Alert.alert('確認', confirmMessage, [
+          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
+          { text: '実行', onPress: () => resolve(true) },
+        ]);
+      });
+      if (!confirmed) {
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -534,6 +597,26 @@ const Item12Screen = ({ navigation }) => {
     if (!resultCode) {
       showMessage('入力不足', '結果を選択してください');
       return;
+    }
+
+    /** 確認ダイアログを表示 */
+    const taskLabel = TASK_TYPE_LABELS[selectedTask.task_type] || selectedTask.task_type;
+    const resultLabel = RESULT_LABELS[resultCode] || resultCode;
+    const confirmMessage = `「${taskLabel}」を「${resultLabel}」で完了しますか？`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    } else {
+      const confirmed = await new Promise((resolve) => {
+        Alert.alert('確認', confirmMessage, [
+          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
+          { text: '完了', onPress: () => resolve(true) },
+        ]);
+      });
+      if (!confirmed) {
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -598,10 +681,12 @@ const Item12Screen = ({ navigation }) => {
     showMessage('送信完了', 'メモを共有しました');
   };
 
+  /** 自分のタスクまたは未割当かどうか */
   const isMineOrUnassigned =
     selectedTask &&
     (!selectedTask.assigned_to || selectedTask.assigned_to === user?.id);
 
+  /** 受諾可能かどうか */
   const canAccept =
     selectedTask &&
     isMineOrUnassigned &&
@@ -609,6 +694,7 @@ const Item12Screen = ({ navigation }) => {
       selectedTask.task_status
     );
 
+  /** 完了可能かどうか */
   const canComplete =
     selectedTask &&
     isMineOrUnassigned &&
@@ -647,565 +733,86 @@ const Item12Screen = ({ navigation }) => {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <ThemedHeader title={SCREEN_NAME} navigation={navigation} />
+      <OfflineBanner />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Text style={[styles.description, { color: theme.textSecondary }]}>{SCREEN_DESCRIPTION}</Text>
         </View>
 
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>巡回タスク一覧</Text>
-            <TouchableOpacity
-              style={[styles.refreshButton, { borderColor: theme.border }]}
-              onPress={() => loadTasks(selectedTaskId)}
-            >
-              <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-            </TouchableOpacity>
-          </View>
+        <PatrolTaskList
+          theme={theme}
+          user={user}
+          tasks={tasks}
+          isLoadingTasks={isLoadingTasks}
+          selectedTaskId={selectedTaskId}
+          onSelectTask={setSelectedTaskId}
+          onRefresh={() => loadTasks(selectedTaskId)}
+        />
 
-          {isLoadingTasks ? (
-            <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
-          ) : tasks.length === 0 ? (
-            <Text style={[styles.helpText, { color: theme.textSecondary }]}>巡回タスクはありません</Text>
-          ) : (
-            <View style={styles.ticketList}>
-              {tasks.map((task) => {
-                const isActive = task.id === selectedTaskId;
-                const assigneeLabel = !task.assigned_to
-                  ? '未割当'
-                  : task.assigned_to === user?.id
-                    ? 'あなた'
-                    : '他担当';
-                return (
-                  <Pressable
-                    key={task.id}
-                    style={[
-                      styles.ticketItem,
-                      {
-                        borderColor: isActive ? theme.primary : theme.border,
-                        backgroundColor: isActive ? `${theme.primary}16` : theme.background,
-                      },
-                    ]}
-                    onPress={() => setSelectedTaskId(task.id)}
-                  >
-                    <Text style={[styles.ticketTitle, { color: theme.text }]} numberOfLines={1}>
-                      {TASK_TYPE_LABELS[task.task_type] || task.task_type}
-                    </Text>
-                    <Text style={[styles.ticketMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                      {task.event_name || '企画名未設定'} / {task.event_location || task.location_text || '場所未設定'}
-                    </Text>
-                    <Text style={[styles.ticketMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                      {TASK_STATUS_LABELS[task.task_status] || task.task_status} / 担当: {assigneeLabel} /{' '}
-                      {new Date(task.created_at).toLocaleString('ja-JP')}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-        </View>
+        <PatrolCheckForm
+          theme={theme}
+          patrolLocations={patrolLocations}
+          selectedPatrolLocationId={selectedPatrolLocationId}
+          onSelectLocation={handleSelectLocation}
+          patrolLocationText={patrolLocationText}
+          onChangeLocationText={setPatrolLocationText}
+          patrolCheckItems={patrolCheckItems}
+          onToggleCheckItem={togglePatrolCheckItem}
+          patrolCheckMemo={patrolCheckMemo}
+          onChangeCheckMemo={setPatrolCheckMemo}
+          isSubmittingPatrolCheck={isSubmittingPatrolCheck}
+          onSubmitPatrolCheck={handleSubmitPatrolCheck}
+          recentPatrolChecks={recentPatrolChecks}
+          isLoadingRecentPatrolChecks={isLoadingRecentPatrolChecks}
+          onRefresh={refreshPatrolCheckData}
+        />
 
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>定常巡回チェック</Text>
-            <TouchableOpacity
-              style={[styles.refreshButton, { borderColor: theme.border }]}
-              onPress={refreshPatrolCheckData}
-            >
-              <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-            写真添付は使わず、テキストのみで巡回ログを記録します。
-          </Text>
+        <UnvisitedAlertList
+          theme={theme}
+          unvisitedLocations={unvisitedLocations}
+          isLoadingUnvisitedLocations={isLoadingUnvisitedLocations}
+          unvisitedAlertMinutes={unvisitedAlertMinutes}
+          onChangeAlertMinutes={setUnvisitedAlertMinutes}
+          onRefresh={loadUnvisitedAlerts}
+        />
 
-          <Text style={[styles.label, { color: theme.text }]}>巡回場所</Text>
-          <TextInput
-            value={patrolLocationText}
-            onChangeText={setPatrolLocationText}
-            placeholder="例: A棟 3F 301教室"
-            placeholderTextColor={theme.textSecondary}
-            style={[
-              styles.memoInput,
-              {
-                borderColor: theme.border,
-                backgroundColor: theme.background,
-                color: theme.text,
-                minHeight: 52,
-              },
-            ]}
-          />
-
-          {patrolLocations.length > 0 ? (
-            <View style={styles.optionGroup}>
-              {patrolLocations.slice(0, 18).map((location) => {
-                const isActive = location.id === selectedPatrolLocationId;
-                return (
-                  <Pressable
-                    key={location.id}
-                    style={[
-                      styles.optionButton,
-                      {
-                        borderColor: isActive ? theme.primary : theme.border,
-                        backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
-                      },
-                    ]}
-                    onPress={() => {
-                      setSelectedPatrolLocationId(location.id);
-                      setPatrolLocationText(location.label || location.name || '');
-                    }}
-                  >
-                    <Text style={[styles.optionButtonText, { color: isActive ? theme.primary : theme.textSecondary }]}>
-                      {location.label || location.name}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : null}
-
-          <Text style={[styles.label, { color: theme.text }]}>チェック項目</Text>
-          <View style={styles.optionGroup}>
-            {PATROL_CHECK_ITEM_OPTIONS.map((item) => {
-              const isActive = patrolCheckItems.includes(item);
-              return (
-                <Pressable
-                  key={item}
-                  style={[
-                    styles.optionButton,
-                    {
-                      borderColor: isActive ? theme.primary : theme.border,
-                      backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
-                    },
-                  ]}
-                  onPress={() => togglePatrolCheckItem(item)}
-                >
-                  <Text style={[styles.optionButtonText, { color: isActive ? theme.primary : theme.textSecondary }]}>
-                    {item}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Text style={[styles.label, { color: theme.text }]}>メモ（任意）</Text>
-          <TextInput
-            value={patrolCheckMemo}
-            onChangeText={setPatrolCheckMemo}
-            multiline
-            placeholder="巡回時の気づきや状況を記録"
-            placeholderTextColor={theme.textSecondary}
-            style={[
-              styles.memoInput,
-              {
-                borderColor: theme.border,
-                backgroundColor: theme.background,
-                color: theme.text,
-              },
-            ]}
-          />
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: theme.primary, marginTop: 10 }]}
-            onPress={handleSubmitPatrolCheck}
-            disabled={isSubmittingPatrolCheck}
-          >
-            <Text style={styles.actionButtonText}>
-              {isSubmittingPatrolCheck ? '登録中...' : '巡回チェックを記録'}
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={[styles.label, { color: theme.text }]}>直近の巡回チェック</Text>
-          {isLoadingRecentPatrolChecks ? (
-            <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
-          ) : recentPatrolChecks.length === 0 ? (
-            <Text style={[styles.helpText, { color: theme.textSecondary }]}>まだ巡回チェックはありません</Text>
-          ) : (
-            <View style={styles.messageList}>
-              {recentPatrolChecks.map((check) => (
-                <View
-                  key={check.id}
-                  style={[
-                    styles.messageItem,
-                    { borderColor: theme.border, backgroundColor: theme.background },
-                  ]}
-                >
-                  <Text style={[styles.messageAuthor, { color: theme.textSecondary }]}>
-                    {check.location_text}
-                  </Text>
-                  <Text style={[styles.messageBody, { color: theme.text }]}>
-                    {check.memo || 'メモなし'}
-                  </Text>
-                  <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
-                    {new Date(check.checked_at || check.created_at).toLocaleString('ja-JP')}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>未巡回アラート</Text>
-            <TouchableOpacity
-              style={[styles.refreshButton, { borderColor: theme.border }]}
-              onPress={loadUnvisitedAlerts}
-            >
-              <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-            設定した閾値以上巡回記録がない場所を先頭に表示します。
-          </Text>
-          <Text style={[styles.label, { color: theme.text }]}>アラート閾値</Text>
-          <View style={styles.optionGroup}>
-            {UNVISITED_ALERT_OPTIONS.map((minutes) => {
-              const isActive = minutes === unvisitedAlertMinutes;
-              return (
-                <Pressable
-                  key={String(minutes)}
-                  style={[
-                    styles.optionButton,
-                    {
-                      borderColor: isActive ? theme.primary : theme.border,
-                      backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
-                    },
-                  ]}
-                  onPress={() => setUnvisitedAlertMinutes(minutes)}
-                >
-                  <Text style={[styles.optionButtonText, { color: isActive ? theme.primary : theme.textSecondary }]}>
-                    {minutes}分
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {isLoadingUnvisitedLocations ? (
-            <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
-          ) : unvisitedLocations.length === 0 ? (
-            <Text style={[styles.helpText, { color: theme.textSecondary }]}>未巡回アラートはありません</Text>
-          ) : (
-            <View style={styles.ticketList}>
-              {unvisitedLocations.slice(0, 24).map((row) => (
-                <View
-                  key={row.location_id}
-                  style={[
-                    styles.ticketItem,
-                    {
-                      borderColor: row.is_alert ? '#D1242F' : theme.border,
-                      backgroundColor: row.is_alert ? '#D1242F14' : theme.background,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.ticketTitle, { color: theme.text }]} numberOfLines={1}>
-                    {row.location_label}
-                  </Text>
-                  <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
-                    最終巡回:{' '}
-                    {row.last_checked_at
-                      ? new Date(row.last_checked_at).toLocaleString('ja-JP')
-                      : '巡回記録なし'}
-                  </Text>
-                  <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
-                    経過時間:{' '}
-                    {row.elapsed_minutes === null ? '-' : `${Math.floor(row.elapsed_minutes / 60)}時間${row.elapsed_minutes % 60}分`}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>企画評価入力（承認待ち）</Text>
-            <TouchableOpacity
-              style={[styles.refreshButton, { borderColor: theme.border }]}
-              onPress={loadMyEvaluationChecks}
-            >
-              <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-            完了済みタスクを選択して評価を入力し、本部承認を待ちます。
-          </Text>
-
-          <Text style={[styles.label, { color: theme.text }]}>評価対象タスク</Text>
-          <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
-            {selectedTask
-              ? `${TASK_TYPE_LABELS[selectedTask.task_type] || selectedTask.task_type} / ${selectedTask.event_name || '-'}`
-              : '未選択'}
-          </Text>
-
-          <Text style={[styles.label, { color: theme.text }]}>点数</Text>
-          <View style={styles.optionGroup}>
-            {[1, 2, 3, 4, 5].map((score) => {
-              const isActive = score === evaluationScore;
-              return (
-                <Pressable
-                  key={String(score)}
-                  style={[
-                    styles.optionButton,
-                    {
-                      borderColor: isActive ? theme.primary : theme.border,
-                      backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
-                    },
-                  ]}
-                  onPress={() => setEvaluationScore(score)}
-                >
-                  <Text style={[styles.optionButtonText, { color: isActive ? theme.primary : theme.textSecondary }]}>
-                    {score}点
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Text style={[styles.label, { color: theme.text }]}>コメント</Text>
-          <TextInput
-            value={evaluationComment}
-            onChangeText={setEvaluationComment}
-            multiline
-            placeholder="評価理由・現地状況を入力してください"
-            placeholderTextColor={theme.textSecondary}
-            style={[
-              styles.memoInput,
-              {
-                borderColor: theme.border,
-                backgroundColor: theme.background,
-                color: theme.text,
-              },
-            ]}
-          />
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: theme.primary, marginTop: 10 }]}
-            onPress={handleSubmitEvaluation}
-            disabled={isSubmittingEvaluation}
-          >
-            <Text style={styles.actionButtonText}>
-              {isSubmittingEvaluation ? '登録中...' : '評価を承認待ちで登録'}
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={[styles.label, { color: theme.text }]}>最近の評価入力</Text>
-          {isLoadingMyEvaluationChecks ? (
-            <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
-          ) : myEvaluationChecks.length === 0 ? (
-            <Text style={[styles.helpText, { color: theme.textSecondary }]}>評価入力履歴はまだありません</Text>
-          ) : (
-            <View style={styles.messageList}>
-              {myEvaluationChecks.map((evaluation) => (
-                <View
-                  key={evaluation.id}
-                  style={[
-                    styles.messageItem,
-                    { borderColor: theme.border, backgroundColor: theme.background },
-                  ]}
-                >
-                  <Text style={[styles.messageAuthor, { color: theme.textSecondary }]}>
-                    {EVALUATION_STATUS_LABELS[evaluation.evaluation_status] || evaluation.evaluation_status} /{' '}
-                    {evaluation.score || '-'}点
-                  </Text>
-                  <Text style={[styles.messageBody, { color: theme.text }]}>{evaluation.comment || 'コメントなし'}</Text>
-                  <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
-                    {new Date(evaluation.created_at).toLocaleString('ja-JP')}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
+        <PatrolEvaluationForm
+          theme={theme}
+          selectedTask={selectedTask}
+          evaluationScore={evaluationScore}
+          onChangeScore={setEvaluationScore}
+          evaluationComment={evaluationComment}
+          onChangeComment={setEvaluationComment}
+          isSubmittingEvaluation={isSubmittingEvaluation}
+          onSubmitEvaluation={handleSubmitEvaluation}
+          myEvaluationChecks={myEvaluationChecks}
+          isLoadingMyEvaluationChecks={isLoadingMyEvaluationChecks}
+          onRefresh={loadMyEvaluationChecks}
+        />
 
         {selectedTask ? (
-          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>タスク詳細</Text>
-            <Text style={[styles.ticketDetailTitle, { color: theme.text }]}>
-              {TASK_TYPE_LABELS[selectedTask.task_type] || selectedTask.task_type}
-            </Text>
-            <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
-              タスク番号: {selectedTask.task_no || '-'}
-            </Text>
-            <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
-              状態: {TASK_STATUS_LABELS[selectedTask.task_status] || selectedTask.task_status}
-            </Text>
-            <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
-              企画: {selectedTask.event_name || '-'}（{selectedTask.event_location || selectedTask.location_text || '-'}）
-            </Text>
-            <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
-              元連絡案件: {selectedTask.source_ticket_id || 'なし'} / 元鍵貸出: {selectedTask.source_key_loan_id || 'なし'}
-            </Text>
-            <Text
-              style={[
-                styles.requestBody,
-                { color: theme.text, borderColor: theme.border, backgroundColor: theme.background },
-              ]}
-            >
-              {selectedTask.notes || '指示メモはありません'}
-            </Text>
-
-            <Text style={[styles.label, { color: theme.text }]}>完了結果</Text>
-            <View style={styles.optionGroup}>
-              {resultOptions.map((option) => {
-                const isActive = option.key === resultCode;
-                return (
-                  <Pressable
-                    key={option.key}
-                    style={[
-                      styles.optionButton,
-                      {
-                        borderColor: isActive ? theme.primary : theme.border,
-                        backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
-                      },
-                    ]}
-                    onPress={() => setResultCode(option.key)}
-                  >
-                    <Text style={[styles.optionButtonText, { color: isActive ? theme.primary : theme.textSecondary }]}>
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <Text style={[styles.label, { color: theme.text }]}>巡回メモ</Text>
-            <TextInput
-              value={patrolMemo}
-              onChangeText={setPatrolMemo}
-              multiline
-              placeholder="現地状況・対応内容を入力してください"
-              placeholderTextColor={theme.textSecondary}
-              style={[
-                styles.memoInput,
-                {
-                  borderColor: theme.border,
-                  backgroundColor: theme.background,
-                  color: theme.text,
-                },
-              ]}
-            />
-
-            <View style={styles.actionRow}>
-              <TouchableOpacity
-                style={[
-                  styles.actionButton,
-                  { backgroundColor: canAccept ? theme.primary : theme.border },
-                ]}
-                disabled={!canAccept || isSubmitting}
-                onPress={handleAcceptTask}
-              >
-                <Text style={styles.actionButtonText}>向かいます</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.actionButton,
-                  { backgroundColor: canComplete ? '#22A06B' : theme.border },
-                ]}
-                disabled={!canComplete || isSubmitting}
-                onPress={handleCompleteTask}
-              >
-                <Text style={styles.actionButtonText}>完了</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.memoButton,
-                {
-                  borderColor: theme.border,
-                  backgroundColor: selectedTask.source_ticket_id ? theme.background : theme.border,
-                },
-              ]}
-              onPress={handleSendMemoOnly}
-              disabled={!selectedTask.source_ticket_id || isSubmitting}
-            >
-              <Text style={[styles.memoButtonText, { color: theme.textSecondary }]}>メモのみ共有</Text>
-            </TouchableOpacity>
-
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.label, { color: theme.text }]}>タスク結果履歴</Text>
-              <TouchableOpacity
-                style={[styles.refreshButton, { borderColor: theme.border }]}
-                onPress={() => loadTaskResults(selectedTask.id)}
-              >
-                <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-              </TouchableOpacity>
-            </View>
-
-            {isLoadingTaskResults ? (
-              <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
-            ) : taskResults.length === 0 ? (
-              <Text style={[styles.helpText, { color: theme.textSecondary }]}>結果履歴はまだありません</Text>
-            ) : (
-              <View style={styles.messageList}>
-                {taskResults.map((result) => (
-                  <View
-                    key={result.id}
-                    style={[
-                      styles.messageItem,
-                      { borderColor: theme.border, backgroundColor: theme.background },
-                    ]}
-                  >
-                    <Text style={[styles.messageAuthor, { color: theme.textSecondary }]}>
-                      {RESULT_LABELS[result.result_code] || result.result_code}
-                    </Text>
-                    <Text style={[styles.messageBody, { color: theme.text }]}>
-                      {result.memo || 'メモなし'}
-                    </Text>
-                    <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
-                      {new Date(result.created_at).toLocaleString('ja-JP')}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {selectedTask.source_ticket_id ? (
-              <>
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.label, { color: theme.text }]}>元連絡案件メッセージ</Text>
-                  <TouchableOpacity
-                    style={[styles.refreshButton, { borderColor: theme.border }]}
-                    onPress={() => loadSourceMessages(selectedTask.source_ticket_id)}
-                  >
-                    <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {isLoadingSourceMessages ? (
-                  <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
-                ) : sourceMessages.length === 0 ? (
-                  <Text style={[styles.helpText, { color: theme.textSecondary }]}>メッセージはまだありません</Text>
-                ) : (
-                  <View style={styles.messageList}>
-                    {sourceMessages.map((message) => {
-                      const isMine = message.author_id === user?.id;
-                      return (
-                        <View
-                          key={message.id}
-                          style={[
-                            styles.messageItem,
-                            {
-                              borderColor: isMine ? theme.primary : theme.border,
-                              backgroundColor: isMine ? `${theme.primary}12` : theme.background,
-                            },
-                          ]}
-                        >
-                          <Text style={[styles.messageAuthor, { color: theme.textSecondary }]}>
-                            {isMine ? '巡回担当（あなた）' : '他担当/企画者'}
-                          </Text>
-                          <Text style={[styles.messageBody, { color: theme.text }]}>{message.body}</Text>
-                          <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
-                            {new Date(message.created_at).toLocaleString('ja-JP')}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
-              </>
-            ) : null}
-          </View>
+          <PatrolTaskDetail
+            theme={theme}
+            user={user}
+            selectedTask={selectedTask}
+            resultOptions={resultOptions}
+            resultCode={resultCode}
+            onChangeResultCode={setResultCode}
+            patrolMemo={patrolMemo}
+            onChangePatrolMemo={setPatrolMemo}
+            isSubmitting={isSubmitting}
+            canAccept={canAccept}
+            canComplete={canComplete}
+            onAcceptTask={handleAcceptTask}
+            onCompleteTask={handleCompleteTask}
+            onSendMemoOnly={handleSendMemoOnly}
+            taskResults={taskResults}
+            isLoadingTaskResults={isLoadingTaskResults}
+            onRefreshTaskResults={() => loadTaskResults(selectedTask.id)}
+            sourceMessages={sourceMessages}
+            isLoadingSourceMessages={isLoadingSourceMessages}
+            onRefreshSourceMessages={() => loadSourceMessages(selectedTask.source_ticket_id)}
+          />
         ) : null}
       </ScrollView>
     </SafeAreaView>
@@ -1225,145 +832,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
   description: {
     fontSize: 14,
     lineHeight: 20,
-  },
-  helpText: {
-    fontSize: 13,
-    lineHeight: 20,
-  },
-  refreshButton: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  refreshButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  ticketList: {
-    gap: 8,
-  },
-  ticketItem: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  ticketTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  ticketMeta: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  ticketDetailTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  requestBody: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    marginTop: 8,
-    marginBottom: 10,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  optionGroup: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 8,
-  },
-  optionButton: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  optionButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  messageList: {
-    gap: 8,
-    marginBottom: 12,
-  },
-  messageItem: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  messageAuthor: {
-    fontSize: 11,
-    marginBottom: 2,
-  },
-  messageBody: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  messageDate: {
-    fontSize: 11,
-    marginTop: 4,
-  },
-  memoInput: {
-    borderWidth: 1,
-    borderRadius: 10,
-    minHeight: 96,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    textAlignVertical: 'top',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-  },
-  actionButton: {
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  actionButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  memoButton: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  memoButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
   },
 });
 

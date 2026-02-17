@@ -6,7 +6,6 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-
     "web": "concurrently \"expo start --web\" \"npm run earthquake-monitor\"",
     "web-only": "expo start --web",
     "earthquake-monitor": "node src/services/earthquakeMonitor.js",
@@ -36,6 +35,8 @@
   },
   "private": true,
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "@types/react": "~19.1.10",
+    "concurrently": "^9.2.1",
+    "typescript": "~5.9.2"
   }
 }

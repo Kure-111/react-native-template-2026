@@ -41,3 +41,6 @@ yarn-error.*
 /ios
 /android
 .mcp.json
+
+# セットアップスクリプト（service_role keyを含むためコミット禁止）
+scripts/

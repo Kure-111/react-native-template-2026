@@ -70,4 +70,12 @@ export const EVENT_STATUS_OPTIONS = [
 export const STORAGE_KEYS = {
   EVENT_NAME: 'item16_event_name',
   EVENT_LOCATION: 'item16_event_location',
+  /** 下書き: 質問詳細 */
+  DRAFT_QUESTION_DETAIL: 'item16_draft_question_detail',
+  /** 下書き: 緊急連絡詳細 */
+  DRAFT_EMERGENCY_DETAIL: 'item16_draft_emergency_detail',
+  /** 下書き: 鍵申請理由 */
+  DRAFT_KEY_REASON: 'item16_draft_key_reason',
+  /** 下書き: 企画メモ */
+  DRAFT_EVENT_MEMO: 'item16_draft_event_memo',
 };
