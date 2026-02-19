@@ -2,7 +2,7 @@
  * 臨時ヘルプ機能のメイン画面。
  * 管理者/一般ユーザーの表示切り替えと、管理者向けフッタータブ制御を行う。
  */
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { SafeAreaView, ScrollView, View, Text, StyleSheet, Button, ActivityIndicator, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../shared/hooks/useTheme';
@@ -22,6 +22,7 @@ const MANAGER_TAB_OPTIONS = [
   { key: MANAGER_TABS.LIST, label: '募集一覧' },
   { key: MANAGER_TABS.HISTORY, label: '募集履歴' },
 ];
+const SUCCESS_MESSAGE_DURATION_MS = 4000;
 
 /**
  * カラーを少し暗くする。
@@ -113,7 +114,15 @@ const Item8Screen = ({ navigation }) => {
   const [editing, setEditing] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState(MANAGER_TABS.CREATE);
+  const [successMessage, setSuccessMessage] = useState('');
   const scrollViewRef = useRef(null);
+  const successMessageTimerRef = useRef(null);
+
+  useEffect(() => () => {
+    if (successMessageTimerRef.current) {
+      clearTimeout(successMessageTimerRef.current);
+    }
+  }, []);
 
   /**
    * 募集編集開始時に作成タブへ遷移し、先頭へスクロールする。
@@ -135,12 +144,21 @@ const Item8Screen = ({ navigation }) => {
    * @returns {Promise<void>}
    */
   const onSubmit = async (payload) => {
+    const isEditing = Boolean(editing);
     setSubmitting(true);
-    const ok = editing ? await handleUpdate(editing.id, payload) : await handleCreate(payload);
+    const ok = isEditing ? await handleUpdate(editing.id, payload) : await handleCreate(payload);
     setSubmitting(false);
     if (ok) {
       setEditing(null);
       setActiveTab(MANAGER_TABS.LIST);
+      if (successMessageTimerRef.current) {
+        clearTimeout(successMessageTimerRef.current);
+      }
+      setSuccessMessage(isEditing ? '募集を更新しました' : '募集を作成しました');
+      successMessageTimerRef.current = setTimeout(() => {
+        setSuccessMessage('');
+        successMessageTimerRef.current = null;
+      }, SUCCESS_MESSAGE_DURATION_MS);
     }
   };
 
@@ -320,6 +338,24 @@ const Item8Screen = ({ navigation }) => {
                 })}
               </View>
             )}
+            {successMessage ? (
+              <View pointerEvents="none" style={styles.successOverlay}>
+                <View
+                  style={[
+                    styles.successBox,
+                    {
+                      backgroundColor: theme.primary,
+                      borderColor: theme.primary,
+                      borderRadius: theme.borderRadius,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.successText, { color: '#FFFFFF', fontWeight: '700' }]}>
+                    {successMessage}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
           </View>
         </LocalErrorBoundary>
       )}
@@ -381,6 +417,28 @@ const styles = StyleSheet.create({
   footerTabLabel: {
     fontSize: 16,
     lineHeight: 20,
+    textAlign: 'center',
+  },
+  successOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 5000,
+  },
+  successBox: {
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    minWidth: 220,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 8,
+  },
+  successText: {
+    fontSize: 16,
     textAlign: 'center',
   },
   localErrorBox: {
