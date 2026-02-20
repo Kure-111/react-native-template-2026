@@ -25,6 +25,8 @@ const MANAGER_TAB_OPTIONS = [
 const SUCCESS_MESSAGE_DURATION_MS = 4000;
 const SUCCESS_TOAST_BACKGROUND = '#63E57B';
 const SUCCESS_TOAST_TEXT = '#FFFFFF';
+const ERROR_TOAST_BACKGROUND = '#D93B3B';
+const ERROR_TOAST_TEXT = '#FFFFFF';
 
 /**
  * カラーを少し暗くする。
@@ -116,13 +118,13 @@ const Item8Screen = ({ navigation }) => {
   const [editing, setEditing] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState(MANAGER_TABS.CREATE);
-  const [successMessage, setSuccessMessage] = useState('');
+  const [toast, setToast] = useState({ message: '', type: 'success' });
   const scrollViewRef = useRef(null);
-  const successMessageTimerRef = useRef(null);
+  const toastTimerRef = useRef(null);
 
   useEffect(() => () => {
-    if (successMessageTimerRef.current) {
-      clearTimeout(successMessageTimerRef.current);
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
     }
   }, []);
 
@@ -154,7 +156,30 @@ const Item8Screen = ({ navigation }) => {
       setEditing(null);
       setActiveTab(MANAGER_TABS.LIST);
       showSuccessToast(isEditing ? '募集を更新しました' : '募集を作成しました');
+    } else {
+      showErrorToast(
+        isEditing
+          ? '募集の更新に失敗しました。入力内容を確認して再度お試しください。'
+          : '募集の作成に失敗しました。入力内容を確認して再度お試しください。'
+      );
     }
+  };
+
+  /**
+   * トーストメッセージを表示する。
+   *
+   * @param {string} message
+   * @param {'success' | 'error'} type
+   */
+  const showToast = (message, type = 'success') => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    setToast({ message, type });
+    toastTimerRef.current = setTimeout(() => {
+      setToast({ message: '', type: 'success' });
+      toastTimerRef.current = null;
+    }, SUCCESS_MESSAGE_DURATION_MS);
   };
 
   /**
@@ -162,16 +187,14 @@ const Item8Screen = ({ navigation }) => {
    *
    * @param {string} message
    */
-  const showSuccessToast = (message) => {
-    if (successMessageTimerRef.current) {
-      clearTimeout(successMessageTimerRef.current);
-    }
-    setSuccessMessage(message);
-    successMessageTimerRef.current = setTimeout(() => {
-      setSuccessMessage('');
-      successMessageTimerRef.current = null;
-    }, SUCCESS_MESSAGE_DURATION_MS);
-  };
+  const showSuccessToast = (message) => showToast(message, 'success');
+
+  /**
+   * 失敗メッセージをトースト表示する。
+   *
+   * @param {string} message
+   */
+  const showErrorToast = (message) => showToast(message, 'error');
 
   /**
    * 募集を終了し、成功時はトーストを表示する。
@@ -183,6 +206,8 @@ const Item8Screen = ({ navigation }) => {
     const ok = await handleClose(recruitId);
     if (ok) {
       showSuccessToast('募集を終了しました');
+    } else {
+      showErrorToast('募集の終了に失敗しました。通信状況を確認して再度お試しください。');
     }
   };
 
@@ -196,6 +221,8 @@ const Item8Screen = ({ navigation }) => {
     const ok = await handleReopen(recruitId);
     if (ok) {
       showSuccessToast('募集を再開しました');
+    } else {
+      showErrorToast('募集の再開に失敗しました。通信状況を確認して再度お試しください。');
     }
   };
 
@@ -375,7 +402,7 @@ const Item8Screen = ({ navigation }) => {
                 })}
               </View>
             )}
-            {successMessage ? (
+            {toast.message ? (
               <View
                 pointerEvents="none"
                 style={[
@@ -389,14 +416,22 @@ const Item8Screen = ({ navigation }) => {
                   style={[
                     styles.toastBox,
                     {
-                      backgroundColor: SUCCESS_TOAST_BACKGROUND,
-                      borderColor: SUCCESS_TOAST_BACKGROUND,
+                      backgroundColor: toast.type === 'error' ? ERROR_TOAST_BACKGROUND : SUCCESS_TOAST_BACKGROUND,
+                      borderColor: toast.type === 'error' ? ERROR_TOAST_BACKGROUND : SUCCESS_TOAST_BACKGROUND,
                       borderRadius: theme.borderRadius,
                     },
                   ]}
                 >
-                  <Text style={[styles.toastText, { color: SUCCESS_TOAST_TEXT, fontWeight: '700' }]}>
-                    {successMessage}
+                  <Text
+                    style={[
+                      styles.toastText,
+                      {
+                        color: toast.type === 'error' ? ERROR_TOAST_TEXT : SUCCESS_TOAST_TEXT,
+                        fontWeight: '700',
+                      },
+                    ]}
+                  >
+                    {toast.message}
                   </Text>
                 </View>
               </View>
