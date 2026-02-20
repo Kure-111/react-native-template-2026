@@ -23,6 +23,8 @@ const MANAGER_TAB_OPTIONS = [
   { key: MANAGER_TABS.HISTORY, label: '募集履歴' },
 ];
 const SUCCESS_MESSAGE_DURATION_MS = 4000;
+const SUCCESS_TOAST_BACKGROUND = '#63E57B';
+const SUCCESS_TOAST_TEXT = '#FFFFFF';
 
 /**
  * カラーを少し暗くする。
@@ -151,14 +153,49 @@ const Item8Screen = ({ navigation }) => {
     if (ok) {
       setEditing(null);
       setActiveTab(MANAGER_TABS.LIST);
-      if (successMessageTimerRef.current) {
-        clearTimeout(successMessageTimerRef.current);
-      }
-      setSuccessMessage(isEditing ? '募集を更新しました' : '募集を作成しました');
-      successMessageTimerRef.current = setTimeout(() => {
-        setSuccessMessage('');
-        successMessageTimerRef.current = null;
-      }, SUCCESS_MESSAGE_DURATION_MS);
+      showSuccessToast(isEditing ? '募集を更新しました' : '募集を作成しました');
+    }
+  };
+
+  /**
+   * 成功メッセージをトースト表示する。
+   *
+   * @param {string} message
+   */
+  const showSuccessToast = (message) => {
+    if (successMessageTimerRef.current) {
+      clearTimeout(successMessageTimerRef.current);
+    }
+    setSuccessMessage(message);
+    successMessageTimerRef.current = setTimeout(() => {
+      setSuccessMessage('');
+      successMessageTimerRef.current = null;
+    }, SUCCESS_MESSAGE_DURATION_MS);
+  };
+
+  /**
+   * 募集を終了し、成功時はトーストを表示する。
+   *
+   * @param {string} recruitId
+   * @returns {Promise<void>}
+   */
+  const onCloseRecruit = async (recruitId) => {
+    const ok = await handleClose(recruitId);
+    if (ok) {
+      showSuccessToast('募集を終了しました');
+    }
+  };
+
+  /**
+   * 募集を再開し、成功時はトーストを表示する。
+   *
+   * @param {string} recruitId
+   * @returns {Promise<void>}
+   */
+  const onReopenRecruit = async (recruitId) => {
+    const ok = await handleReopen(recruitId);
+    if (ok) {
+      showSuccessToast('募集を再開しました');
     }
   };
 
@@ -226,8 +263,8 @@ const Item8Screen = ({ navigation }) => {
         isManager={manager}
         onApply={handleApply}
         onEdit={manager ? handleStartEdit : undefined}
-        onClose={manager ? handleClose : undefined}
-        onReopen={manager ? handleReopen : undefined}
+        onClose={manager ? onCloseRecruit : undefined}
+        onReopen={manager ? onReopenRecruit : undefined}
         refreshing={loading}
         onRefresh={refresh}
       />
@@ -259,8 +296,8 @@ const Item8Screen = ({ navigation }) => {
         isManager
         onApply={handleApply}
         onEdit={handleStartEdit}
-        onClose={handleClose}
-        onReopen={handleReopen}
+        onClose={onCloseRecruit}
+        onReopen={onReopenRecruit}
         refreshing={loading}
         onRefresh={refresh}
         emptyText="履歴はありません"
@@ -339,18 +376,26 @@ const Item8Screen = ({ navigation }) => {
               </View>
             )}
             {successMessage ? (
-              <View pointerEvents="none" style={styles.successOverlay}>
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.toastContainer,
+                  {
+                    top: 8,
+                  },
+                ]}
+              >
                 <View
                   style={[
-                    styles.successBox,
+                    styles.toastBox,
                     {
-                      backgroundColor: theme.primary,
-                      borderColor: theme.primary,
+                      backgroundColor: SUCCESS_TOAST_BACKGROUND,
+                      borderColor: SUCCESS_TOAST_BACKGROUND,
                       borderRadius: theme.borderRadius,
                     },
                   ]}
                 >
-                  <Text style={[styles.successText, { color: '#FFFFFF', fontWeight: '700' }]}>
+                  <Text style={[styles.toastText, { color: SUCCESS_TOAST_TEXT, fontWeight: '700' }]}>
                     {successMessage}
                   </Text>
                 </View>
@@ -419,17 +464,19 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
   },
-  successOverlay: {
-    ...StyleSheet.absoluteFillObject,
+  toastContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     alignItems: 'center',
-    justifyContent: 'center',
     zIndex: 5000,
   },
-  successBox: {
+  toastBox: {
     borderWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    minWidth: 220,
+    paddingVertical: 14,
+    paddingHorizontal: 19,
+    minWidth: 264,
+    maxWidth: '90%',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -437,8 +484,8 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 8,
   },
-  successText: {
-    fontSize: 16,
+  toastText: {
+    fontSize: 18,
     textAlign: 'center',
   },
   localErrorBox: {
