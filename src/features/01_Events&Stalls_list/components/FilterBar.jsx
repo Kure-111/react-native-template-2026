@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, TextInput, StyleSheet, TouchableOpacity, Text, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../shared/hooks/useTheme';
+import { AREA_ALL } from '../constants';
 
 /**
  * 検索・ファセット絞り込みのUIを提供するバーコンポーネント
@@ -15,11 +16,15 @@ const FilterBar = ({
     onClearCategories,
     stallCategories,
     eventCategories,
+    selectedArea,
+    onAreaChange,
+    areas,
+    showFilters,
+    onToggleFilters,
 }) => {
     const { theme } = useTheme();
-    const [showFilters, setShowFilters] = useState(false);
 
-    const hasFilters = selectedCategories.length > 0;
+    const hasFilters = selectedCategories.length > 0 || selectedArea !== AREA_ALL;
 
     const renderCategoryChip = (cat) => {
         const isSelected = selectedCategories.includes(cat.id);
@@ -42,6 +47,35 @@ const FilterBar = ({
                     { color: isSelected ? 'white' : theme.text }
                 ]}>
                     {cat.name}
+                </Text>
+                {isSelected && (
+                    <Ionicons name="checkmark" size={14} color="white" style={{ marginLeft: 2 }} />
+                )}
+            </TouchableOpacity>
+        );
+    };
+
+    const renderAreaChip = (areaId, areaName) => {
+        const isSelected = selectedArea === areaId;
+        return (
+            <TouchableOpacity
+                key={areaId}
+                style={[
+                    styles.chip,
+                    {
+                        backgroundColor: isSelected ? theme.primary : theme.surface,
+                        borderColor: isSelected ? theme.primary : theme.border,
+                        borderRadius: theme.borderRadius,
+                    }
+                ]}
+                onPress={() => onAreaChange(areaId)}
+                activeOpacity={0.7}
+            >
+                <Text style={[
+                    styles.chipText,
+                    { color: isSelected ? 'white' : theme.text }
+                ]}>
+                    {areaName}
                 </Text>
                 {isSelected && (
                     <Ionicons name="checkmark" size={14} color="white" style={{ marginLeft: 2 }} />
@@ -80,7 +114,7 @@ const FilterBar = ({
                             borderRadius: theme.borderRadius,
                         }
                     ]}
-                    onPress={() => setShowFilters(!showFilters)}
+                    onPress={onToggleFilters}
                 >
                     <Ionicons
                         name="funnel-outline"
@@ -103,7 +137,10 @@ const FilterBar = ({
                     {hasFilters && (
                         <TouchableOpacity
                             style={[styles.clearAllBtn, { borderColor: theme.border, borderRadius: theme.borderRadius }]}
-                            onPress={onClearCategories}
+                            onPress={() => {
+                                onClearCategories();
+                                onAreaChange(AREA_ALL);
+                            }}
                         >
                             <Ionicons name="close" size={14} color={theme.textSecondary} />
                             <Text style={[styles.clearAllText, { color: theme.textSecondary }]}>絞り込み解除</Text>
@@ -130,6 +167,19 @@ const FilterBar = ({
                             </Text>
                             <View style={styles.chipRow}>
                                 {stallCategories.map(renderCategoryChip)}
+                            </View>
+                        </View>
+                    )}
+
+                    {/* エリア絞り込み */}
+                    {areas && areas.length > 0 && (
+                        <View style={[styles.categorySection, { marginTop: 4 }]}>
+                            <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>
+                                エリア（大まかな場所）
+                            </Text>
+                            <View style={styles.chipRow}>
+                                {renderAreaChip(AREA_ALL, AREA_ALL)}
+                                {areas.map(area => renderAreaChip(area.id, area.name))}
                             </View>
                         </View>
                     )}

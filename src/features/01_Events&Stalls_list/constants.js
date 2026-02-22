@@ -34,3 +34,6 @@ export const SORT_COLUMNS = [
 
 // カテゴリ未指定を示す特殊値
 export const CATEGORY_ALL = 'すべて';
+
+// エリア未指定を示す特殊値
+export const AREA_ALL = 'すべて';

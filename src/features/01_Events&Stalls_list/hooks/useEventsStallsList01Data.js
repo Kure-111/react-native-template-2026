@@ -11,10 +11,11 @@ import { TABS, SORT_OPTIONS } from '../constants';
  * @param {string} sortOrder ソート順オプション
  * @returns {Object} データ、カテゴリ一覧、読み込み状態、エラー情報
  */
-export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategories, sortOrder) => {
+export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategories, sortOrder, selectedArea) => {
     const [data, setData] = useState([]);
     const [stallCategories, setStallCategories] = useState([]);
     const [eventCategories, setEventCategories] = useState([]);
+    const [areas, setAreas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -46,19 +47,24 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                 if (fetchStalls) {
                     promises.push(
                         supabase.from('stalls')
-                            .select('id, name, description, image_url, category, sub_category, updated_at, location_id, stall_organization_id, stall_locations(name), stall_organizations(name)')
+                            .select('id, name, description, image_url, category, sub_category, updated_at, location_id, stall_organization_id, stall_locations(name, area_id), stall_organizations(name)')
                             .then(res => ({ ...res, type: TABS.STALLS }))
                     );
                 }
                 if (fetchEvents) {
                     promises.push(
                         supabase.from('events')
-                            .select('id, name, description, image_url, category, sub_category, location, updated_at, location_id, event_organization_id, event_locations(name), event_organizations(name)')
+                            .select('id, name, description, image_url, category, sub_category, location, updated_at, location_id, event_organization_id, event_locations(name, area_id), event_organizations(name)')
                             .then(res => ({ ...res, type: TABS.EVENTS }))
                     );
                 }
 
-                // カテゴリマスタの取得（常に両方取得してファセット表示用に保持）
+                // カテゴリ・エリアマスタの取得
+                promises.push(
+                    supabase.from('area_locations')
+                        .select('id, name')
+                        .then(res => ({ ...res, type: 'AREA_LOCATIONS' }))
+                );
                 promises.push(
                     supabase.from('stall_categorys')
                         .select('id, name, display_order')
@@ -106,6 +112,13 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                     });
                 }
 
+                // --- 2.5 エリアマスタの処理 ---
+                let areasList = [];
+                const areasResult = results.find(r => r.type === 'AREA_LOCATIONS');
+                if (areasResult && areasResult.data) {
+                    areasList = areasResult.data;
+                }
+
                 // --- 3. データの結合と正規化 ---
                 let combinedData = [];
 
@@ -113,10 +126,13 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                     if ((result.type === TABS.STALLS || result.type === TABS.EVENTS) && result.data) {
                         const mappedData = result.data.map(item => {
                             let locationName = item.location || '';
-                            if (result.type === TABS.STALLS && item.stall_locations && item.stall_locations.name) {
-                                locationName = item.stall_locations.name;
-                            } else if (result.type === TABS.EVENTS && item.event_locations && item.event_locations.name) {
-                                locationName = item.event_locations.name;
+                            let areaId = null;
+                            if (result.type === TABS.STALLS && item.stall_locations) {
+                                locationName = item.stall_locations.name || locationName;
+                                areaId = item.stall_locations.area_id;
+                            } else if (result.type === TABS.EVENTS && item.event_locations) {
+                                locationName = item.event_locations.name || locationName;
+                                areaId = item.event_locations.area_id;
                             }
 
                             let groupName = '';
@@ -134,6 +150,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                                 groupName: groupName,
                                 categoryName: categoryMap[item.sub_category] || item.sub_category,
                                 categoryDisplayOrder: categoryOrderMap[item.sub_category] ?? 9999,
+                                areaId: areaId,
                             };
                         });
                         combinedData = [...combinedData, ...mappedData];
@@ -142,6 +159,11 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
 
                 // --- 4. フィルタリング処理 ---
                 let filteredData = combinedData;
+
+                // エリアで絞り込み
+                if (selectedArea && selectedArea !== 'すべて') {
+                    filteredData = filteredData.filter(item => item.areaId === selectedArea);
+                }
 
                 // カテゴリで絞り込み（複数選択対応）
                 if (selectedCategories && selectedCategories.length > 0) {
@@ -186,6 +208,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                     setData(filteredData);
                     setStallCategories(stallCatsList);
                     setEventCategories(eventCatsList);
+                    setAreas(areasList);
                 }
             } catch (err) {
                 if (isMounted) {
@@ -203,7 +226,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
         return () => {
             isMounted = false;
         };
-    }, [tabInfo, searchQuery, selectedCategories, sortOrder]);
+    }, [tabInfo, searchQuery, selectedCategories, sortOrder, selectedArea]);
 
-    return { data, stallCategories, eventCategories, loading, error };
+    return { data, stallCategories, eventCategories, areas, loading, error };
 };

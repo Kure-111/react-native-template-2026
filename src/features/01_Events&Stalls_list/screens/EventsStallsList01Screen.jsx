@@ -8,7 +8,7 @@ import { View, StyleSheet, SafeAreaView, FlatList, ActivityIndicator, Text, Touc
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
-import { SORT_OPTIONS, SORT_COLUMNS, TABS, TAB_NAMES } from '../constants';
+import { SORT_OPTIONS, SORT_COLUMNS, TABS, TAB_NAMES, AREA_ALL } from '../constants';
 import { useEventsStallsList01Data } from '../hooks/useEventsStallsList01Data';
 import FilterBar from '../components/FilterBar';
 import ItemCard from '../components/ItemCard';
@@ -29,18 +29,21 @@ const EventsStallsList01Screen = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState(TABS.ALL);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategories, setSelectedCategories] = useState([]);
+  const [selectedArea, setSelectedArea] = useState(AREA_ALL);
   const [sortOrder, setSortOrder] = useState(SORT_OPTIONS.NAME_ASC);
+  const [showFilters, setShowFilters] = useState(false);
 
   // 詳細モーダルの状態
   const [selectedItem, setSelectedItem] = useState(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
 
   // カスタムフックでデータ取得
-  const { data, stallCategories, eventCategories, loading, error } = useEventsStallsList01Data(
+  const { data, stallCategories, eventCategories, areas, loading, error } = useEventsStallsList01Data(
     activeTab,
     searchQuery,
     selectedCategories,
-    sortOrder
+    sortOrder,
+    selectedArea
   );
 
   // タブ切り替えハンドラ
@@ -69,6 +72,13 @@ const EventsStallsList01Screen = ({ navigation }) => {
   const handleSortChange = (key) => {
     setSortOrder(key);
   };
+
+  // スクロール時に絞り込みメニューを閉じる
+  const handleScroll = useCallback(() => {
+    if (showFilters) {
+      setShowFilters(false);
+    }
+  }, [showFilters]);
 
   // アイテムタップハンドラ
   const handleItemPress = (item) => {
@@ -106,6 +116,11 @@ const EventsStallsList01Screen = ({ navigation }) => {
         onClearCategories={handleClearCategories}
         stallCategories={stallCategories}
         eventCategories={eventCategories}
+        selectedArea={selectedArea}
+        onAreaChange={setSelectedArea}
+        areas={areas}
+        showFilters={showFilters}
+        onToggleFilters={() => setShowFilters(prev => !prev)}
       />
 
       {/* タブナビゲーション */}
@@ -242,6 +257,9 @@ const EventsStallsList01Screen = ({ navigation }) => {
             initialNumToRender={10}
             maxToRenderPerBatch={10}
             windowSize={5}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            keyboardDismissMode="on-drag"
           />
         )}
       </View>
