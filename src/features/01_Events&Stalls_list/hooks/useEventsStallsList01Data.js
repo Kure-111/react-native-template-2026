@@ -11,7 +11,7 @@ import { TABS, SORT_OPTIONS } from '../constants';
  * @param {string} sortOrder ソート順オプション
  * @returns {Object} データ、カテゴリ一覧、読み込み状態、エラー情報
  */
-export const useItem1Data = (tabInfo, searchQuery, selectedCategories, sortOrder) => {
+export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategories, sortOrder) => {
     const [data, setData] = useState([]);
     const [stallCategories, setStallCategories] = useState([]);
     const [eventCategories, setEventCategories] = useState([]);

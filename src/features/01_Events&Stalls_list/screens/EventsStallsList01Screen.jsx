@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 import { SORT_OPTIONS, SORT_COLUMNS, TABS, TAB_NAMES } from '../constants';
-import { useItem1Data } from '../hooks/useItem1Data';
+import { useEventsStallsList01Data } from '../hooks/useEventsStallsList01Data';
 import FilterBar from '../components/FilterBar';
 import ItemCard from '../components/ItemCard';
 import DetailModal from '../components/DetailModal';
@@ -20,7 +20,7 @@ const SCREEN_NAME = '企画・屋台一覧';
 /**
  * 企画・屋台一覧画面コンポーネント
  */
-const Item1Screen = ({ navigation }) => {
+const EventsStallsList01Screen = ({ navigation }) => {
   const { theme } = useTheme();
   const { width } = useWindowDimensions();
   const isMobile = Platform.OS !== 'web' || width < 768;
@@ -36,7 +36,7 @@ const Item1Screen = ({ navigation }) => {
   const [isModalVisible, setIsModalVisible] = useState(false);
 
   // カスタムフックでデータ取得
-  const { data, stallCategories, eventCategories, loading, error } = useItem1Data(
+  const { data, stallCategories, eventCategories, loading, error } = useEventsStallsList01Data(
     activeTab,
     searchQuery,
     selectedCategories,
@@ -394,4 +394,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Item1Screen;
+export default EventsStallsList01Screen;

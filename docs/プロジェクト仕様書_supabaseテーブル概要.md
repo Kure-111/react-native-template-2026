@@ -93,9 +93,9 @@
 
 ```json
 {
-  "screens": ["item1", "item2", "当日部員"],
+  "screens": ["企画・屋台一覧", "item2", "当日部員"],
   "features": {
-    "item1": ["edit", "delete"]
+    "企画・屋台一覧": ["edit", "delete"]
   }
 }
 ```
@@ -110,7 +110,8 @@ Supabase の `permissions.screens` に含まれる値と、コード側の `PERM
 
 | permissions.screens の値 | 対応する画面（SCREEN_NAME_MAP） | サイドバー表示名（ITEM_LABELS） |
 | --- | --- | --- |
-| `item1` ~ `item10` | `Item1` ~ `Item10`（デフォルト） | `項目1` ~ `項目10`（デフォルト） |
+| `企画・屋台一覧` | `01_Events&Stalls_list` | `企画・屋台一覧` |
+| `item2` ~ `item10` | `Item2` ~ `Item10`（デフォルト） | `項目2` ~ `項目10`（デフォルト） |
 | `当日部員` | `JimuShift` | `当日部員` |
 
 ※ `PERMISSION_NAME_MAP` にカスタム定義がない場合、`item{番号}` がデフォルトの権限名として使用される。

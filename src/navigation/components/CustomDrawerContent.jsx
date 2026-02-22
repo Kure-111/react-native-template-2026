@@ -32,7 +32,7 @@ const DrawerItem = ({ label, isActive, onPress, theme }) => {
     <TouchableOpacity
       style={[
         styles.drawerItem,
-        { 
+        {
           backgroundColor: isActive ? theme.primary : 'transparent',
         }
       ]}
@@ -41,7 +41,7 @@ const DrawerItem = ({ label, isActive, onPress, theme }) => {
     >
       <Text style={[
         styles.drawerItemText,
-        { 
+        {
           color: isActive ? '#FFFFFF' : theme.textSecondary,
           fontWeight: isActive ? '600' : 'normal',
         }
@@ -99,6 +99,7 @@ const CustomDrawerContent = (props) => {
    * 項目番号に対応する表示名を定義
    */
   const ITEM_LABELS = {
+    1: '企画・屋台一覧',
     9: '実長機能',
     10: '本部',
     11: '当日部員',
@@ -112,6 +113,7 @@ const CustomDrawerContent = (props) => {
    * 項目番号に対応するナビゲーション画面名を定義
    */
   const SCREEN_NAME_MAP = {
+    1: '01_Events&Stalls_list',
     11: 'JimuShift',
   };
 
@@ -120,6 +122,7 @@ const CustomDrawerContent = (props) => {
    * Supabaseのpermissions.screensに格納されている名前と対応
    */
   const PERMISSION_NAME_MAP = {
+    1: '企画・屋台一覧',
     11: '当日部員',
   };
 
