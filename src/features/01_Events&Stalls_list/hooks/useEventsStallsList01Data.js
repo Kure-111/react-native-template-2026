@@ -47,14 +47,14 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                 if (fetchStalls) {
                     promises.push(
                         supabase.from('stalls')
-                            .select('id, name, description, image_url, category, sub_category, updated_at, location_id, stall_organization_id, stall_locations(name, area_id), stall_organizations(name)')
+                            .select('id, name, description, image_path, category, sub_category, updated_at, location_id, stall_organization_id, stall_locations(name, area_id), stall_organizations(name)')
                             .then(res => ({ ...res, type: TABS.STALLS }))
                     );
                 }
                 if (fetchEvents) {
                     promises.push(
                         supabase.from('events')
-                            .select('id, name, description, image_url, category, sub_category, location, updated_at, location_id, event_organization_id, event_locations(name, area_id), event_organizations(name)')
+                            .select('id, name, description, image_path, category, sub_category, updated_at, location_id, event_organization_id, event_locations(name, area_id), event_organizations(name)')
                             .then(res => ({ ...res, type: TABS.EVENTS }))
                     );
                 }
@@ -125,7 +125,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                 results.forEach(result => {
                     if ((result.type === TABS.STALLS || result.type === TABS.EVENTS) && result.data) {
                         const mappedData = result.data.map(item => {
-                            let locationName = item.location || '';
+                            let locationName = '';
                             let areaId = null;
                             if (result.type === TABS.STALLS && item.stall_locations) {
                                 locationName = item.stall_locations.name || locationName;
