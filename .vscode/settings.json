@@ -1,3 +1,14 @@
 {
-    "cmake.sourceDirectory": "/Users/yuki_hamuro/Documents/GitHub/ikomasai-erp-2026/node_modules/expo-modules-core/android"
+    "cmake.sourceDirectory": "/Users/yuki_hamuro/Documents/GitHub/ikomasai-erp-2026/node_modules/expo-modules-core/android",
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/dist": true,
+        "**/web-build": true,
+        "**/.expo": true,
+        "**/ios": true,
+        "**/android": true,
+        "**/package-lock.json": true,
+        "**/.serena/memories": true,
+        "**/.serena/logs": true
+    }
 }
