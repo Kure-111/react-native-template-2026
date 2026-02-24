@@ -13,6 +13,15 @@ AI ツール向け設定ファイルの配置先ガイド。
 | `.cursorrules` | Cursor |
 | `.codex/instructions.md` | OpenAI Codex |
 | `GEMINI.md` | Gemini Code Assist / CLI |
+| `.windsurfrules` | Windsurf (Codeium) |
+
+## MCP・セキュリティ設定ファイル
+
+| ファイル | 内容 |
+|---------|------|
+| `.mcp.json` | MCP サーバー定義（全ツール共通） |
+| `.claude/settings.local.json` | Claude Code 権限・MCP有効化設定 |
+| `.codex/config.toml` | Codex MCP・サンドボックス設定 |
 
 ## 参照ドキュメント
 
@@ -24,6 +33,6 @@ AI ツール向け設定ファイルの配置先ガイド。
 
 ## 更新時の注意
 
-- 5つのルールファイルは同一内容を維持する（CLAUDE.md のみ開発コマンド・スキーマ参照追加あり）
-- ルール変更時は5ファイル全てを同時更新する
+- 6つのルールファイルは同一内容を維持する（CLAUDE.md のみ開発コマンド・スキーマ参照・MCP詳細ガイド追加あり）
+- ルール変更時は6ファイル全てを同時更新する
 - セキュリティ設定（`.claude/settings.local.json`, `.codex/config.toml`）は別途管理
