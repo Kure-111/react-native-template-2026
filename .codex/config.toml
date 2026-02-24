@@ -1,3 +1,6 @@
+# MCP サーバー設定
+# 各サーバーの用途は .codex/instructions.md の「利用可能な MCP サーバー」を参照
+
 [mcp_servers.supabase]
 url = "https://mcp.supabase.com/mcp"
 
