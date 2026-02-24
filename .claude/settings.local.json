@@ -15,13 +15,34 @@
       "Bash(for i in {1..11})",
       "Bash(do touch /Users/yuki_hamuro/Documents/GitHub/ikomasai-erp-2026/src/features/item$i/components/.gitkeep /Users/yuki_hamuro/Documents/GitHub/ikomasai-erp-2026/src/features/item$i/hooks/.gitkeep)",
       "Bash(done)",
-      "Bash(npm run web:*)"
+      "Bash(npm run web:*)",
+      "mcp__supabase__list_projects",
+      "mcp__supabase__list_tables",
+      "mcp__supabase__list_edge_functions",
+      "WebSearch",
+      "WebFetch(domain:supabase.com)",
+      "WebFetch(domain:firebase.google.com)"
     ],
-    "deny": [],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Bash(cat .env*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push origin main:*)",
+      "Bash(git push origin develop:*)",
+      "Bash(rm -rf:*)"
+    ],
     "ask": []
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
-    "supabase"
-  ],
-  "enableAllProjectMcpServers": true
+    "supabase",
+    "context7",
+    "chrome-devtools",
+    "serena",
+    "drawio",
+    "playwright",
+    "sequential-thinking"
+  ]
 }
