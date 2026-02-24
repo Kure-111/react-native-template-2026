@@ -1,12 +1,8 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+# Project Guidelines
 
 ## 必読ドキュメント
 
-コードを書く前に必ず確認:
-- `docs/プロジェクト仕様書.md` — 機能要件・画面設計・DB設計・API設計
-- `docs/AI用プロンプト/supabaseスキーマ参照.md` — 全49テーブルの詳細スキーマ
+実装前に `docs/プロジェクト仕様書.md` を確認し、画面・DB・API要件に沿って変更する。
 
 ## 技術スタック
 
@@ -16,22 +12,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **スタイリング:** StyleSheet のみ（Tailwind/styled-components/NativeWind 禁止）
 - **その他:** Google Apps Script（スプレッドシート連携）
 
-## 開発コマンド
-
-```bash
-npm start              # Expo 開発サーバー起動
-npm run web            # Web版起動 + 地震モニター同時起動
-npm run web-only       # Web版のみ起動
-npm run ios            # iOS起動
-npm run android        # Android起動
-npm run build          # Web版ビルド（expo export --platform web）
-```
-
-環境変数は `.env.example` をコピーして `.env` を作成。`EXPO_PUBLIC_` プレフィックスがクライアント側で参照可能。
-
 ## アーキテクチャ
 
-### エントリーポイント → ナビゲーション
+### エントリーフロー
 
 ```
 index.js → App.js → AuthProvider → ThemeProvider → AppNavigator
@@ -40,44 +23,31 @@ index.js → App.js → AuthProvider → ThemeProvider → AppNavigator
   └→ 初回ログイン: PasswordChangeModal
 ```
 
-### 機能モジュール構造（Feature-based）
+### 機能モジュール構造
 
-各機能は `src/features/{機能名}/` 配下に独立して配置：
-- `screens/` — 画面コンポーネント（Drawer.Screenに対応）
-- `components/` — その機能専用のUIパーツ
+各機能は `src/features/{機能名}/` 配下に独立配置:
+- `screens/` — 画面コンポーネント
+- `components/` — 機能専用UIパーツ
 - `services/` — Supabase API通信（select/insert/update/delete命名）
 - `hooks/` — カスタムフック
-- `constants.js` — 機能固有の定数
+- `constants.js` — 機能固有定数
 
-現在の機能一覧: item1〜item10, auth, jimu-shift, settings, admin, notifications
+機能一覧: item1〜item10, auth, jimu-shift, settings, admin, notifications
 
 ### 共有レイヤー
 
-- `src/shared/contexts/` — AuthContext（認証状態管理）、ThemeContext（テーマ管理）
-- `src/shared/components/` — ScreenErrorBoundary（全画面をError Boundaryでラップ）
+- `src/shared/contexts/` — AuthContext, ThemeContext
+- `src/shared/components/` — ScreenErrorBoundary
 - `src/shared/services/` — notificationService, webPushService, themeSettingsService
-- `src/services/supabase/` — client.js（Supabaseクライアント）、authService, userService, permissionService
+- `src/services/supabase/` — client.js, authService, userService, permissionService
 
-### Supabase Edge Functions（12個）
+### Edge Functions（12個、`supabase/functions/`）
 
-| slug | 目的 | 認証 |
-|------|------|------|
-| `dispatch-notification` | プッシュ通知配信 | Bearer / x-internal-notify-token |
-| `push-subscription` | Web Push 購読管理 | Bearer + supabase.auth.getUser |
-| `verify-admin-password` | 管理者パスワード検証 | 独自検証 |
-| `update-password` | パスワード更新 | 独自検証 |
-| `import-organizations` | 団体データ一括取込 | 独自検証 |
-| `import-projects` | 企画データ一括取込 | 独自検証 |
-| `digital_tickets` | デジタルチケット処理 | 独自検証 |
-| `delete-submission` | 常設内提出物削除 | 独自検証 |
-| `review` | 常設内レビュー | 独自検証 |
-| `submit` | 常設内提出 | 独自検証 |
-| `sandbox` | 常設内サンドボックス | 独自検証 |
-| `test-drive` | テストドライブ | 独自検証 |
+dispatch-notification（Bearer/x-internal-notify-token）、push-subscription（Bearer+getUser）、verify-admin-password、update-password、import-organizations、import-projects、digital_tickets、delete-submission、review、submit、sandbox、test-drive
 
-### レスポンシブ対応
+### レスポンシブ
 
-DrawerNavigator でブレークポイント768pxを基準に、PC版は常時サイドバー表示、モバイル版はハンバーガーメニュー切り替え。
+DrawerNavigator でブレークポイント768px。PC版は常時サイドバー、モバイル版はハンバーガーメニュー。
 
 ## コーディング規約
 
@@ -92,19 +62,19 @@ DrawerNavigator でブレークポイント768pxを基準に、PC版は常時サ
 
 ### 必須ルール
 
-- 全ての関数にJSDoc形式の**日本語コメント**を書く。変数にもコメントを付ける
-- サービス関数名はSupabase操作に合わせる: `selectXxx`, `insertXxx`, `updateXxx`, `deleteXxx`
-- ブール変数は `is`, `has`, `can`, `should` で始める
-- 定数は UPPER_SNAKE_CASE
+- 全関数にJSDoc形式の**日本語コメント**。変数にもコメント
+- サービス関数: `selectXxx`, `insertXxx`, `updateXxx`, `deleteXxx`
+- ブール変数: `is`, `has`, `can`, `should` で始める
+- 定数: UPPER_SNAKE_CASE
 - `var` 禁止（`const`/`let` のみ）
 - マジックナンバー禁止（定数化する）
 - try-catch でエラーを握りつぶさない
 
-### 新しい画面を追加する手順
+### 画面追加手順
 
-1. `src/features/{機能名}/screens/` に画面コンポーネントを作成
-2. `src/navigation/DrawerNavigator.jsx` でインポート → `createWrappedScreen()` でError Boundaryラップ → `<Drawer.Screen>` 追加
-3. `src/navigation/components/CustomDrawerContent.jsx` にサイドバーメニュー項目を追加
+1. `src/features/{機能名}/screens/` に画面コンポーネント作成
+2. `src/navigation/DrawerNavigator.jsx` → `createWrappedScreen()` → `<Drawer.Screen>` 追加
+3. `src/navigation/components/CustomDrawerContent.jsx` にメニュー項目追加
 
 ## 連携ポイント
 
@@ -122,8 +92,8 @@ DrawerNavigator でブレークポイント768pxを基準に、PC版は常時サ
 
 ## Git 運用
 
-- コミットメッセージ形式: `[種類] 変更内容`（種類: `add`, `fix`, `update`, `remove`, `docs`）
-- main/develop への直接コミット禁止。機能ブランチからPRを作成
+- コミットメッセージ: `[種類] 変更内容`（種類: `add`, `fix`, `update`, `remove`, `docs`）
+- main/develop への直接コミット禁止。機能ブランチからPR作成
 
 ## 実装ワークフロー
 
@@ -138,22 +108,13 @@ DrawerNavigator でブレークポイント768pxを基準に、PC版は常時サ
 
 ### Edge Function 変更時
 
-1. `supabase/functions/{name}/index.ts` を編集
-2. `_shared/cors.ts` の共通設定を確認
-3. 認証要件（Bearer / x-internal-notify-token）を維持
-4. デプロイ: `supabase functions deploy {name}`
+1. `supabase/functions/{name}/index.ts` 編集 → 2. `_shared/cors.ts` 確認 → 3. 認証要件維持 → 4. デプロイ: `supabase functions deploy {name}`
 
 ### DB スキーマ変更時
 
-1. `docs/AI用プロンプト/supabaseスキーマ参照.md` で現状確認
-2. マイグレーション SQL 作成
-3. RLS ポリシー設定を確認
-4. 関連サービスファイルのクエリ更新
-5. スキーマ参照ドキュメントを更新
+1. 現状確認 → 2. マイグレーションSQL作成 → 3. RLSポリシー確認 → 4. サービスファイル更新 → 5. ドキュメント更新
 
 ## DB スキーマ概要（49 テーブル）
-
-詳細カラム情報は `docs/AI用プロンプト/supabaseスキーマ参照.md` を参照。
 
 - **認証・ユーザー (6):** roles, user_profiles, user_roles, organizations, user_organizations, departments
 - **イベント・屋台・会場 (12):** events, event_dates, event_organizations, event_categorys, event_locations, stalls, stall_organizations, stall_categorys, stall_locations, locations, area_locations, time_slots
@@ -176,6 +137,6 @@ DrawerNavigator でブレークポイント768pxを基準に、PC版は常時サ
 5. `var` の使用
 6. マジックナンバー
 7. TypeScript（`supabase/functions/` 以外）
-8. API キー・パスワードのハードコード
+8. APIキー・パスワードのハードコード
 9. try-catch でのエラー握りつぶし
-10. StyleSheet 以外のスタイリング（Tailwind / styled-components / NativeWind）
+10. StyleSheet 以外のスタイリング
