@@ -303,7 +303,7 @@ const ShiftChangeResponseModal = ({
                     onPress={handleCancelConfirm}
                     disabled={isProcessing}
                   >
-                    <Text style={[styles.confirmCancelButtonText, { color: theme.text }]}>
+                    <Text style={styles.confirmCancelButtonText}>
                       戻る
                     </Text>
                   </TouchableOpacity>
@@ -543,6 +543,7 @@ const styles = StyleSheet.create({
   confirmCancelButtonText: {
     fontSize: 14,
     fontWeight: '500',
+    color: '#333333',
   },
   confirmOkButton: {
     flex: 1,

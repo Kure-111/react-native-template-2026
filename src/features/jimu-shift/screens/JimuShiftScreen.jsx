@@ -34,6 +34,7 @@ import {
 import { selectAllShiftChangeRequests } from '../services/shiftChangeService.js';
 import ShiftChangeRequestScreen from './ShiftChangeRequestScreen.jsx';
 import ShiftChangeRequestListScreen from './ShiftChangeRequestListScreen.jsx';
+import ShiftChangeHistoryScreen from './ShiftChangeHistoryScreen.jsx';
 
 /** ブレークポイント（スマホ/PC切り替え） */
 const MOBILE_BREAKPOINT = 768;
@@ -63,6 +64,10 @@ const JimuShiftScreen = ({ navigation }) => {
   const audioUnlockedRef = useRef(false);
   /** 初期タブの設定済みフラグ（userInfo非同期ロード対応） */
   const hasSetInitialTabRef = useRef(false);
+  /** Drawerフォーカス時の初回スキップフラグ（初期表示時のデータは mount 時に取得済みのためスキップ） */
+  const hasInitialFocusFiredRef = useRef(false);
+  /** シフト変更申請タブのリロードトリガー（Drawerフォーカス復帰時にインクリメント） */
+  const [changeRequestRefreshTrigger, setChangeRequestRefreshTrigger] = useState(0);
 
   /** シフト変更申請タブの表示権限があるか（祭実長・部長） */
   const canAccessChangeRequest = useMemo(() => {
@@ -97,8 +102,10 @@ const JimuShiftScreen = ({ navigation }) => {
     return new Date(festivalStartDate);
   }, [festivalStartDate]);
 
-  /** 選択中の日付 */
+  /** 選択中の日付（マイシフトタブ用） */
   const [selectedDate, setSelectedDate] = useState(getInitialDate);
+  /** 選択中の日付（シフト変更申請タブ用：タブ切り替え時に保持） */
+  const [changeRequestDate, setChangeRequestDate] = useState(getInitialDate);
   /** シフトデータ */
   const [shifts, setShifts] = useState([]);
   /** ローディング状態 */
@@ -303,9 +310,17 @@ const JimuShiftScreen = ({ navigation }) => {
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       refreshUnreadCount();
+      // 初回フォーカス（初期表示）は mount 時に各タブがデータ取得済みのためスキップ
+      if (!hasInitialFocusFiredRef.current) {
+        hasInitialFocusFiredRef.current = true;
+        return;
+      }
+      // 他のDrawer項目から戻ってきた時にデータをリロード
+      loadShifts();
+      setChangeRequestRefreshTrigger((n) => n + 1);
     });
     return unsubscribe;
-  }, [navigation, refreshUnreadCount]);
+  }, [navigation, refreshUnreadCount, loadShifts]);
 
   useEffect(() => {
     const handler = () => {
@@ -515,6 +530,23 @@ const JimuShiftScreen = ({ navigation }) => {
               </Text>
             </TouchableOpacity>
           )}
+          {/* 祭実長・部長向け：申請履歴タブ */}
+          {canAccessChangeRequest && (
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                activeTab === 'requestHistory' && [styles.tabButtonActive, { borderBottomColor: theme.primary }],
+              ]}
+              onPress={() => setActiveTab('requestHistory')}
+            >
+              <Text style={[
+                styles.tabButtonText,
+                { color: activeTab === 'requestHistory' ? theme.primary : theme.textSecondary },
+              ]}>
+                申請履歴
+              </Text>
+            </TouchableOpacity>
+          )}
           {/* 事務部向け：申請一覧タブ */}
           {canAccessJimuTab && (
             <TouchableOpacity
@@ -549,7 +581,16 @@ const JimuShiftScreen = ({ navigation }) => {
 
       {/* シフト変更申請タブの内容（祭実長・部長向け） */}
       {canAccessChangeRequest && activeTab === 'changeRequest' && (
-        <ShiftChangeRequestScreen />
+        <ShiftChangeRequestScreen
+          selectedDate={changeRequestDate}
+          onDateChange={setChangeRequestDate}
+          refreshTrigger={changeRequestRefreshTrigger}
+        />
+      )}
+
+      {/* 申請履歴タブの内容（祭実長・部長向け） */}
+      {canAccessChangeRequest && activeTab === 'requestHistory' && (
+        <ShiftChangeHistoryScreen userId={user?.id} />
       )}
 
       {/* 変更申請管理タブの内容（事務部向け） */}
@@ -741,6 +782,9 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  menuButtonText: {
+    fontSize: 26,
   },
   /* タブバー */
   tabBar: {
