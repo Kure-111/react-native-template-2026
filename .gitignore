@@ -40,3 +40,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Serena MCP (自動生成キャッシュ)
+.serena/memories/
+.serena/logs/
