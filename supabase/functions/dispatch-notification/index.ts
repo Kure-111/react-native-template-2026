@@ -181,16 +181,45 @@ const resolveRecipients = async (
 };
 
 /**
+ * 通知メタデータのタイプからアプリ内遷移先情報を導出する
+ * service-worker.js の SW_NAVIGATE_TYPE と対応している
+ * @param {Record<string, unknown> | undefined} metadata - 通知メタデータ
+ * @returns {{ screen: string; tab: string } | null} 遷移先情報
+ */
+const getNavigateTo = (
+  metadata?: Record<string, unknown>
+): { screen: string; tab: string } | null => {
+  const type = metadata?.type as string | undefined;
+  switch (type) {
+    case 'shift_change_request':
+      return { screen: 'JimuShift', tab: 'jimuRequests' };
+    case 'shift_change_completed':
+    case 'shift_change_rejected':
+      return { screen: 'JimuShift', tab: 'requestHistory' };
+    case 'shift_reminder':
+      return { screen: 'JimuShift', tab: 'myShift' };
+    default:
+      return null;
+  }
+};
+
+/**
  * Push通知を送信する
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase - Supabaseクライアント
  * @param {string[]} recipientUserIds - 受信者ユーザーID一覧
- * @param {{title:string;body:string;url:string;notificationId:string}} message - 通知データ
+ * @param {{title:string;body:string;url:string;notificationId:string;navigateTo:{screen:string;tab:string}|null}} message - 通知データ
  * @returns {Promise<PushStats>} 送信統計
  */
 const sendWebPush = async (
   supabase: ReturnType<typeof createServiceClient>,
   recipientUserIds: string[],
-  message: { title: string; body: string; url: string; notificationId: string }
+  message: {
+    title: string;
+    body: string;
+    url: string;
+    notificationId: string;
+    navigateTo: { screen: string; tab: string } | null;
+  }
 ) => {
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !VAPID_SUBJECT) {
     throw new Error('VAPID secrets are not configured');
@@ -370,6 +399,7 @@ Deno.serve(async (request) => {
         body: payload.body.trim(),
         url: payload.url || '/notifications',
         notificationId: notification.id,
+        navigateTo: getNavigateTo(payload.metadata),
       });
     } catch (pushError) {
       console.error('web push dispatch error:', pushError);

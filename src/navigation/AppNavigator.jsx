@@ -14,6 +14,7 @@ import PasswordChangeModal from '../features/auth/components/PasswordChangeModal
 import PasswordChangeForm from '../features/auth/components/PasswordChangeForm';
 import PasswordSuccessModal from '../features/auth/components/PasswordSuccessModal';
 import { usePasswordChange } from '../features/auth/hooks/usePasswordChange';
+import { usePushNavigationListener } from '../shared/hooks/usePushNavigationListener';
 
 /**
  * スタックナビゲーター
@@ -37,8 +38,11 @@ const AppNavigator = () => {
   // パスワード変更フック
   const passwordChange = usePasswordChange();
 
-  // ナビゲーション参照（パスワード変更後の画面遷移用）
+  // ナビゲーション参照（パスワード変更後の画面遷移・push通知遷移用）
   const navigationRef = useRef(null);
+
+  // push通知タップ時の画面遷移リスナー（Service Worker postMessage + URLパラメータ）
+  usePushNavigationListener({ navigationRef, isAuthenticated });
 
   // パスワード変更フォーム表示状態
   const [showPasswordForm, setShowPasswordForm] = useState(false);

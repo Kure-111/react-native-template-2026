@@ -11,6 +11,8 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
@@ -19,6 +21,10 @@ import {
   getNotificationsForUser,
   markNotificationRead,
 } from '../../../shared/services/notificationService';
+import {
+  getNavigationTargetByType,
+  getNavigationButtonLabel,
+} from '../../../shared/utils/notificationNavigation';
 
 /** 画面名 */
 const SCREEN_NAME = '通知一覧';
@@ -42,6 +48,8 @@ const NotificationListScreen = ({ navigation }) => {
   const [errorMessage, setErrorMessage] = useState('');
   /** フィルター */
   const [filter, setFilter] = useState('all');
+  /** 詳細モーダルに表示する通知（null のとき非表示） */
+  const [selectedItem, setSelectedItem] = useState(null);
 
   /**
    * 通知一覧を読み込む
@@ -69,7 +77,7 @@ const NotificationListScreen = ({ navigation }) => {
   }, [loadNotifications]);
 
   /**
-   * 通知をタップした時の処理（既読にする）
+   * 通知をタップした時の処理（既読にして詳細モーダルを開く）
    * @param {Object} item - 通知アイテム
    */
   const handlePressItem = async (item) => {
@@ -83,6 +91,33 @@ const NotificationListScreen = ({ navigation }) => {
         )
       );
     }
+    setSelectedItem(item);
+  };
+
+  /**
+   * 詳細モーダルを閉じる
+   */
+  const handleCloseDetail = () => {
+    setSelectedItem(null);
+  };
+
+  /**
+   * 詳細モーダルの「確認する」ボタンを押した時の処理
+   * 該当画面（タブ）へ遷移してモーダルを閉じる
+   */
+  const handleNavigateFromDetail = () => {
+    if (!selectedItem) {
+      return;
+    }
+    /** 通知タイプ */
+    const type = selectedItem.notification?.metadata?.type;
+    /** 遷移先情報 */
+    const target = getNavigationTargetByType(type);
+    if (!target) {
+      return;
+    }
+    setSelectedItem(null);
+    navigation.navigate(target.screen, { initialTab: target.tab });
   };
 
   /**
@@ -136,6 +171,15 @@ const NotificationListScreen = ({ navigation }) => {
     }
     return true;
   });
+
+  /** 詳細モーダルに表示する通知の情報 */
+  const detailTitle = selectedItem?.notification?.title ?? '';
+  const detailBody = selectedItem?.notification?.body ?? '';
+  const detailCreatedAt = selectedItem?.notification?.created_at ?? selectedItem?.createdAt;
+  const detailCreatedText = detailCreatedAt ? new Date(detailCreatedAt).toLocaleString() : '';
+  const detailType = selectedItem?.notification?.metadata?.type;
+  /** 「確認する」ボタンのラベル（null のとき非表示） */
+  const navigateButtonLabel = getNavigationButtonLabel(detailType);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -191,6 +235,64 @@ const NotificationListScreen = ({ navigation }) => {
           <RefreshControl refreshing={isLoading} onRefresh={loadNotifications} />
         }
       />
+
+      {/* 通知詳細モーダル */}
+      <Modal
+        visible={selectedItem !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseDetail}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { backgroundColor: theme.surface }]}>
+            {/* モーダルヘッダー */}
+            <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]} numberOfLines={2}>
+                {detailTitle}
+              </Text>
+              <TouchableOpacity style={styles.modalCloseButton} onPress={handleCloseDetail}>
+                <Text style={[styles.modalCloseText, { color: theme.textSecondary }]}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 本文エリア（スクロール可能） */}
+            <ScrollView
+              style={styles.modalBody}
+              contentContainerStyle={styles.modalBodyContent}
+            >
+              <Text style={[styles.modalBodyText, { color: theme.text }]}>{detailBody}</Text>
+              <Text style={[styles.modalDate, { color: theme.textSecondary }]}>
+                {detailCreatedText}
+              </Text>
+            </ScrollView>
+
+            {/* フッター：確認するボタン */}
+            <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
+              {navigateButtonLabel ? (
+                <TouchableOpacity
+                  style={[styles.navigateButton, { backgroundColor: theme.primary }]}
+                  onPress={handleNavigateFromDetail}
+                >
+                  <Text style={styles.navigateButtonText}>{navigateButtonLabel}</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity
+                style={[
+                  styles.closeButton,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                    borderWidth: 1,
+                  },
+                ]}
+                onPress={handleCloseDetail}
+              >
+                <Text style={[styles.closeButtonText, { color: theme.text }]}>閉じる</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -270,6 +372,84 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
+  },
+  /* 詳細モーダル */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContainer: {
+    width: '100%',
+    maxWidth: 480,
+    borderRadius: 16,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    gap: 8,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    flex: 1,
+    lineHeight: 24,
+  },
+  modalCloseButton: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCloseText: {
+    fontSize: 22,
+    lineHeight: 28,
+  },
+  modalBody: {
+    maxHeight: 300,
+  },
+  modalBodyContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 12,
+  },
+  modalBodyText: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  modalDate: {
+    fontSize: 12,
+  },
+  modalFooter: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    gap: 10,
+  },
+  navigateButton: {
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  navigateButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  closeButton: {
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    fontSize: 15,
+    fontWeight: '500',
   },
 });
 

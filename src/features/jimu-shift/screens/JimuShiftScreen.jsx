@@ -46,9 +46,12 @@ const SCREEN_NAME = '当日部員';
  * 事務シフト確認画面コンポーネント（当日部員）
  * @param {Object} props - コンポーネントプロパティ
  * @param {Object} props.navigation - React Navigationのnavigationオブジェクト
+ * @param {Object} props.route - React Navigationのrouteオブジェクト
+ * @param {Object} [props.route.params] - ルートパラメータ
+ * @param {string} [props.route.params.initialTab] - 初期表示タブ（通知タップ時の遷移先）
  * @returns {JSX.Element} シフト確認画面
  */
-const JimuShiftScreen = ({ navigation }) => {
+const JimuShiftScreen = ({ navigation, route }) => {
   /** 画面サイズ取得 */
   const { width } = useWindowDimensions();
   /** モバイル判定 */
@@ -358,6 +361,32 @@ const JimuShiftScreen = ({ navigation }) => {
       hasSetInitialTabRef.current = true;
     }
   }, [canAccessChangeRequest]);
+
+  /**
+   * 通知タップからの画面遷移に対応する
+   * route.params.initialTab が設定されていればタブを切り替える
+   * 適用後はパラメータをクリアして、再フォーカス時に再適用されないようにする
+   */
+  useEffect(() => {
+    /** 遷移先タブキー */
+    const newTab = route?.params?.initialTab;
+    if (!newTab) {
+      return;
+    }
+    /** 権限チェック：そのタブが表示可能かを確認 */
+    const isValidTab =
+      (newTab === 'myShift' && !canAccessChangeRequest) ||
+      (newTab === 'changeRequest' && canAccessChangeRequest) ||
+      (newTab === 'requestHistory' && canAccessChangeRequest) ||
+      (newTab === 'jimuRequests' && canAccessJimuTab);
+
+    if (isValidTab) {
+      setActiveTab(newTab);
+      hasSetInitialTabRef.current = true;
+      // パラメータをクリアして次回フォーカス時の誤再適用を防ぐ
+      navigation.setParams({ initialTab: undefined });
+    }
+  }, [route?.params?.initialTab, canAccessChangeRequest, canAccessJimuTab, navigation]);
 
   /** shift_change_requests の変更をリアルタイムで監視してカウントを更新 */
   useEffect(() => {

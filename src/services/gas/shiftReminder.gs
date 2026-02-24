@@ -246,6 +246,76 @@ function parseShiftData(sheet) {
 }
 
 /**
+ * 分数を時間文字列に変換
+ * @param {number} minutes - 分数（例: 600）
+ * @returns {string} 時間文字列（例: "10:00"）
+ */
+function minutesToTimeStr(minutes) {
+  var h = Math.floor(minutes / 60);
+  var m = minutes % 60;
+  var hStr = h < 10 ? '0' + h : String(h);
+  var mStr = m < 10 ? '0' + m : String(m);
+  return hStr + ':' + mStr;
+}
+
+/**
+ * 連続する同一エリアのシフトをまとめた時間帯文字列を返す
+ * 例: 10:00-10:30, 10:30-11:00 が同一エリアなら "10:00〜11:00"
+ * @param {Array<Object>} shifts - 全シフト一覧
+ * @param {Object} targetShift - 対象シフト
+ * @returns {string} まとめた時間帯（例: "10:00〜11:00"）
+ */
+function getMergedTimeRange(shifts, targetShift) {
+  var initParts = targetShift.timeSlot.split(/[-〜~]/);
+  if (initParts.length < 2) {
+    return targetShift.timeSlot;
+  }
+
+  /** 現在のマージ開始分 */
+  var mergedStart = timeToMinutes(initParts[0]);
+  /** 現在のマージ終了分 */
+  var mergedEnd = timeToMinutes(initParts[1]);
+
+  if (mergedStart < 0 || mergedEnd < 0) {
+    return targetShift.timeSlot;
+  }
+
+  // 隣接スロットがなくなるまで前後に拡張する
+  var changed = true;
+  while (changed) {
+    changed = false;
+    for (var i = 0; i < shifts.length; i++) {
+      var s = shifts[i];
+      // 同一メンバー・同一エリアのみ対象
+      if (s.memberName !== targetShift.memberName || s.areaName !== targetShift.areaName) {
+        continue;
+      }
+      var sParts = s.timeSlot.split(/[-〜~]/);
+      if (sParts.length < 2) {
+        continue;
+      }
+      var sStart = timeToMinutes(sParts[0]);
+      var sEnd = timeToMinutes(sParts[1]);
+      if (sStart < 0 || sEnd < 0) {
+        continue;
+      }
+      // このスロットの終わりが現在の開始と一致 → 前に拡張
+      if (sEnd === mergedStart) {
+        mergedStart = sStart;
+        changed = true;
+      }
+      // このスロットの開始が現在の終わりと一致 → 後ろに拡張
+      if (sStart === mergedEnd) {
+        mergedEnd = sEnd;
+        changed = true;
+      }
+    }
+  }
+
+  return minutesToTimeStr(mergedStart) + '〜' + minutesToTimeStr(mergedEnd);
+}
+
+/**
  * メイン関数: シフトリマインド通知を送信
  * 時間ベーストリガーで5分間隔で実行する
  */
@@ -304,6 +374,37 @@ function sendShiftReminders() {
         continue;
       }
 
+      // 連続同一エリアチェック:
+      // 現在進行中のシフトと20分後のシフトが同じエリアなら通知不要（既にその場所にいる）
+      var currentAreaForMember = null;
+      for (var j = 0; j < shifts.length; j++) {
+        var otherShift = shifts[j];
+        if (otherShift.memberName !== shift.memberName) {
+          continue;
+        }
+        var otherTimeParts = otherShift.timeSlot.split(/[-〜~]/);
+        if (otherTimeParts.length < 2) {
+          continue;
+        }
+        var otherStartMinutes = timeToMinutes(otherTimeParts[0]);
+        var otherEndMinutes = timeToMinutes(otherTimeParts[1]);
+        if (otherStartMinutes < 0 || otherEndMinutes < 0) {
+          continue;
+        }
+        // 現在時刻がこのシフトの時間帯に含まれるか判定
+        if (currentMinutes >= otherStartMinutes && currentMinutes < otherEndMinutes) {
+          currentAreaForMember = otherShift.areaName;
+          break;
+        }
+      }
+
+      // 現在のシフトと次のシフトが同一エリアならスキップ（送信済みとして記録し再チェック防止）
+      if (currentAreaForMember !== null && currentAreaForMember === shift.areaName) {
+        Logger.log('連続同一エリアのためスキップ: ' + shift.memberName + ' ' + shift.timeSlot + ' (' + shift.areaName + ')');
+        markAsSent(sentKey);
+        continue;
+      }
+
       // ユーザーIDを取得
       var userId = getUserIdByName(shift.memberName);
       if (!userId) {
@@ -311,8 +412,9 @@ function sendShiftReminders() {
         continue;
       }
 
-      // 通知を送信
-      var notificationBody = '20分後にシフトが始まります。' + shift.timeSlot + ' - ' + shift.areaName;
+      // 通知を送信（連続同一エリアのスロットをまとめた時間帯で表示）
+      var mergedTimeRange = getMergedTimeRange(shifts, shift);
+      var notificationBody = '20分後にシフトが始まります。' + mergedTimeRange + ' - ' + shift.areaName;
       var metadata = {
         type: 'shift_reminder',
         date: dateStr,
@@ -369,4 +471,28 @@ function setupTrigger() {
     .create();
 
   Logger.log('トリガーを設定しました: sendShiftReminders（5分間隔）, dailyCleanup（毎日0時）');
+}
+
+/**
+ * リマインド関連のトリガーをすべて削除する
+ */
+function removeTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  var targetFunctions = ['sendShiftReminders', 'dailyCleanup'];
+  var count = 0;
+
+  for (var i = 0; i < triggers.length; i++) {
+    if (targetFunctions.indexOf(triggers[i].getHandlerFunction()) !== -1) {
+      ScriptApp.deleteTrigger(triggers[i]);
+      count++;
+    }
+  }
+
+  if (count > 0) {
+    SpreadsheetApp.getUi().alert('リマインド通知を無効にしました。\n（削除したトリガー: ' + count + '件）');
+  } else {
+    SpreadsheetApp.getUi().alert('有効なリマインド通知のトリガーは見つかりませんでした。');
+  }
+
+  Logger.log('リマインドトリガーを' + count + '件削除しました');
 }
