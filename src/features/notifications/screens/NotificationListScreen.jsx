@@ -20,16 +20,32 @@ import {
   markNotificationRead,
 } from '../../../shared/services/notificationService';
 
+/** 画面名 */
 const SCREEN_NAME = '通知一覧';
 
+/**
+ * 通知一覧画面コンポーネント
+ * @param {Object} props - コンポーネントプロパティ
+ * @param {Object} props.navigation - React Navigationオブジェクト
+ * @returns {JSX.Element} 通知一覧画面
+ */
 const NotificationListScreen = ({ navigation }) => {
+  /** テーマ */
   const { theme } = useTheme();
+  /** 認証コンテキスト */
   const { user } = useAuth();
+  /** 通知一覧 */
   const [items, setItems] = useState([]);
+  /** ローディング状態 */
   const [isLoading, setIsLoading] = useState(false);
+  /** エラーメッセージ */
   const [errorMessage, setErrorMessage] = useState('');
+  /** フィルター */
   const [filter, setFilter] = useState('all');
 
+  /**
+   * 通知一覧を読み込む
+   */
   const loadNotifications = useCallback(async () => {
     if (!user?.id) {
       setItems([]);
@@ -52,6 +68,10 @@ const NotificationListScreen = ({ navigation }) => {
     loadNotifications();
   }, [loadNotifications]);
 
+  /**
+   * 通知をタップした時の処理（既読にする）
+   * @param {Object} item - 通知アイテム
+   */
   const handlePressItem = async (item) => {
     if (!item.readAt) {
       await markNotificationRead(item.recipientId);
@@ -65,11 +85,21 @@ const NotificationListScreen = ({ navigation }) => {
     }
   };
 
+  /**
+   * 通知アイテムを描画
+   * @param {Object} param - FlatListのrenderItem引数
+   * @returns {JSX.Element} 通知カード
+   */
   const renderItem = ({ item }) => {
+    /** 未読かどうか */
     const isUnread = !item.readAt;
+    /** 通知タイトル */
     const title = item.notification?.title ?? '（タイトルなし）';
+    /** 通知本文 */
     const body = item.notification?.body ?? '';
+    /** 作成日時 */
     const createdAt = item.notification?.created_at ?? item.createdAt;
+    /** 作成日時の表示文字列 */
     const createdText = createdAt ? new Date(createdAt).toLocaleString() : '';
 
     return (
@@ -96,6 +126,7 @@ const NotificationListScreen = ({ navigation }) => {
     );
   };
 
+  /** フィルター適用済み通知一覧 */
   const filteredItems = items.filter((item) => {
     if (filter === 'unread') {
       return !item.readAt;
@@ -164,6 +195,9 @@ const NotificationListScreen = ({ navigation }) => {
   );
 };
 
+/**
+ * スタイル定義
+ */
 const styles = StyleSheet.create({
   container: {
     flex: 1,

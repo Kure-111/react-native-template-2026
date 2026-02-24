@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../../../shared/contexts/AuthContext.js';
 import { useTheme } from '../../../shared/hooks/useTheme';
+import { hasRole } from '../../../services/supabase/permissionService.js';
 import { getSupabaseClient } from '../../../services/supabase/client.js';
 import { getUnreadCount, subscribeNotificationUpdates } from '../../../shared/services/notificationService';
 import { fetchShiftData } from '../../../services/gas/gasApi.js';
@@ -28,9 +29,11 @@ import {
 } from '../services/shiftService.js';
 import {
   getFestivalStartDate,
-  getFestivalEndDate,
   AREA_IMAGE_MAP,
 } from '../constants.js';
+import { selectAllShiftChangeRequests } from '../services/shiftChangeService.js';
+import ShiftChangeRequestScreen from './ShiftChangeRequestScreen.jsx';
+import ShiftChangeRequestListScreen from './ShiftChangeRequestListScreen.jsx';
 
 /** ブレークポイント（スマホ/PC切り替え） */
 const MOBILE_BREAKPOINT = 768;
@@ -58,23 +61,41 @@ const JimuShiftScreen = ({ navigation }) => {
   const subscriptionRef = useRef(null);
   const audioContextRef = useRef(null);
   const audioUnlockedRef = useRef(false);
+  /** 初期タブの設定済みフラグ（userInfo非同期ロード対応） */
+  const hasSetInitialTabRef = useRef(false);
 
-  /** 祭り開催期間 */
+  /** シフト変更申請タブの表示権限があるか（祭実長・部長） */
+  const canAccessChangeRequest = useMemo(() => {
+    if (!userInfo || !userInfo.roles) {
+      return false;
+    }
+    return hasRole(userInfo.roles, '祭実長') || hasRole(userInfo.roles, '部長');
+  }, [userInfo]);
+
+  /** 事務部タブの表示権限があるか */
+  const canAccessJimuTab = useMemo(() => {
+    if (!userInfo || !userInfo.roles) {
+      return false;
+    }
+    return hasRole(userInfo.roles, '事務部');
+  }, [userInfo]);
+
+  /** 選択中のタブ（'myShift' | 'changeRequest' | 'jimuRequests'） */
+  const [activeTab, setActiveTab] = useState('myShift');
+
+  /** 未対応のシフト変更申請件数（事務部向けバッジ用） */
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
+
+  /** 祭り開始日（当年） */
   const festivalStartDate = useMemo(() => getFestivalStartDate(), []);
-  const festivalEndDate = useMemo(() => getFestivalEndDate(), []);
 
   /**
-   * 今日が祭り期間内なら今日、そうでなければ開始日を初期値にする
+   * 初期日付として当年の祭り開始日を返す
    * @returns {Date} 初期選択日
    */
   const getInitialDate = useCallback(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (today >= festivalStartDate && today <= festivalEndDate) {
-      return today;
-    }
     return new Date(festivalStartDate);
-  }, [festivalStartDate, festivalEndDate]);
+  }, [festivalStartDate]);
 
   /** 選択中の日付 */
   const [selectedDate, setSelectedDate] = useState(getInitialDate);
@@ -295,35 +316,86 @@ const JimuShiftScreen = ({ navigation }) => {
   }, [refreshUnreadCount]);
 
   /**
-   * 開始日かどうかを判定
-   * @returns {boolean} 開始日の場合true
+   * 未対応のシフト変更申請件数を取得・更新
    */
-  const isFirstDay = selectedDate.getTime() <= festivalStartDate.getTime();
+  const refreshPendingRequestCount = useCallback(async () => {
+    if (!canAccessJimuTab) {
+      return;
+    }
+    const { requests } = await selectAllShiftChangeRequests();
+    /** status が 'pending' のもののみカウント */
+    const count = requests.filter((r) => r.status === 'pending').length;
+    setPendingRequestCount(count);
+  }, [canAccessJimuTab]);
+
+  /** 初回マウント時に未対応件数を取得 */
+  useEffect(() => {
+    refreshPendingRequestCount();
+  }, [refreshPendingRequestCount]);
 
   /**
-   * 最終日かどうかを判定
-   * @returns {boolean} 最終日の場合true
+   * 祭実長・部長はマイシフトを使わないため、初期タブをシフト変更申請に設定する
+   * userInfo が非同期でロードされるため useEffect で対応
    */
-  const isLastDay = selectedDate.getTime() >= festivalEndDate.getTime();
+  useEffect(() => {
+    if (!hasSetInitialTabRef.current && canAccessChangeRequest) {
+      setActiveTab('changeRequest');
+      hasSetInitialTabRef.current = true;
+    }
+  }, [canAccessChangeRequest]);
+
+  /** shift_change_requests の変更をリアルタイムで監視してカウントを更新 */
+  useEffect(() => {
+    if (!canAccessJimuTab) {
+      return () => {};
+    }
+    const supabase = getSupabaseClient();
+    const channel = supabase.channel('shift_change_requests_count');
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'shift_change_requests' },
+      () => {
+        refreshPendingRequestCount();
+      }
+    );
+    channel.subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [canAccessJimuTab, refreshPendingRequestCount]);
 
   /**
-   * 日付を1日進める（最終日以降は無効）
+   * 日付を1日進める
    */
   const goToNextDay = () => {
-    if (isLastDay) return;
     const nextDate = new Date(selectedDate);
     nextDate.setDate(nextDate.getDate() + 1);
     setSelectedDate(nextDate);
   };
 
   /**
-   * 日付を1日戻す（開始日以前は無効）
+   * 日付を1日戻す
    */
   const goToPreviousDay = () => {
-    if (isFirstDay) return;
     const prevDate = new Date(selectedDate);
     prevDate.setDate(prevDate.getDate() - 1);
     setSelectedDate(prevDate);
+  };
+
+  /**
+   * 今日の日付にジャンプ
+   */
+  const goToToday = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    setSelectedDate(today);
+  };
+
+  /**
+   * 祭り期間（開始日）にジャンプ
+   */
+  const goToFestival = () => {
+    setSelectedDate(new Date(festivalStartDate));
   };
 
   /**
@@ -333,6 +405,8 @@ const JimuShiftScreen = ({ navigation }) => {
   const getDisplayDate = () => {
     /** 曜日の配列 */
     const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+    /** 年 */
+    const year = selectedDate.getFullYear();
     /** 月（1始まり） */
     const month = selectedDate.getMonth() + 1;
     /** 日 */
@@ -340,7 +414,7 @@ const JimuShiftScreen = ({ navigation }) => {
     /** 曜日 */
     const dayOfWeek = dayNames[selectedDate.getDay()];
 
-    return `${month}月${day}日（${dayOfWeek}）`;
+    return `${year}年${month}月${day}日（${dayOfWeek}）`;
   };
 
   /**
@@ -401,19 +475,101 @@ const JimuShiftScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* コンテンツ */}
+      {/* タブバー（祭実長・部長・事務部のみ表示） */}
+      {(canAccessChangeRequest || canAccessJimuTab) && (
+        <View style={[styles.tabBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+          {/* 祭実長・部長はマイシフトを使わないため非表示 */}
+          {!canAccessChangeRequest && (
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                activeTab === 'myShift' && [styles.tabButtonActive, { borderBottomColor: theme.primary }],
+              ]}
+              onPress={() => {
+                setActiveTab('myShift');
+                refreshPendingRequestCount();
+              }}
+            >
+              <Text style={[
+                styles.tabButtonText,
+                { color: activeTab === 'myShift' ? theme.primary : theme.textSecondary },
+              ]}>
+                マイシフト
+              </Text>
+            </TouchableOpacity>
+          )}
+          {/* 祭実長・部長向け：シフト変更申請タブ */}
+          {canAccessChangeRequest && (
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                activeTab === 'changeRequest' && [styles.tabButtonActive, { borderBottomColor: theme.primary }],
+              ]}
+              onPress={() => setActiveTab('changeRequest')}
+            >
+              <Text style={[
+                styles.tabButtonText,
+                { color: activeTab === 'changeRequest' ? theme.primary : theme.textSecondary },
+              ]}>
+                シフト変更申請
+              </Text>
+            </TouchableOpacity>
+          )}
+          {/* 事務部向け：申請一覧タブ */}
+          {canAccessJimuTab && (
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                activeTab === 'jimuRequests' && [styles.tabButtonActive, { borderBottomColor: theme.primary }],
+              ]}
+              onPress={() => {
+                setActiveTab('jimuRequests');
+                refreshPendingRequestCount();
+              }}
+            >
+              <View style={styles.tabButtonContent}>
+                <Text style={[
+                  styles.tabButtonText,
+                  { color: activeTab === 'jimuRequests' ? theme.primary : theme.textSecondary },
+                ]}>
+                  変更申請管理
+                </Text>
+                {pendingRequestCount > 0 && (
+                  <View style={styles.tabBadge}>
+                    <Text style={styles.tabBadgeText}>
+                      {pendingRequestCount > 99 ? '99+' : pendingRequestCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* シフト変更申請タブの内容（祭実長・部長向け） */}
+      {canAccessChangeRequest && activeTab === 'changeRequest' && (
+        <ShiftChangeRequestScreen />
+      )}
+
+      {/* 変更申請管理タブの内容（事務部向け） */}
+      {canAccessJimuTab && activeTab === 'jimuRequests' && (
+        <ShiftChangeRequestListScreen onRequestProcessed={refreshPendingRequestCount} />
+      )}
+
+      {/* マイシフトタブの内容（祭実長・部長には非表示） */}
+      {activeTab === 'myShift' && !canAccessChangeRequest && (
       <ScrollView
         style={styles.content}
         contentContainerStyle={styles.contentContainer}
       >
-        {/* 日付選択（祭り期間内のみ移動可能） */}
+        {/* 日付選択 */}
         <View style={[styles.dateSelector, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <TouchableOpacity
-            style={[styles.dateArrowButton, isFirstDay && styles.dateArrowButtonDisabled]}
+            style={styles.dateArrowButton}
             onPress={goToPreviousDay}
-            disabled={isFirstDay}
           >
-            <Text style={[styles.dateArrowText, { color: isFirstDay ? theme.textSecondary : theme.primary }]}>◀</Text>
+            <Text style={[styles.dateArrowText, { color: theme.primary }]}>◀</Text>
           </TouchableOpacity>
 
           <View style={styles.dateDisplay}>
@@ -421,11 +577,26 @@ const JimuShiftScreen = ({ navigation }) => {
           </View>
 
           <TouchableOpacity
-            style={[styles.dateArrowButton, isLastDay && styles.dateArrowButtonDisabled]}
+            style={styles.dateArrowButton}
             onPress={goToNextDay}
-            disabled={isLastDay}
           >
-            <Text style={[styles.dateArrowText, { color: isLastDay ? theme.textSecondary : theme.primary }]}>▶</Text>
+            <Text style={[styles.dateArrowText, { color: theme.primary }]}>▶</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ジャンプボタン */}
+        <View style={styles.jumpButtonRow}>
+          <TouchableOpacity
+            style={[styles.jumpButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+            onPress={goToToday}
+          >
+            <Text style={[styles.jumpButtonText, { color: theme.primary }]}>今日にジャンプ</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.jumpButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+            onPress={goToFestival}
+          >
+            <Text style={[styles.jumpButtonText, { color: theme.primary }]}>祭期間にジャンプ</Text>
           </TouchableOpacity>
         </View>
 
@@ -487,6 +658,7 @@ const JimuShiftScreen = ({ navigation }) => {
             ))}
         </View>
       </ScrollView>
+      )}
 
       {/* エリア画像表示モーダル */}
       <Modal
@@ -570,6 +742,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /* タブバー */
+  tabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabButtonActive: {
+    borderBottomWidth: 2,
+  },
+  tabButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  tabButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tabBadge: {
+    backgroundColor: '#e53935',
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
   badge: {
     position: 'absolute',
     top: 6,
@@ -625,9 +835,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#007AFF',
   },
-  dateArrowButtonDisabled: {
-    opacity: 0.3,
-  },
   dateDisplay: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -638,6 +845,24 @@ const styles = StyleSheet.create({
   dateText: {
     fontSize: 18,
     fontWeight: '600',
+  },
+  /* ジャンプボタン */
+  jumpButtonRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  jumpButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  jumpButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   /* シフト表示エリア */
   shiftArea: {

@@ -74,22 +74,23 @@ const getBearerToken = (request: Request) => {
 };
 
 /**
- * 管理者ロールかどうかを判定する
+ * 通知送信権限を持つロールかどうかを判定する
+ * 管理者・祭実長・部長・事務部 のいずれかを持つユーザーが送信可能
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase - Supabaseクライアント
  * @param {string} userId - ユーザーID
- * @returns {Promise<boolean>} 管理者の場合true
+ * @returns {Promise<boolean>} 送信権限がある場合true
  */
-const isAdminUser = async (supabase: ReturnType<typeof createServiceClient>, userId: string) => {
+const isAuthorizedSender = async (supabase: ReturnType<typeof createServiceClient>, userId: string) => {
   const { data, error } = await supabase
     .from('user_roles')
     .select('roles!inner(name)')
     .eq('user_id', userId)
-    .eq('roles.name', '管理者')
+    .in('roles.name', ['管理者', '祭実長', '部長', '事務部'])
     .limit(1);
 
   if (error) {
-    console.error('admin check error:', error);
-    throw new Error('Failed to check admin role');
+    console.error('auth check error:', error);
+    throw new Error('Failed to check authorized role');
   }
 
   return Array.isArray(data) && data.length > 0;
@@ -133,8 +134,8 @@ const authenticateRequester = async (
     throw new Error('Invalid user token');
   }
 
-  const admin = await isAdminUser(supabase, user.id);
-  if (!admin) {
+  const authorized = await isAuthorizedSender(supabase, user.id);
+  if (!authorized) {
     throw new Error('Forbidden');
   }
 

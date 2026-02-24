@@ -6,7 +6,6 @@
 import { getSupabaseClient } from '../../services/supabase/client.js';
 
 const notificationEventTarget = new EventTarget();
-const SESSION_REFRESH_MARGIN_SECONDS = 60;
 
 export const subscribeNotificationUpdates = (handler) => {
   notificationEventTarget.addEventListener('change', handler);
@@ -18,59 +17,22 @@ export const emitNotificationUpdate = () => {
 };
 
 /**
- * セッションの有効期限が近いか判定する
- * @param {Object|null} session
- * @returns {boolean}
- */
-const isSessionExpiringSoon = (session) => {
-  const expiresAt = session?.expires_at;
-  if (!expiresAt) {
-    return false;
-  }
-
-  const nowUnixSeconds = Math.floor(Date.now() / 1000);
-  return expiresAt <= nowUnixSeconds + SESSION_REFRESH_MARGIN_SECONDS;
-};
-
-/**
  * 現在有効なアクセストークンを取得する
- * @param {boolean} forceRefresh
+ *
+ * getSession() のみを使用し、手動 refreshSession() は一切呼ばない。
+ * refreshSession() を手動で呼ぶと autoRefreshToken との競合でリフレッシュトークンが
+ * 使用済みになり、Supabase JS クライアントが 400 を受けた際に内部でサインアウトを
+ * 発火させる (_removeSession → SIGNED_OUT) ため使用しない。
+ *
  * @returns {Promise<string|null>}
  */
-const getValidAccessToken = async (forceRefresh = false) => {
+const getValidAccessToken = async () => {
   const supabase = getSupabaseClient();
-
-  if (forceRefresh) {
-    const { data, error } = await supabase.auth.refreshSession();
-    if (error) {
-      throw error;
-    }
-    return data?.session?.access_token ?? null;
-  }
-
   const { data, error } = await supabase.auth.getSession();
   if (error) {
-    throw error;
+    return null;
   }
-
-  let session = data?.session ?? null;
-
-  if (!session) {
-    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-    if (refreshError) {
-      return null;
-    }
-    session = refreshData?.session ?? null;
-  }
-
-  if (session && isSessionExpiringSoon(session)) {
-    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-    if (!refreshError && refreshData?.session?.access_token) {
-      return refreshData.session.access_token;
-    }
-  }
-
-  return session?.access_token ?? null;
+  return data?.session?.access_token ?? null;
 };
 
 /**
@@ -223,7 +185,7 @@ export const getUserProfilesByIds = async (userIds) => {
  */
 const dispatchNotification = async (payload) => {
   try {
-    let accessToken = await getValidAccessToken();
+    const accessToken = await getValidAccessToken();
 
     if (!accessToken) {
       return { data: null, error: new Error('ログインセッションが見つかりません。再ログインしてください。') };
@@ -240,9 +202,13 @@ const dispatchNotification = async (payload) => {
     let { data, error } = await invokeDispatch(accessToken);
 
     if (error && isUnauthorizedFunctionError(error)) {
-      accessToken = await getValidAccessToken(true).catch(() => null);
-      if (accessToken) {
-        ({ data, error } = await invokeDispatch(accessToken));
+      // アクセストークンが期限切れの場合、autoRefreshToken の完了を待ってから再試行する。
+      // refreshSession() を手動で呼ぶとリフレッシュトークンのローテーション競合が発生して
+      // ユーザーがサインアウトされるため、待機後に getSession() で最新トークンを取得する。
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      const newToken = await getValidAccessToken();
+      if (newToken) {
+        ({ data, error } = await invokeDispatch(newToken));
       }
     }
 
@@ -365,7 +331,7 @@ export const getNotificationsForUser = async (userId) => {
   try {
     const { data, error } = await getSupabaseClient()
       .from('notification_recipients')
-      .select('id, read_at, created_at, notifications ( id, title, body, created_at )')
+      .select('id, read_at, created_at, notifications ( id, title, body, metadata, sender_user_id, created_at )')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
