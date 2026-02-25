@@ -4,18 +4,27 @@ import { useFonts } from 'expo-font';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
-// Webの本番環境で @expo/vector-icons が確実に読み込まれるように手動でCSSを注入する
+// Webビルド時、Metroは「assets/...」という相対パスを返すことがあります。
+// SPAのサブルート（例: /item10）へ直接アクセスした場合に404になるのを防ぐため、
+// ルートからの絶対パス（/assets/...）に変換するヘルパー。
+const getAbsoluteFontUrl = (fontAsset) => {
+    if (typeof fontAsset === 'string' && !fontAsset.startsWith('/') && !fontAsset.startsWith('http') && !fontAsset.startsWith('data:')) {
+        return '/' + fontAsset;
+    }
+    return fontAsset;
+};
+
 if (Platform.OS === 'web') {
     const ioniconsFont = require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf');
     const materialCommunityIconsFont = require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf');
 
     const iconFontStyles = `
     @font-face {
-      src: url(${ioniconsFont});
+      src: url(${getAbsoluteFontUrl(ioniconsFont)});
       font-family: Ionicons;
     }
     @font-face {
-      src: url(${materialCommunityIconsFont});
+      src: url(${getAbsoluteFontUrl(materialCommunityIconsFont)});
       font-family: MaterialCommunityIcons;
     }
   `;
@@ -35,20 +44,20 @@ if (Platform.OS === 'web') {
 
 /**
  * フォントの事前読み込みとプロバイダラッパー
- * Webの本番環境での文字化け（□になる問題）を防ぐためにCSSを注入し、
- * フォントの準備が完了するまで子要素のレンダリングをブロックします。
- * 
- * @param {Object} props - コンポーネントのプロパティ
- * @param {React.ReactNode} props.children - 子要素
  */
 export const FontLoaderProvider = ({ children }) => {
-    const [fontsLoaded] = useFonts({
-        ...Ionicons.font,
-        ...MaterialCommunityIcons.font,
+    const [fontsLoaded, fontError] = useFonts({
+        Ionicons: Platform.OS === 'web'
+            ? getAbsoluteFontUrl(require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'))
+            : Ionicons.font.Ionicons,
+        MaterialCommunityIcons: Platform.OS === 'web'
+            ? getAbsoluteFontUrl(require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf'))
+            : MaterialCommunityIcons.font.MaterialCommunityIcons,
     });
 
-    // フォントの読み込みが完了していない場合は何も表示しない（スプラッシュ等の代わり）
-    if (!fontsLoaded) {
+    // ネイティブ(iOS/Android)ではフォントロード前に描画するとクラッシュするため待機します。
+    // Webでは、万一useFontsが404エラー等でブロックしても画面が真っ白にならないよう描画を続行します。
+    if (Platform.OS !== 'web' && (!fontsLoaded && !fontError)) {
         return null;
     }
 
