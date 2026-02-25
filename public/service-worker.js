@@ -4,7 +4,7 @@
  */
 
 // キャッシュバージョン
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 // キャッシュ名
 const CACHE_NAME = `ikoma-erp-cache-${CACHE_VERSION}`;
 // プリキャッシュ対象

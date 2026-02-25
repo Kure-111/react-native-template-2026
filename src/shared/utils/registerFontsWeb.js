@@ -6,15 +6,15 @@ export function registerFontsWeb() {
   const fonts = `
     @font-face {
       font-family: 'Ionicons';
-      src: url(${require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf')}) format('truetype');
+      src: url('/fonts/Ionicons.ttf') format('truetype');
     }
     @font-face {
       font-family: 'Material Design Icons';
-      src: url(${require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf')}) format('truetype');
+      src: url('/fonts/MaterialCommunityIcons.ttf') format('truetype');
     }
     @font-face {
       font-family: 'MaterialCommunityIcons';
-      src: url(${require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf')}) format('truetype');
+      src: url('/fonts/MaterialCommunityIcons.ttf') format('truetype');
     }
   `;
 
