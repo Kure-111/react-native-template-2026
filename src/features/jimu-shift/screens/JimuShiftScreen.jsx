@@ -245,6 +245,19 @@ const JimuShiftScreen = ({ navigation, route }) => {
     previousUnreadCountRef.current = count;
   }, [user?.id, playNotificationSound]);
 
+  /**
+   * 未対応のシフト変更申請件数を取得・更新
+   */
+  const refreshPendingRequestCount = useCallback(async () => {
+    if (!canAccessJimuTab) {
+      return;
+    }
+    const { requests } = await selectAllShiftChangeRequests();
+    /** status が 'pending' のもののみカウント */
+    const count = requests.filter((r) => r.status === 'pending').length;
+    setPendingRequestCount(count);
+  }, [canAccessJimuTab]);
+
   useEffect(() => {
     const unlockAudio = (event) => {
       if (event && event.isTrusted) {
@@ -320,10 +333,11 @@ const JimuShiftScreen = ({ navigation, route }) => {
       }
       // 他のDrawer項目から戻ってきた時にデータをリロード
       loadShifts();
+      refreshPendingRequestCount();
       setChangeRequestRefreshTrigger((n) => n + 1);
     });
     return unsubscribe;
-  }, [navigation, refreshUnreadCount, loadShifts]);
+  }, [navigation, refreshUnreadCount, loadShifts, refreshPendingRequestCount]);
 
   useEffect(() => {
     const handler = () => {
@@ -332,19 +346,6 @@ const JimuShiftScreen = ({ navigation, route }) => {
     const unsubscribe = subscribeNotificationUpdates(handler);
     return unsubscribe;
   }, [refreshUnreadCount]);
-
-  /**
-   * 未対応のシフト変更申請件数を取得・更新
-   */
-  const refreshPendingRequestCount = useCallback(async () => {
-    if (!canAccessJimuTab) {
-      return;
-    }
-    const { requests } = await selectAllShiftChangeRequests();
-    /** status が 'pending' のもののみカウント */
-    const count = requests.filter((r) => r.status === 'pending').length;
-    setPendingRequestCount(count);
-  }, [canAccessJimuTab]);
 
   /** 初回マウント時に未対応件数を取得 */
   useEffect(() => {
@@ -624,7 +625,10 @@ const JimuShiftScreen = ({ navigation, route }) => {
 
       {/* 変更申請管理タブの内容（事務部向け） */}
       {canAccessJimuTab && activeTab === 'jimuRequests' && (
-        <ShiftChangeRequestListScreen onRequestProcessed={refreshPendingRequestCount} />
+        <ShiftChangeRequestListScreen
+          onRequestProcessed={refreshPendingRequestCount}
+          refreshTrigger={changeRequestRefreshTrigger}
+        />
       )}
 
       {/* マイシフトタブの内容（祭実長・部長には非表示） */}

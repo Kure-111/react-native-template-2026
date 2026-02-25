@@ -41,9 +41,10 @@ const getStatusConfig = (status) => {
  * シフト変更申請一覧画面コンポーネント（事務部向け）
  * @param {Object} props - コンポーネントプロパティ
  * @param {Function} [props.onRequestProcessed] - 承認・却下後に呼ばれるコールバック
+ * @param {number} [props.refreshTrigger] - 親からの強制リロードトリガー（値が変わるたびにリロード）
  * @returns {JSX.Element} 申請一覧
  */
-const ShiftChangeRequestListScreen = ({ onRequestProcessed }) => {
+const ShiftChangeRequestListScreen = ({ onRequestProcessed, refreshTrigger }) => {
   /** テーマ */
   const { theme } = useTheme();
   /** 認証コンテキスト */
@@ -87,6 +88,16 @@ const ShiftChangeRequestListScreen = ({ onRequestProcessed }) => {
   useEffect(() => {
     loadRequests();
   }, [loadRequests]);
+
+  /**
+   * 親からのリロードトリガーが変化したら申請一覧を再取得する
+   * 通知画面から「申請を見る」で遷移してきた時などに使用
+   */
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      loadRequests();
+    }
+  }, [refreshTrigger, loadRequests]);
 
   /**
    * 申請カードをタップした時の処理（対応モーダルを開く）
@@ -191,8 +202,10 @@ const ShiftChangeRequestListScreen = ({ onRequestProcessed }) => {
   const renderItem = ({ item }) => {
     /** ステータス表示設定 */
     const statusConfig = getStatusConfig(item.status);
-    /** 交換かどうかの判定 */
-    const isSwap = !!item.destination_area_name;
+    /** 救援申請かどうかの判定（交代先メンバーなし） */
+    const isRescue = !item.destination_member_name;
+    /** 交換かどうかの判定（救援申請は常にfalse） */
+    const isSwap = !isRescue && !!item.destination_area_name;
     /** 日付の表示用文字列 */
     const displayDate = item.shift_date
       ? new Date(item.shift_date + 'T00:00:00').toLocaleDateString('ja-JP', {
@@ -217,7 +230,8 @@ const ShiftChangeRequestListScreen = ({ onRequestProcessed }) => {
           styles.card,
           {
             backgroundColor: theme.surface,
-            borderColor: item.status === 'pending' ? theme.primary : theme.border,
+            borderColor: isRescue ? '#FF9800' : (item.status === 'pending' ? theme.primary : theme.border),
+            borderWidth: isRescue ? 2 : 1.5,
           },
         ]}
         onPress={() => handlePressRequest(item)}
@@ -234,14 +248,25 @@ const ShiftChangeRequestListScreen = ({ onRequestProcessed }) => {
 
         {/* 申請内容プレビュー */}
         <View style={styles.changePreview}>
-          <Text style={[styles.changeTypeLabel, { color: theme.textSecondary }]}>
-            {isSwap ? '交換' : '移動'}
-          </Text>
-          <Text style={[styles.changeDetail, { color: theme.text }]} numberOfLines={2}>
+          {isRescue ? (
+            <View style={styles.rescueTypeBadge}>
+              <Text style={styles.rescueTypeBadgeText}>救援要請</Text>
+            </View>
+          ) : (
+            <Text style={[styles.changeTypeLabel, { color: theme.textSecondary }]}>
+              {isSwap ? '交換' : '移動'}
+            </Text>
+          )}
+          <Text
+            style={[styles.changeDetail, isRescue ? styles.rescueDetailText : { color: theme.text }]}
+            numberOfLines={2}
+          >
             {item.source_member_name}（{item.source_time_slot} {item.source_area_name}）
-            {isSwap
-              ? ` ↔ ${item.destination_member_name}（${item.destination_time_slot} ${item.destination_area_name}）`
-              : ` → ${item.destination_member_name}（${item.destination_time_slot} シフトなし）`}
+            {isRescue
+              ? ' → 交代者なし'
+              : isSwap
+                ? ` ↔ ${item.destination_member_name}（${item.destination_time_slot} ${item.destination_area_name}）`
+                : ` → ${item.destination_member_name}（${item.destination_time_slot} シフトなし）`}
           </Text>
         </View>
 
@@ -427,6 +452,25 @@ const styles = StyleSheet.create({
   changeDetail: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  /* 救援要請バッジ */
+  rescueTypeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#D32F2F',
+    borderRadius: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: 4,
+  },
+  rescueTypeBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  /* 救援要請の詳細テキスト（通常の文字色） */
+  rescueDetailText: {
+    fontWeight: '500',
   },
   /* 申請者備考 */
   requesterNote: {

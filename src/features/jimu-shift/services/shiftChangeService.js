@@ -232,13 +232,17 @@ export const completeShiftChangeRequest = async (requestId, completedByUserId, r
     }
 
     // 変更の種類を判定
-    /** 交換かどうか */
-    const isSwap = !!request.destination_area_name;
+    /** 救援申請かどうか */
+    const isRescueComplete = !request.destination_member_name;
+    /** 交換かどうか（救援申請は常にfalse） */
+    const isSwap = !isRescueComplete && !!request.destination_area_name;
 
     /** 完了通知本文 */
-    const completionBody = isSwap
-      ? `申請されたシフト変更が反映されました。\n${request.organization_name} - ${request.source_member_name}さん(${request.source_time_slot} ${request.source_area_name}) ↔ ${request.destination_member_name}さん(${request.destination_time_slot} ${request.destination_area_name})\n対応内容: ${responderNote}`
-      : `申請されたシフト変更が反映されました。\n${request.organization_name} - ${request.source_member_name}さん(${request.source_time_slot} ${request.source_area_name}) → ${request.destination_member_name}さん（シフトなし）\n対応内容: ${responderNote}`;
+    const completionBody = isRescueComplete
+      ? `救援申請が対応されました。\n${request.organization_name} - ${request.source_member_name}さん(${request.source_time_slot} ${request.source_area_name})\n対応内容: ${responderNote}`
+      : isSwap
+        ? `申請されたシフト変更が反映されました。\n${request.organization_name} - ${request.source_member_name}さん(${request.source_time_slot} ${request.source_area_name}) ↔ ${request.destination_member_name}さん(${request.destination_time_slot} ${request.destination_area_name})\n対応内容: ${responderNote}`
+        : `申請されたシフト変更が反映されました。\n${request.organization_name} - ${request.source_member_name}さん(${request.source_time_slot} ${request.source_area_name}) → ${request.destination_member_name}さん（シフトなし）\n対応内容: ${responderNote}`;
 
     /** 完了通知メタデータ */
     const completionMetadata = {
@@ -309,13 +313,17 @@ export const rejectShiftChangeRequest = async (requestId, rejectedByUserId, resp
     }
 
     // 変更の種類を判定
-    /** 交換かどうか */
-    const isSwap = !!request.destination_area_name;
+    /** 救援申請かどうか */
+    const isRescueReject = !request.destination_member_name;
+    /** 交換かどうか（救援申請は常にfalse） */
+    const isSwapReject = !isRescueReject && !!request.destination_area_name;
 
     /** 却下通知本文 */
-    const rejectionBody = isSwap
-      ? `申請されたシフト変更が却下されました。\n${request.organization_name} - ${request.source_member_name}さん(${request.source_time_slot} ${request.source_area_name}) ↔ ${request.destination_member_name}さん(${request.destination_time_slot} ${request.destination_area_name})\n却下理由: ${responderNote}`
-      : `申請されたシフト変更が却下されました。\n${request.organization_name} - ${request.source_member_name}さん(${request.source_time_slot} ${request.source_area_name}) → ${request.destination_member_name}さん（シフトなし）\n却下理由: ${responderNote}`;
+    const rejectionBody = isRescueReject
+      ? `救援申請が却下されました。\n${request.organization_name} - ${request.source_member_name}さん(${request.source_time_slot} ${request.source_area_name})\n却下理由: ${responderNote}`
+      : isSwapReject
+        ? `申請されたシフト変更が却下されました。\n${request.organization_name} - ${request.source_member_name}さん(${request.source_time_slot} ${request.source_area_name}) ↔ ${request.destination_member_name}さん(${request.destination_time_slot} ${request.destination_area_name})\n却下理由: ${responderNote}`
+        : `申請されたシフト変更が却下されました。\n${request.organization_name} - ${request.source_member_name}さん(${request.source_time_slot} ${request.source_area_name}) → ${request.destination_member_name}さん（シフトなし）\n却下理由: ${responderNote}`;
 
     /** 却下通知メタデータ */
     const rejectionMetadata = {

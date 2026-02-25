@@ -68,8 +68,10 @@ const ShiftChangeResponseModal = ({
     return null;
   }
 
-  /** 交換かどうかの判定 */
-  const isSwap = !!request.destination_area_name;
+  /** 救援申請かどうかの判定（交代先メンバーなし） */
+  const isRescue = !request.destination_member_name;
+  /** 交換かどうかの判定（救援申請は常にfalse） */
+  const isSwap = !isRescue && !!request.destination_area_name;
   /** ステータス表示設定 */
   const statusConfig = getStatusConfig(request.status);
   /** 既に対応済みかどうか */
@@ -181,10 +183,20 @@ const ShiftChangeResponseModal = ({
             </View>
 
             {/* 申請内容プレビュー */}
-            <View style={[styles.previewContainer, { borderColor: theme.border }]}>
-              <Text style={[styles.previewTypeLabel, { color: theme.textSecondary }]}>
-                {isSwap ? '交換' : '移動'}
-              </Text>
+            <View style={[
+              styles.previewContainer,
+              { borderColor: isRescue ? '#D32F2F' : theme.border },
+              isRescue && styles.rescuePreviewContainer,
+            ]}>
+              {isRescue ? (
+                <View style={styles.rescueTypeBadge}>
+                  <Text style={styles.rescueTypeBadgeText}>救援要請</Text>
+                </View>
+              ) : (
+                <Text style={[styles.previewTypeLabel, { color: theme.textSecondary }]}>
+                  {isSwap ? '交換' : '移動'}
+                </Text>
+              )}
               {/* 移動元 */}
               <View style={styles.memberRow}>
                 <Text style={[styles.memberName, { color: theme.text }]}>
@@ -195,12 +207,17 @@ const ShiftChangeResponseModal = ({
                 </Text>
               </View>
               {/* 矢印 */}
-              <Text style={[styles.arrowText, { color: theme.primary }]}>
+              <Text style={[styles.arrowText, { color: isRescue ? '#D32F2F' : theme.primary }]}>
                 {isSwap ? '↕' : '↓'}
               </Text>
               {/* 移動先 */}
               <View style={styles.memberRow}>
-                {isSwap ? (
+                {isRescue ? (
+                  <View style={styles.rescueDestinationBox}>
+                    <Text style={[styles.rescueDestinationText, { color: theme.text }]}>交代者なし</Text>
+                    <Text style={[styles.rescueDestinationSubText, { color: theme.textSecondary }]}>事務部が交代要員を手配します</Text>
+                  </View>
+                ) : isSwap ? (
                   <>
                     <Text style={[styles.memberName, { color: theme.text }]}>
                       {request.destination_member_name}さん
@@ -437,6 +454,41 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 14,
     marginBottom: 12,
+  },
+  /* 救援要請時のプレビューコンテナ（赤枠を太く） */
+  rescuePreviewContainer: {
+    borderWidth: 2,
+  },
+  /* 救援要請バッジ */
+  rescueTypeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#D32F2F',
+    borderRadius: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: 10,
+  },
+  rescueTypeBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  /* 救援要請の移動先ボックス */
+  rescueDestinationBox: {
+    backgroundColor: 'rgba(211, 47, 47, 0.08)',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flex: 1,
+  },
+  rescueDestinationText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  rescueDestinationSubText: {
+    fontSize: 12,
+    marginTop: 2,
   },
   previewTypeLabel: {
     fontSize: 12,

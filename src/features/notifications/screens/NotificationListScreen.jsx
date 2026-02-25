@@ -19,6 +19,7 @@ import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 import { useAuth } from '../../../shared/contexts/AuthContext';
 import {
   getNotificationsForUser,
+  markAllNotificationsRead,
 } from '../../../shared/services/notificationService';
 import {
   getNavigationTargetByType,
@@ -49,9 +50,12 @@ const NotificationListScreen = ({ navigation }) => {
   const [filter, setFilter] = useState('all');
   /** 詳細モーダルに表示する通知（null のとき非表示） */
   const [selectedItem, setSelectedItem] = useState(null);
+  /** 画面を開いた時点で未読だった通知のrecipientIdセット（NEWバッジ表示用） */
+  const [newItemIds, setNewItemIds] = useState(new Set());
 
   /**
    * 通知一覧を読み込む
+   * ロード時点で readAt が null の通知を「新着」として newItemIds に記録する
    */
   const loadNotifications = useCallback(async () => {
     if (!user?.id) {
@@ -67,6 +71,9 @@ const NotificationListScreen = ({ navigation }) => {
       setIsLoading(false);
       return;
     }
+    /** ロード時点で未読の通知IDセット（NEWバッジ用） */
+    const unreadIds = new Set(fetchedItems.filter((i) => !i.readAt).map((i) => i.recipientId));
+    setNewItemIds(unreadIds);
     setItems(fetchedItems);
     setIsLoading(false);
   }, [user?.id]);
@@ -74,6 +81,19 @@ const NotificationListScreen = ({ navigation }) => {
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
+
+  /**
+   * 画面を離れた時（別タブへ移動等）に全未読を既読にしてNEWバッジをクリア
+   */
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('blur', () => {
+      if (user?.id && newItemIds.size > 0) {
+        markAllNotificationsRead(user.id);
+        setNewItemIds(new Set());
+      }
+    });
+    return unsubscribe;
+  }, [navigation, user?.id, newItemIds]);
 
   /**
    * 通知をタップした時の処理（詳細モーダルを開く）
@@ -117,7 +137,8 @@ const NotificationListScreen = ({ navigation }) => {
    */
   const renderItem = ({ item }) => {
     /** 未読かどうか */
-    const isUnread = !item.readAt;
+    /** 画面を開いた時点で未読だったかどうか（NEWバッジ表示に使用） */
+    const isNew = newItemIds.has(item.recipientId);
     /** 通知タイトル */
     const title = item.notification?.title ?? '（タイトルなし）';
     /** 通知本文 */
@@ -133,7 +154,7 @@ const NotificationListScreen = ({ navigation }) => {
           styles.card,
           {
             backgroundColor: theme.surface,
-            borderColor: isUnread ? theme.primary : theme.border,
+            borderColor: isNew ? theme.primary : theme.border,
           },
         ]}
         onPress={() => handlePressItem(item)}
@@ -141,7 +162,11 @@ const NotificationListScreen = ({ navigation }) => {
       >
         <View style={styles.cardHeader}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>{title}</Text>
-          {isUnread && <Text style={[styles.unreadBadge, { color: theme.primary }]}>未読</Text>}
+          {isNew && (
+            <View style={[styles.newBadge, { borderColor: theme.primary }]}>
+              <Text style={[styles.newBadgeText, { color: theme.primary }]}>NEW</Text>
+            </View>
+          )}
         </View>
         <Text style={[styles.cardBody, { color: theme.textSecondary }]} numberOfLines={2}>
           {body}
@@ -342,9 +367,16 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingRight: 8,
   },
-  unreadBadge: {
-    fontSize: 12,
+  newBadge: {
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  newBadgeText: {
+    fontSize: 11,
     fontWeight: '600',
+    letterSpacing: 0.5,
   },
   cardBody: {
     marginTop: 8,

@@ -8,7 +8,7 @@ import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions, Image } 
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../contexts/AuthContext';
 import { getSupabaseClient } from '../../services/supabase/client';
-import { getUnreadCount, markAllNotificationsRead, subscribeNotificationUpdates } from '../services/notificationService';
+import { getUnreadCount, subscribeNotificationUpdates } from '../services/notificationService';
 
 const MOBILE_BREAKPOINT = 768;
 
@@ -34,10 +34,9 @@ export const ThemedHeader = ({ title, navigation }) => {
     navigation.openDrawer();
   };
 
-  const goToNotifications = async () => {
-    // ベルを押した時点で全未読を既読にする
-    if (user?.id && unreadCount > 0) {
-      await markAllNotificationsRead(user.id);
+  const goToNotifications = () => {
+    // バッジをすぐ消す（楽観的更新）。既読DB更新は通知一覧画面の離脱時に行う
+    if (unreadCount > 0) {
       setUnreadCount(0);
       previousUnreadCountRef.current = 0;
     }
