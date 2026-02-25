@@ -397,3 +397,27 @@ export const markNotificationRead = async (recipientId) => {
     return { success: false, error };
   }
 };
+
+/**
+ * 指定ユーザーの未読通知を全て既読にする
+ * @param {string} userId - ユーザーID
+ * @returns {Promise<Object>} success, error
+ */
+export const markAllNotificationsRead = async (userId) => {
+  try {
+    const { error } = await getSupabaseClient()
+      .from('notification_recipients')
+      .update({ read_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .is('read_at', null);
+
+    if (error) {
+      return { success: false, error };
+    }
+
+    emitNotificationUpdate();
+    return { success: true, error: null };
+  } catch (error) {
+    return { success: false, error };
+  }
+};

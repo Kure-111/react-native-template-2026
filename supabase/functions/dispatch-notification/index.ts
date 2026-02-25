@@ -192,6 +192,7 @@ const getNavigateTo = (
   const type = metadata?.type as string | undefined;
   switch (type) {
     case 'shift_change_request':
+    case 'shift_rescue_request':
       return { screen: 'JimuShift', tab: 'jimuRequests' };
     case 'shift_change_completed':
     case 'shift_change_rejected':

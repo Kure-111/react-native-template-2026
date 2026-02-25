@@ -63,6 +63,9 @@ export const insertShiftChangeRequest = async (params) => {
 
     // 申請レコードを先に作成してIDを確定する
     // （通知の metadata に request_id を含めるため先行挿入）
+    /** 救援申請かどうか（交代先メンバーなし） */
+    const isRescue = !destinationMemberName;
+
     const { data, error: insertError } = await getSupabaseClient()
       .from('shift_change_requests')
       .insert({
@@ -73,7 +76,7 @@ export const insertShiftChangeRequest = async (params) => {
         source_time_slot: sourceTimeSlot,
         source_area_name: sourceAreaName,
         destination_member_name: destinationMemberName,
-        destination_time_slot: destinationTimeSlot,
+        destination_time_slot: destinationTimeSlot ?? null,
         destination_area_name: destinationAreaName,
         requester_note: requesterNote || null,
       })
@@ -85,17 +88,19 @@ export const insertShiftChangeRequest = async (params) => {
     }
 
     // 通知内容を構築
-    /** 変更の種類（交換 or 移動）を判定 */
-    const isSwap = !!destinationAreaName;
+    /** 変更の種類（交換 or 移動）を判定（救援申請の場合は false） */
+    const isSwap = !isRescue && !!destinationAreaName;
 
     /** 通知本文 */
-    const notificationBody = isSwap
-      ? `${organizationName} - ${sourceMemberName}さん(${sourceTimeSlot} ${sourceAreaName}) ↔ ${destinationMemberName}さん(${destinationAreaName})`
-      : `${organizationName} - ${sourceMemberName}さん(${sourceTimeSlot} ${sourceAreaName}) → ${destinationMemberName}さん（シフトなし）`;
+    const notificationBody = isRescue
+      ? `${organizationName} - ${sourceMemberName}さん(${sourceTimeSlot} ${sourceAreaName}) → 救援申請（交代者なし）`
+      : isSwap
+        ? `${organizationName} - ${sourceMemberName}さん(${sourceTimeSlot} ${sourceAreaName}) ↔ ${destinationMemberName}さん(${destinationAreaName})`
+        : `${organizationName} - ${sourceMemberName}さん(${sourceTimeSlot} ${sourceAreaName}) → ${destinationMemberName}さん（シフトなし）`;
 
     /** 通知メタデータ（request_idを含む） */
     const metadata = {
-      type: 'shift_change_request',
+      type: isRescue ? 'shift_rescue_request' : 'shift_change_request',
       request_id: data.id,
       date: shiftDate,
       organization_name: organizationName,

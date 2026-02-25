@@ -15,6 +15,8 @@
 const NAVIGATION_TARGET_BY_TYPE = {
   /** シフト変更申請（事務部向け：変更申請管理タブへ） */
   shift_change_request: { screen: 'JimuShift', tab: 'jimuRequests' },
+  /** 救援申請（事務部向け：変更申請管理タブへ） */
+  shift_rescue_request: { screen: 'JimuShift', tab: 'jimuRequests' },
   /** シフト変更完了通知（申請者向け：申請履歴タブへ） */
   shift_change_completed: { screen: 'JimuShift', tab: 'requestHistory' },
   /** シフト変更却下通知（申請者向け：申請履歴タブへ） */
@@ -47,6 +49,7 @@ export const getNavigationButtonLabel = (type) => {
   }
   switch (type) {
     case 'shift_change_request':
+    case 'shift_rescue_request':
       return '申請を確認する';
     case 'shift_change_completed':
     case 'shift_change_rejected':

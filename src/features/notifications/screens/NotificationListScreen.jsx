@@ -19,7 +19,6 @@ import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 import { useAuth } from '../../../shared/contexts/AuthContext';
 import {
   getNotificationsForUser,
-  markNotificationRead,
 } from '../../../shared/services/notificationService';
 import {
   getNavigationTargetByType,
@@ -77,20 +76,11 @@ const NotificationListScreen = ({ navigation }) => {
   }, [loadNotifications]);
 
   /**
-   * 通知をタップした時の処理（既読にして詳細モーダルを開く）
+   * 通知をタップした時の処理（詳細モーダルを開く）
+   * 既読処理はベルマーク押下時に一括で行うため、ここでは行わない
    * @param {Object} item - 通知アイテム
    */
-  const handlePressItem = async (item) => {
-    if (!item.readAt) {
-      await markNotificationRead(item.recipientId);
-      setItems((prev) =>
-        prev.map((row) =>
-          row.recipientId === item.recipientId
-            ? { ...row, readAt: new Date().toISOString() }
-            : row
-        )
-      );
-    }
+  const handlePressItem = (item) => {
     setSelectedItem(item);
   };
 

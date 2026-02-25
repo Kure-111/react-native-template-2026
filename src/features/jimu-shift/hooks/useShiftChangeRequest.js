@@ -56,10 +56,12 @@ const useShiftChangeRequest = () => {
   const [successMessage, setSuccessMessage] = useState('');
   /** エラーメッセージ */
   const [errorMessage, setErrorMessage] = useState('');
+  /** 救援申請モーダルの表示状態 */
+  const [isRescueModalVisible, setIsRescueModalVisible] = useState(false);
 
   /**
    * セルがタップされた時の処理
-   * ブロック選択対応：連続する同一エリアのセルをまとめて選択する
+   * 1コマ選択後、隣接する同エリア・同メンバーのコマを追加選択してから交代相手を選択する
    * @param {Object} block - タップされたセルのブロック情報
    * @param {string} block.memberName - メンバー名
    * @param {number[]} block.colIndices - ブロックの列インデックス配列
@@ -83,9 +85,8 @@ const useShiftChangeRequest = () => {
       }
 
       setSelectedSource({ memberName, colIndices, timeSlots, timeSlot, areaName });
-      setGuideMessage('同じ時間帯の交代相手を選択してください');
+      setGuideMessage('交代相手のセルを選択してください（交代者がいない場合は下の「救援申請」を使用）');
     } else {
-      // ステップ2: 交代先を選択
       // 同じブロックをタップした場合は選択解除
       if (
         selectedSource.memberName === memberName &&
@@ -95,6 +96,38 @@ const useShiftChangeRequest = () => {
         return;
       }
 
+      // 移動元メンバーの隣接する同エリアコマをタップした場合は選択を拡張
+      const minSourceCol = Math.min(...selectedSource.colIndices);
+      const maxSourceCol = Math.max(...selectedSource.colIndices);
+      const isAdjacentExpansion =
+        memberName === selectedSource.memberName &&
+        areaName === selectedSource.areaName &&
+        colIndices.length > 0 &&
+        (colIndices[0] === maxSourceCol + 1 || colIndices[colIndices.length - 1] === minSourceCol - 1);
+
+      if (isAdjacentExpansion) {
+        /** colIndexをキーにしてtimeSlotを保持したエントリを結合・ソート */
+        const mergedEntries = [
+          ...selectedSource.colIndices.map((ci, i) => ({ ci, ts: selectedSource.timeSlots[i] })),
+          ...colIndices.map((ci, i) => ({ ci, ts: timeSlots[i] })),
+        ].sort((a, b) => a.ci - b.ci);
+        /** マージ後の列インデックス */
+        const mergedColIndices = mergedEntries.map((e) => e.ci);
+        /** マージ後の時間帯配列（colIndex昇順） */
+        const mergedTimeSlots = mergedEntries.map((e) => e.ts);
+        /** マージ後の表示用時間帯文字列 */
+        const mergedTimeSlot = synthesizeTimeSlot(mergedTimeSlots);
+        setSelectedSource({
+          memberName,
+          colIndices: mergedColIndices,
+          timeSlots: mergedTimeSlots,
+          timeSlot: mergedTimeSlot,
+          areaName: selectedSource.areaName,
+        });
+        return;
+      }
+
+      // ステップ2: 交代先を選択
       // ShiftGrid側でsourceColIndicesに合わせた強制補完済みのblockが渡ってくるため、
       // 宛先のcolIndicesは移動元と常に一致する。そのままセットしてモーダルを開く。
       setSelectedDestination({ memberName, colIndices, timeSlots, timeSlot, areaName });
@@ -172,8 +205,76 @@ const useShiftChangeRequest = () => {
   const cancelModal = useCallback(() => {
     setSelectedDestination(null);
     setIsModalVisible(false);
-    setGuideMessage('同じ時間帯の交代相手を選択してください');
+    setGuideMessage('隣接するコマを追加選択、または交代相手を選択してください');
   }, []);
+
+  /**
+   * 救援申請モーダルを開く
+   */
+  const openRescueModal = useCallback(() => {
+    setIsRescueModalVisible(true);
+  }, []);
+
+  /**
+   * 救援申請モーダルを閉じる
+   */
+  const cancelRescueModal = useCallback(() => {
+    setIsRescueModalVisible(false);
+  }, []);
+
+  /**
+   * 救援申請を送信（交代先メンバーなし）
+   * @param {string} requesterUserId - 申請者ユーザーID
+   * @param {string} organizationName - 団体名
+   * @param {Date} shiftDate - シフト日付
+   * @returns {Promise<boolean>} 送信成功時true
+   */
+  const submitRescueRequest = useCallback(async (requesterUserId, organizationName, shiftDate) => {
+    if (!selectedSource) {
+      return false;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage('');
+
+    try {
+      /** 日付をYYYY-MM-DD形式に変換 */
+      const year = shiftDate.getFullYear();
+      const month = String(shiftDate.getMonth() + 1).padStart(2, '0');
+      const day = String(shiftDate.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+
+      const { error } = await insertShiftChangeRequest({
+        requesterUserId,
+        organizationName,
+        shiftDate: dateStr,
+        sourceMemberName: selectedSource.memberName,
+        sourceTimeSlot: selectedSource.timeSlot,
+        sourceAreaName: selectedSource.areaName,
+        destinationMemberName: null,
+        destinationTimeSlot: null,
+        destinationAreaName: null,
+        requesterNote: note.trim() || null,
+      });
+
+      if (error) {
+        setErrorMessage(`申請の送信に失敗しました: ${error.message}`);
+        setIsRescueModalVisible(false);
+        return false;
+      }
+
+      setSuccessMessage('救援申請を送信しました');
+      resetSelection();
+      setIsRescueModalVisible(false);
+      return true;
+    } catch (error) {
+      setErrorMessage(`申請の送信に失敗しました: ${error.message}`);
+      setIsRescueModalVisible(false);
+      return false;
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [selectedSource, note, resetSelection]);
 
   return {
     selectedSource,
@@ -189,6 +290,10 @@ const useShiftChangeRequest = () => {
     resetSelection,
     submitRequest,
     cancelModal,
+    isRescueModalVisible,
+    openRescueModal,
+    cancelRescueModal,
+    submitRescueRequest,
   };
 };
 

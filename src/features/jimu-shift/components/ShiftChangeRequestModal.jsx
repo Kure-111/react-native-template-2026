@@ -19,13 +19,14 @@ import {
  * @param {Object} props - コンポーネントプロパティ
  * @param {boolean} props.visible - 表示状態
  * @param {Object|null} props.source - 移動元データ { memberName, timeSlot, areaName }
- * @param {Object|null} props.destination - 移動先データ { memberName, timeSlot, areaName }
+ * @param {Object|null} props.destination - 移動先データ { memberName, timeSlot, areaName }（救援申請時はnull）
  * @param {string} props.displayDate - 表示用日付文字列
  * @param {boolean} props.isSubmitting - 送信中かどうか
  * @param {string} props.note - 備考テキスト（任意）
  * @param {Function} props.onNoteChange - 備考変更コールバック
  * @param {Function} props.onSubmit - 申請ボタン押下時のコールバック
  * @param {Function} props.onCancel - キャンセルボタン押下時のコールバック
+ * @param {boolean} [props.isRescue=false] - 救援申請モードかどうか
  * @param {Object} props.theme - テーマオブジェクト
  * @returns {JSX.Element} 確認モーダル
  */
@@ -39,14 +40,15 @@ const ShiftChangeRequestModal = ({
   onNoteChange,
   onSubmit,
   onCancel,
+  isRescue = false,
   theme,
 }) => {
-  if (!source || !destination) {
+  if (!source || (!destination && !isRescue)) {
     return null;
   }
 
-  /** 交換かどうかの判定 */
-  const isSwap = !!destination.areaName;
+  /** 交換かどうかの判定（救援申請の場合は常にfalse） */
+  const isSwap = !isRescue && !!destination?.areaName;
 
   return (
     <Modal
@@ -59,7 +61,9 @@ const ShiftChangeRequestModal = ({
         <View style={[styles.container, { backgroundColor: theme.surface }]}>
           {/* ヘッダー */}
           <View style={[styles.header, { borderBottomColor: theme.border }]}>
-            <Text style={[styles.headerTitle, { color: theme.text }]}>シフト変更申請の確認</Text>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>
+              {isRescue ? '救援申請の確認' : 'シフト変更申請の確認'}
+            </Text>
           </View>
 
           {/* 変更内容 */}
@@ -71,7 +75,28 @@ const ShiftChangeRequestModal = ({
 
             {/* 変更プレビュー */}
             <View style={[styles.previewContainer, { borderColor: theme.border }]}>
-              {isSwap ? (
+              {isRescue ? (
+                <>
+                  {/* 救援申請パターン */}
+                  <View style={styles.previewRow}>
+                    <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>救援申請</Text>
+                  </View>
+                  <View style={styles.previewRow}>
+                    <Text style={[styles.previewMember, { color: theme.text }]}>
+                      {source.memberName}さん
+                    </Text>
+                    <Text style={[styles.previewDetail, { color: theme.textSecondary }]}>
+                      {source.timeSlot} {source.areaName}
+                    </Text>
+                  </View>
+                  <Text style={[styles.swapArrow, { color: theme.primary }]}>↓</Text>
+                  <View style={styles.previewRow}>
+                    <Text style={[styles.previewDetail, { color: theme.textSecondary }]}>
+                      交代者なし（事務部に救援を要請します）
+                    </Text>
+                  </View>
+                </>
+              ) : isSwap ? (
                 <>
                   {/* 交換パターン */}
                   <View style={styles.previewRow}>
@@ -122,23 +147,28 @@ const ShiftChangeRequestModal = ({
               )}
             </View>
 
-            {/* 備考欄（任意） */}
+            {/* 備考欄（救援申請時は必須、通常申請時は任意） */}
             <View style={styles.noteContainer}>
-              <Text style={[styles.noteLabel, { color: theme.textSecondary }]}>
-                備考（任意）
-              </Text>
+              {isRescue ? (
+                <View style={styles.noteLabelRow}>
+                  <Text style={[styles.noteLabel, { color: theme.textSecondary }]}>備考</Text>
+                  <Text style={styles.noteLabelRequired}>（必須）</Text>
+                </View>
+              ) : (
+                <Text style={[styles.noteLabel, { color: theme.textSecondary }]}>備考（任意）</Text>
+              )}
               <TextInput
                 style={[
                   styles.noteInput,
                   {
                     backgroundColor: theme.background,
-                    borderColor: theme.border,
+                    borderColor: isRescue && !note.trim() ? '#FF9800' : theme.border,
                     color: theme.text,
                   },
                 ]}
                 value={note}
                 onChangeText={onNoteChange}
-                placeholder="特別な事情があれば記入してください"
+                placeholder={isRescue ? '交代が必要な理由を記入してください' : '特別な事情があれば記入してください'}
                 placeholderTextColor={theme.textSecondary}
                 multiline
                 numberOfLines={3}
@@ -148,7 +178,7 @@ const ShiftChangeRequestModal = ({
             </View>
 
             <Text style={[styles.confirmText, { color: theme.textSecondary }]}>
-              この変更を事務部に申請しますか？
+              {isRescue ? 'この救援申請を事務部に送信しますか？' : 'この変更を事務部に申請しますか？'}
             </Text>
           </View>
 
@@ -162,14 +192,14 @@ const ShiftChangeRequestModal = ({
               <Text style={[styles.cancelButtonText, { color: theme.text }]}>キャンセル</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.submitButton, { backgroundColor: theme.primary, opacity: isSubmitting ? 0.6 : 1 }]}
+              style={[styles.submitButton, { backgroundColor: theme.primary, opacity: (isSubmitting || (isRescue && !note.trim())) ? 0.6 : 1 }]}
               onPress={onSubmit}
-              disabled={isSubmitting}
+              disabled={isSubmitting || (isRescue && !note.trim())}
             >
               {isSubmitting ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text style={styles.submitButtonText}>申請</Text>
+                <Text style={styles.submitButtonText}>{isRescue ? '救援申請' : '申請'}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -247,10 +277,20 @@ const styles = StyleSheet.create({
   noteContainer: {
     marginBottom: 16,
   },
+  noteLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
   noteLabel: {
     fontSize: 13,
     fontWeight: '500',
     marginBottom: 6,
+  },
+  noteLabelRequired: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#D32F2F',
   },
   noteInput: {
     borderWidth: 1,
