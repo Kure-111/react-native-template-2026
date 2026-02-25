@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Ionicons } from '../../../shared/components/icons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { TABS } from '../constants';
 

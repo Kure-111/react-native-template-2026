@@ -4,8 +4,8 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { Ionicons } from '../../../shared/components/icons';
+import { MaterialCommunityIcons } from '../../../shared/components/icons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 
 const IconComponent = ({ iconFamily, iconName, color, size }) => {

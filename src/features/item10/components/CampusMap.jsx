@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Platform, Dimensions, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { MaterialCommunityIcons } from '../../../shared/components/icons';
 
 // 近畿大学東大阪キャンパスの座標
 // 所在地: 〒577-8502 大阪府東大阪市小若江3-4-1

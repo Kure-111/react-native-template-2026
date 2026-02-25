@@ -5,7 +5,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { MaterialCommunityIcons } from '../../../shared/components/icons';
 
 export const SecurityPlacement = () => {
   const { theme } = useTheme();

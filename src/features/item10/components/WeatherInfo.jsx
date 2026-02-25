@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { MaterialCommunityIcons } from '../../../shared/components/icons';
+import { Ionicons } from '../../../shared/components/icons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 
 // 天気アイコンを取得

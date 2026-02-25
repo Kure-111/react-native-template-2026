@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { MaterialCommunityIcons } from '../../../shared/components/icons';
 import { useTheme } from "../../../shared/hooks/useTheme";
 
 // 来場者カウンター表示（表示のみ）

@@ -1,16 +1,16 @@
 import React from 'react';
 import { Platform, View } from 'react-native';
 import { useFonts } from 'expo-font';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { Ionicons } from './icons';
+import { MaterialCommunityIcons } from './icons';
 
 /**
  * フォントの事前読み込みとプロバイダラッパー
  */
 export const FontLoaderProvider = ({ children }) => {
     const [fontsLoaded, fontError] = useFonts({
-        ...Ionicons.font,
-        ...MaterialCommunityIcons.font
+        Ionicons: require('../../../assets/fonts/Ionicons.ttf'),
+        MaterialCommunityIcons: require('../../../assets/fonts/MaterialCommunityIcons.ttf')
     });
 
     // ネイティブ(iOS/Android)ではフォントロード前に描画するとクラッシュするため待機します。
