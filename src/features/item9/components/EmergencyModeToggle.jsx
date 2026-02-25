@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Switch, Animated, useWindowDimensions } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 
 // 緊急モードスイッチ

@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 
 // タイムスケジュールデータ（TimeSchedule.jsxと同じ）

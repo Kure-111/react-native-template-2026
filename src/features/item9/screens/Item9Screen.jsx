@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, SafeAreaView, ScrollView, Platform, TouchableOpacity, Text, Dimensions, useWindowDimensions } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 
