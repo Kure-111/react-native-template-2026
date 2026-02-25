@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, FlatList } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '../../../shared/components/icons';
 import { SuspiciousPersonCard } from './SuspiciousPersonCard';
 import { useTheme } from '../../../shared/hooks/useTheme';
 

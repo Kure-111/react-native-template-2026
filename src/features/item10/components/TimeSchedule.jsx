@@ -5,7 +5,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '../../../shared/components/icons';
 
 // タイムスケジュールデータ（サンプル）
 const SCHEDULE_DATA = [

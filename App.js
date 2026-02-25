@@ -6,6 +6,7 @@
 import React from 'react';
 import { AuthProvider } from './src/shared/contexts/AuthContext';
 import { ThemeProvider } from './src/shared/contexts/ThemeContext';
+import { FontLoaderProvider } from './src/shared/components';
 import AppNavigator from './src/navigation/AppNavigator';
 
 /**
@@ -16,7 +17,9 @@ export default function App() {
   return (
     <AuthProvider>
       <ThemeProvider>
-        <AppNavigator />
+        <FontLoaderProvider>
+          <AppNavigator />
+        </FontLoaderProvider>
       </ThemeProvider>
     </AuthProvider>
   );

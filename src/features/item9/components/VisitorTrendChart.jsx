@@ -5,7 +5,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Dimensions, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '../../../shared/components/icons';
 
 const CHART_HEIGHT = 180;
 

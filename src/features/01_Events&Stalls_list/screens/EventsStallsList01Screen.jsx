@@ -5,7 +5,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { View, StyleSheet, SafeAreaView, FlatList, ActivityIndicator, Text, TouchableOpacity, Platform, useWindowDimensions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../../../shared/components/icons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 import { SORT_OPTIONS, SORT_COLUMNS, TABS, TAB_NAMES, AREA_ALL } from '../constants';
