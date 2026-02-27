@@ -2,23 +2,37 @@
  * 事務シフト（当日部員）の定数
  */
 
-/** 祭り開始日（環境変数から取得） */
-const FESTIVAL_START_DATE_STR = process.env.EXPO_PUBLIC_FESTIVAL_START_DATE || '2026-11-01';
-
-/** 祭り終了日（環境変数から取得） */
-const FESTIVAL_END_DATE_STR = process.env.EXPO_PUBLIC_FESTIVAL_END_DATE || '2026-11-05';
+/**
+ * 祭り開始月日（環境変数から取得、MM-DD形式）
+ * 年は実行時に自動で当年を使用する
+ */
+const FESTIVAL_START_MD = process.env.EXPO_PUBLIC_FESTIVAL_START_DATE || '11-01';
 
 /**
- * 祭り開始日のDateオブジェクトを生成
- * @returns {Date} 開始日
+ * 祭り終了月日（環境変数から取得、MM-DD形式）
+ * 年は実行時に自動で当年を使用する
  */
-export const getFestivalStartDate = () => new Date(`${FESTIVAL_START_DATE_STR}T00:00:00`);
+const FESTIVAL_END_MD = process.env.EXPO_PUBLIC_FESTIVAL_END_DATE || '11-05';
 
 /**
- * 祭り終了日のDateオブジェクトを生成
- * @returns {Date} 終了日
+ * 当年の祭り開始日のDateオブジェクトを生成
+ * @returns {Date} 開始日（当年のMM-DD）
  */
-export const getFestivalEndDate = () => new Date(`${FESTIVAL_END_DATE_STR}T00:00:00`);
+export const getFestivalStartDate = () => {
+  /** 実行時の年 */
+  const year = new Date().getFullYear();
+  return new Date(`${year}-${FESTIVAL_START_MD}T00:00:00`);
+};
+
+/**
+ * 当年の祭り終了日のDateオブジェクトを生成
+ * @returns {Date} 終了日（当年のMM-DD）
+ */
+export const getFestivalEndDate = () => {
+  /** 実行時の年 */
+  const year = new Date().getFullYear();
+  return new Date(`${year}-${FESTIVAL_END_MD}T00:00:00`);
+};
 
 /**
  * エリア名と画像ファイルのマッピング

@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
+import { MaterialCommunityIcons } from '../../../shared/components/icons';
 import { useTheme } from "../../../shared/hooks/useTheme";
 
 // デジタル時計
 export const DigitalClock = () => {
   const { theme } = useTheme();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 480;
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -31,12 +33,18 @@ export const DigitalClock = () => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.primary }]}>
-      <View style={styles.iconContainer}>
-        <MaterialCommunityIcons name="clock-outline" size={28} color="#fff" />
-      </View>
+      {!isMobile && (
+        <View style={styles.iconContainer}>
+          <MaterialCommunityIcons name="clock-outline" size={28} color="#fff" />
+        </View>
+      )}
       <View style={styles.timeContainer}>
-        <Text style={styles.time}>{formatTime(time)}</Text>
-        <Text style={styles.date}>{formatDate(time)}</Text>
+        <Text style={[styles.time, isMobile && styles.timeMobile]}>
+          {formatTime(time)}
+        </Text>
+        <Text style={[styles.date, isMobile && styles.dateMobile]}>
+          {formatDate(time)}
+        </Text>
       </View>
     </View>
   );
@@ -74,9 +82,16 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     letterSpacing: 3,
   },
+  timeMobile: {
+    fontSize: 28,
+    letterSpacing: 2,
+  },
   date: {
     fontSize: 15,
     color: 'rgba(255,255,255,0.9)',
     marginTop: 4,
+  },
+  dateMobile: {
+    fontSize: 13,
   },
 });

@@ -33,12 +33,16 @@ const VAPID_PRIVATE_KEY = Deno.env.get('WEB_PUSH_VAPID_PRIVATE_KEY');
 const VAPID_SUBJECT = Deno.env.get('WEB_PUSH_VAPID_SUBJECT');
 const INTERNAL_NOTIFY_TOKEN = Deno.env.get('INTERNAL_NOTIFY_TOKEN');
 
+/**
+ * Supabaseサービスロールクライアントを作成する
+ * @returns {import('@supabase/supabase-js').SupabaseClient} Supabaseクライアント
+ */
 const createServiceClient = () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
   if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error('SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing');
+    throw new Error('SUPABASE_URL または SUPABASE_SERVICE_ROLE_KEY が未設定です');
   }
 
   return createClient(supabaseUrl, serviceRoleKey, {
@@ -49,6 +53,11 @@ const createServiceClient = () => {
   });
 };
 
+/**
+ * AuthorizationヘッダーからBearerトークンを取得する
+ * @param {Request} request - リクエスト
+ * @returns {string | null} Bearerトークン
+ */
 const getBearerToken = (request: Request) => {
   const authHeader = request.headers.get('authorization');
   if (!authHeader) {
@@ -64,12 +73,19 @@ const getBearerToken = (request: Request) => {
   return token;
 };
 
-const isAdminUser = async (supabase: ReturnType<typeof createServiceClient>, userId: string) => {
+/**
+ * 管理者系ロールを持つか判定する
+ * targetType=user の通知（個人宛て）はこのロールのみ送信可能
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase - Supabaseクライアント
+ * @param {string} userId - ユーザーID
+ * @returns {Promise<boolean>} 送信権限がある場合true
+ */
+const isAdminSender = async (supabase: ReturnType<typeof createServiceClient>, userId: string) => {
   const { data, error } = await supabase
     .from('user_roles')
     .select('roles!inner(name)')
     .eq('user_id', userId)
-    .eq('roles.name', '管理者')
+    .in('roles.name', ['管理者', '祭実長', '部長', '事務部'])
     .limit(1);
 
   if (error) {
@@ -80,6 +96,15 @@ const isAdminUser = async (supabase: ReturnType<typeof createServiceClient>, use
   return Array.isArray(data) && data.length > 0;
 };
 
+/**
+ * 呼び出し元を認証し送信者情報を返す
+ * - targetType=roles: 認証済みユーザー全員に許可（企画者からの連絡案件通知に対応）
+ * - targetType=user: 管理者ロールのみ許可
+ * @param {Request} request - リクエスト
+ * @param {DispatchPayload} payload - リクエストボディ
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase - Supabaseクライアント
+ * @returns {Promise<AuthContext>} 認証コンテキスト
+ */
 const authenticateRequester = async (
   request: Request,
   payload: DispatchPayload,
@@ -111,11 +136,11 @@ const authenticateRequester = async (
     throw new Error('Invalid user token');
   }
 
-  // Role-target notifications are allowed for authenticated users.
-  // Direct user-target notifications remain admin-only.
+  // targetType=user（個人宛て）は管理者ロールのみ許可
+  // targetType=roles（ロール宛て）は認証済みユーザー全員に許可（企画者からの通知に対応）
   if (payload.targetType === 'user') {
-    const admin = await isAdminUser(supabase, user.id);
-    if (!admin) {
+    const authorized = await isAdminSender(supabase, user.id);
+    if (!authorized) {
       throw new Error('Forbidden');
     }
   }
@@ -126,6 +151,12 @@ const authenticateRequester = async (
   };
 };
 
+/**
+ * 送信先ユーザーID一覧を解決する
+ * @param {DispatchPayload} payload - 送信リクエスト
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase - Supabaseクライアント
+ * @returns {Promise<string[]>} ユーザーID一覧
+ */
 const resolveRecipients = async (
   payload: DispatchPayload,
   supabase: ReturnType<typeof createServiceClient>
@@ -155,10 +186,47 @@ const resolveRecipients = async (
   return Array.from(recipients);
 };
 
+/**
+ * 通知メタデータのタイプからアプリ内遷移先情報を導出する
+ * service-worker.js の SW_NAVIGATE_TYPE と対応している
+ * @param {Record<string, unknown> | undefined} metadata - 通知メタデータ
+ * @returns {{ screen: string; tab: string } | null} 遷移先情報
+ */
+const getNavigateTo = (
+  metadata?: Record<string, unknown>
+): { screen: string; tab: string } | null => {
+  const type = metadata?.type as string | undefined;
+  switch (type) {
+    case 'shift_change_request':
+    case 'shift_rescue_request':
+      return { screen: 'JimuShift', tab: 'jimuRequests' };
+    case 'shift_change_completed':
+    case 'shift_change_rejected':
+      return { screen: 'JimuShift', tab: 'requestHistory' };
+    case 'shift_reminder':
+      return { screen: 'JimuShift', tab: 'myShift' };
+    default:
+      return null;
+  }
+};
+
+/**
+ * Push通知を送信する
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase - Supabaseクライアント
+ * @param {string[]} recipientUserIds - 受信者ユーザーID一覧
+ * @param {{title:string;body:string;url:string;notificationId:string;navigateTo:{screen:string;tab:string}|null}} message - 通知データ
+ * @returns {Promise<PushStats>} 送信統計
+ */
 const sendWebPush = async (
   supabase: ReturnType<typeof createServiceClient>,
   recipientUserIds: string[],
-  message: { title: string; body: string; url: string; notificationId: string }
+  message: {
+    title: string;
+    body: string;
+    url: string;
+    notificationId: string;
+    navigateTo: { screen: string; tab: string } | null;
+  }
 ): Promise<PushStats> => {
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !VAPID_SUBJECT) {
     throw new Error('VAPID secrets are not configured');
@@ -236,6 +304,10 @@ const sendWebPush = async (
   };
 };
 
+/**
+ * 送信リクエストのバリデーションを行う
+ * @param {DispatchPayload} payload - 送信リクエスト
+ */
 const validatePayload = (payload: DispatchPayload) => {
   if (!payload || typeof payload !== 'object') {
     throw new Error('Invalid payload');
@@ -286,7 +358,7 @@ Deno.serve(async (request) => {
 
     const recipientUserIds = await resolveRecipients(payload, supabase);
     if (recipientUserIds.length === 0) {
-      return createJsonResponse({ error: 'No recipients found' }, 400);
+      return createJsonResponse({ error: '送信先ユーザーが見つかりません' }, 400);
     }
 
     const { data: notification, error: notificationError } = await supabase
@@ -304,7 +376,7 @@ Deno.serve(async (request) => {
 
     if (notificationError || !notification) {
       console.error('notification insert error:', notificationError);
-      return createJsonResponse({ error: 'Failed to create notification' }, 500);
+      return createJsonResponse({ error: '通知の作成に失敗しました' }, 500);
     }
 
     const recipients = recipientUserIds.map((userId) => ({
@@ -318,7 +390,7 @@ Deno.serve(async (request) => {
 
     if (recipientsError) {
       console.error('notification recipients insert error:', recipientsError);
-      return createJsonResponse({ error: 'Failed to create recipients' }, 500);
+      return createJsonResponse({ error: '通知受信者の作成に失敗しました' }, 500);
     }
 
     let push: PushStats = {
@@ -334,6 +406,7 @@ Deno.serve(async (request) => {
         body: payload.body.trim(),
         url: payload.url || '/notifications',
         notificationId: notification.id,
+        navigateTo: getNavigateTo(payload.metadata),
       });
     } catch (pushError) {
       console.error('web push dispatch error:', pushError);

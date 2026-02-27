@@ -3,8 +3,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
+import { MaterialCommunityIcons } from '../../../shared/components/icons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 
 // タイムスケジュールデータ（TimeSchedule.jsxと同じ）
@@ -63,6 +63,8 @@ const getTimeUntilEvent = (eventTime) => {
 
 export const NextSchedule = () => {
   const { theme } = useTheme();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 480;
   const [nextEvent, setNextEvent] = useState(null);
   const [timeUntil, setTimeUntil] = useState('');
 
@@ -101,17 +103,19 @@ export const NextSchedule = () => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-      <View style={[styles.iconContainer, { backgroundColor: theme.primary + '20' }]}>
-        <MaterialCommunityIcons name={nextEvent.icon} size={28} color={theme.primary} />
-      </View>
+      {!isMobile && (
+        <View style={[styles.iconContainer, { backgroundColor: theme.primary + '20' }]}>
+          <MaterialCommunityIcons name={nextEvent.icon} size={28} color={theme.primary} />
+        </View>
+      )}
       <View style={styles.content}>
         <Text style={[styles.label, { color: theme.textSecondary }]}>次の予定</Text>
-        <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
+        <Text style={[styles.title, { color: theme.text }, isMobile && styles.titleMobile]} numberOfLines={1}>
           {nextEvent.title}
         </Text>
         <View style={styles.timeRow}>
           <MaterialCommunityIcons name="clock-outline" size={14} color={theme.primary} />
-          <Text style={[styles.time, { color: theme.primary }]}>
+          <Text style={[styles.time, { color: theme.primary }, isMobile && styles.timeMobile]}>
             {nextEvent.time} ({timeUntil})
           </Text>
         </View>
@@ -157,6 +161,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 4,
   },
+  titleMobile: {
+    fontSize: 14,
+  },
   timeRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -165,5 +172,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     marginLeft: 4,
+  },
+  timeMobile: {
+    fontSize: 12,
   },
 });

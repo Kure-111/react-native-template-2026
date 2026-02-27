@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, SafeAreaView, ScrollView, Platform, TouchableOpacity, Text } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { View, StyleSheet, SafeAreaView, ScrollView, Platform, TouchableOpacity, Text, Dimensions, useWindowDimensions } from 'react-native';
+import { MaterialCommunityIcons } from '../../../shared/components/icons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 
@@ -38,6 +38,9 @@ const SCREEN_NAME = '本部';
  */
 const Item9Screen = ({ navigation }) => {
   const { theme } = useTheme();
+  const { width } = useWindowDimensions();
+  const isSmallScreen = width < 768; // タブレット以下
+  const isMobile = width < 480; // スマホ
   
   // Hooks
   const { count, history, loading: visitorLoading, fetchHistory, useMockData } = useVisitorCount();
@@ -109,42 +112,57 @@ const Item9Screen = ({ navigation }) => {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <ThemedHeader title={SCREEN_NAME} navigation={navigation} />
       
-      <View style={styles.contentContainer}>
-        {/* 上部: デジタル時計と次の予定 */}
-        <View style={styles.topRow}>
-          <DigitalClock />
-          <NextSchedule />
-        </View>
-
-        {/* メインコンテンツ: 2列グリッド */}
-        <View style={styles.gridContainer}>
-          {/* 左列 */}
-          <View style={styles.column}>
-            {/* 天気情報 */}
-            <View style={styles.leftCard}>
-              <WeatherInfo weather={weather} rainfall={rainfall} />
-            </View>
-
-            {/* 警備配置図 */}
-            <View style={styles.leftCard}>
-              <SecurityPlacement />
-            </View>
+      <ScrollView style={styles.scrollView}>
+        <View style={[styles.contentContainer, isMobile && styles.contentContainerMobile]}>
+          {/* 上部: デジタル時計と次の予定 */}
+          <View style={[
+            styles.topRow, 
+            isSmallScreen && styles.topRowSmall,
+            isMobile && styles.topRowMobile
+          ]}>
+            <DigitalClock />
+            {!isMobile && <NextSchedule />}
           </View>
 
-          {/* 右列 */}
-          <View style={styles.column}>
-            {/* 来場者カウンター */}
-            <View style={styles.card}>
-              <VisitorCounter count={count} />
+          {/* スマホでは次の予定を別行に */}
+          {isMobile && (
+            <View style={styles.mobileScheduleRow}>
+              <NextSchedule />
+            </View>
+          )}
+
+          {/* メインコンテンツ: レスポンシブグリッド */}
+          <View style={[
+            styles.gridContainer,
+            isSmallScreen && styles.gridContainerSmall
+          ]}>
+            {/* 左列 */}
+            <View style={[styles.column, isSmallScreen && styles.columnSmall]}>
+              {/* 天気情報 */}
+              <View style={styles.leftCard}>
+                <WeatherInfo weather={weather} rainfall={rainfall} />
+              </View>
+
+              {/* 警備配置図 */}
+              <View style={styles.leftCard}>
+                <SecurityPlacement />
+              </View>
             </View>
 
-            {/* 緊急モード */}
-            <View style={styles.card}>
-              <EmergencyModeToggle
-                isEmergency={isEmergency}
-                onToggle={handleEmergencyToggle}
-                disabled={emergencyLoading || !isEmergency}
-              />
+            {/* 右列 */}
+            <View style={[styles.column, isSmallScreen && styles.columnSmall]}>
+              {/* 来場者カウンター */}
+              <View style={styles.card}>
+                <VisitorCounter count={count} />
+              </View>
+
+              {/* 緊急モード */}
+              <View style={styles.card}>
+                <EmergencyModeToggle
+                  isEmergency={isEmergency}
+                  onToggle={handleEmergencyToggle}
+                  disabled={emergencyLoading || !isEmergency}
+                />
 
               {isEmergency && (
                 <View style={[styles.emergencyInfoCard, { 
@@ -208,23 +226,24 @@ const Item9Screen = ({ navigation }) => {
               )}
             </View>
 
-            {/* 不審者情報 */}
-            <View style={styles.card}>
-              <SuspiciousPersonList 
-                persons={persons} 
-                onPersonPress={(person) => {
-                  if (Platform.OS === 'web') {
-                    alert(`詳細\n${person.location}の情報`);
-                  } else {
-                    const { Alert } = require('react-native');
-                    Alert.alert('詳細', `${person.location}の情報`);
-                  }
-                }}
-              />
+              {/* 不審者情報 */}
+              <View style={styles.card}>
+                <SuspiciousPersonList 
+                  persons={persons} 
+                  onPersonPress={(person) => {
+                    if (Platform.OS === 'web') {
+                      alert(`詳細\n${person.location}の情報`);
+                    } else {
+                      const { Alert } = require('react-native');
+                      Alert.alert('詳細', `${person.location}の情報`);
+                    }
+                  }}
+                />
+              </View>
             </View>
           </View>
         </View>
-      </View>
+      </ScrollView>
 
       {/* 通知ポップアップ */}
       <NotificationPopup
@@ -241,28 +260,50 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  contentContainer: {
+  scrollView: {
     flex: 1,
+  },
+  contentContainer: {
     padding: 12,
+  },
+  contentContainerMobile: {
+    padding: 8,
   },
   topRow: {
     flexDirection: 'row',
     gap: 12,
     marginBottom: 8,
   },
+  topRowSmall: {
+    gap: 8,
+  },
+  topRowMobile: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  mobileScheduleRow: {
+    marginBottom: 8,
+  },
   gridContainer: {
-    flex: 1,
     flexDirection: 'row',
     gap: 12,
+  },
+  gridContainerSmall: {
+    flexDirection: 'column',
+    gap: 20,
   },
   column: {
     flex: 1,
   },
+  columnSmall: {
+    width: '100%',
+    marginBottom: 16,
+  },
   card: {
-    marginBottom: 8,
+    marginBottom: 16,
   },
   leftCard: {
-    marginBottom: 8,
+    marginBottom: 16,
   },
   emergencyInfoCard: {
     marginTop: 16,

@@ -35,6 +35,11 @@ export const ThemedHeader = ({ title, navigation }) => {
   };
 
   const goToNotifications = () => {
+    // バッジをすぐ消す（楽観的更新）。既読DB更新は通知一覧画面の離脱時に行う
+    if (unreadCount > 0) {
+      setUnreadCount(0);
+      previousUnreadCountRef.current = 0;
+    }
     navigation.navigate('Notifications');
   };
 

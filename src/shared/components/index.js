@@ -8,3 +8,4 @@ export { ThemedButton } from './ThemedButton';
 export { ThemedText } from './ThemedText';
 export { PlaceholderContent } from './PlaceholderContent';
 export { ScreenErrorBoundary } from './ScreenErrorBoundary';
+export { FontLoaderProvider } from './FontLoaderProvider';

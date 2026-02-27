@@ -11,25 +11,52 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 import { useAuth } from '../../../shared/contexts/AuthContext';
 import {
   getNotificationsForUser,
-  markNotificationRead,
+  markAllNotificationsRead,
 } from '../../../shared/services/notificationService';
+import {
+  getNavigationTargetByType,
+  getNavigationButtonLabel,
+} from '../../../shared/utils/notificationNavigation';
 
+/** 画面名 */
 const SCREEN_NAME = '通知一覧';
 
+/**
+ * 通知一覧画面コンポーネント
+ * @param {Object} props - コンポーネントプロパティ
+ * @param {Object} props.navigation - React Navigationオブジェクト
+ * @returns {JSX.Element} 通知一覧画面
+ */
 const NotificationListScreen = ({ navigation }) => {
+  /** テーマ */
   const { theme } = useTheme();
+  /** 認証コンテキスト */
   const { user } = useAuth();
+  /** 通知一覧 */
   const [items, setItems] = useState([]);
+  /** ローディング状態 */
   const [isLoading, setIsLoading] = useState(false);
+  /** エラーメッセージ */
   const [errorMessage, setErrorMessage] = useState('');
+  /** フィルター */
   const [filter, setFilter] = useState('all');
+  /** 詳細モーダルに表示する通知（null のとき非表示） */
+  const [selectedItem, setSelectedItem] = useState(null);
+  /** 画面を開いた時点で未読だった通知のrecipientIdセット（NEWバッジ表示用） */
+  const [newItemIds, setNewItemIds] = useState(new Set());
 
+  /**
+   * 通知一覧を読み込む
+   * ロード時点で readAt が null の通知を「新着」として newItemIds に記録する
+   */
   const loadNotifications = useCallback(async () => {
     if (!user?.id) {
       setItems([]);
@@ -44,6 +71,9 @@ const NotificationListScreen = ({ navigation }) => {
       setIsLoading(false);
       return;
     }
+    /** ロード時点で未読の通知IDセット（NEWバッジ用） */
+    const unreadIds = new Set(fetchedItems.filter((i) => !i.readAt).map((i) => i.recipientId));
+    setNewItemIds(unreadIds);
     setItems(fetchedItems);
     setIsLoading(false);
   }, [user?.id]);
@@ -52,24 +82,69 @@ const NotificationListScreen = ({ navigation }) => {
     loadNotifications();
   }, [loadNotifications]);
 
-  const handlePressItem = async (item) => {
-    if (!item.readAt) {
-      await markNotificationRead(item.recipientId);
-      setItems((prev) =>
-        prev.map((row) =>
-          row.recipientId === item.recipientId
-            ? { ...row, readAt: new Date().toISOString() }
-            : row
-        )
-      );
-    }
+  /**
+   * 画面を離れた時（別タブへ移動等）に全未読を既読にしてNEWバッジをクリア
+   */
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('blur', () => {
+      if (user?.id && newItemIds.size > 0) {
+        markAllNotificationsRead(user.id);
+        setNewItemIds(new Set());
+      }
+    });
+    return unsubscribe;
+  }, [navigation, user?.id, newItemIds]);
+
+  /**
+   * 通知をタップした時の処理（詳細モーダルを開く）
+   * 既読処理はベルマーク押下時に一括で行うため、ここでは行わない
+   * @param {Object} item - 通知アイテム
+   */
+  const handlePressItem = (item) => {
+    setSelectedItem(item);
   };
 
+  /**
+   * 詳細モーダルを閉じる
+   */
+  const handleCloseDetail = () => {
+    setSelectedItem(null);
+  };
+
+  /**
+   * 詳細モーダルの「確認する」ボタンを押した時の処理
+   * 該当画面（タブ）へ遷移してモーダルを閉じる
+   */
+  const handleNavigateFromDetail = () => {
+    if (!selectedItem) {
+      return;
+    }
+    /** 通知タイプ */
+    const type = selectedItem.notification?.metadata?.type;
+    /** 遷移先情報 */
+    const target = getNavigationTargetByType(type);
+    if (!target) {
+      return;
+    }
+    setSelectedItem(null);
+    navigation.navigate(target.screen, { initialTab: target.tab });
+  };
+
+  /**
+   * 通知アイテムを描画
+   * @param {Object} param - FlatListのrenderItem引数
+   * @returns {JSX.Element} 通知カード
+   */
   const renderItem = ({ item }) => {
-    const isUnread = !item.readAt;
+    /** 画面を開いた時点で未読だったかどうか（NEWバッジ表示に使用） */
+    const isNew = newItemIds.has(item.recipientId);
+    /** 通知タイトル */
     const title = item.notification?.title ?? '（タイトルなし）';
+    /** 通知本文 */
     const body = item.notification?.body ?? '';
+    /** 作成日時 */
     const createdAt = item.notification?.created_at ?? item.createdAt;
+    /** 作成日時の表示文字列 */
     const createdText = createdAt ? new Date(createdAt).toLocaleString() : '';
 
     return (
@@ -78,7 +153,7 @@ const NotificationListScreen = ({ navigation }) => {
           styles.card,
           {
             backgroundColor: theme.surface,
-            borderColor: isUnread ? theme.primary : theme.border,
+            borderColor: isNew ? theme.primary : theme.border,
           },
         ]}
         onPress={() => handlePressItem(item)}
@@ -86,7 +161,11 @@ const NotificationListScreen = ({ navigation }) => {
       >
         <View style={styles.cardHeader}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>{title}</Text>
-          {isUnread && <Text style={[styles.unreadBadge, { color: theme.primary }]}>未読</Text>}
+          {isNew && (
+            <View style={[styles.newBadge, { borderColor: theme.primary }]}>
+              <Text style={[styles.newBadgeText, { color: theme.primary }]}>NEW</Text>
+            </View>
+          )}
         </View>
         <Text style={[styles.cardBody, { color: theme.textSecondary }]} numberOfLines={2}>
           {body}
@@ -96,6 +175,7 @@ const NotificationListScreen = ({ navigation }) => {
     );
   };
 
+  /** フィルター適用済み通知一覧 */
   const filteredItems = items.filter((item) => {
     if (filter === 'unread') {
       return !item.readAt;
@@ -105,6 +185,15 @@ const NotificationListScreen = ({ navigation }) => {
     }
     return true;
   });
+
+  /** 詳細モーダルに表示する通知の情報 */
+  const detailTitle = selectedItem?.notification?.title ?? '';
+  const detailBody = selectedItem?.notification?.body ?? '';
+  const detailCreatedAt = selectedItem?.notification?.created_at ?? selectedItem?.createdAt;
+  const detailCreatedText = detailCreatedAt ? new Date(detailCreatedAt).toLocaleString() : '';
+  const detailType = selectedItem?.notification?.metadata?.type;
+  /** 「確認する」ボタンのラベル（null のとき非表示） */
+  const navigateButtonLabel = getNavigationButtonLabel(detailType);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -160,10 +249,71 @@ const NotificationListScreen = ({ navigation }) => {
           <RefreshControl refreshing={isLoading} onRefresh={loadNotifications} />
         }
       />
+
+      {/* 通知詳細モーダル */}
+      <Modal
+        visible={selectedItem !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseDetail}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { backgroundColor: theme.surface }]}>
+            {/* モーダルヘッダー */}
+            <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]} numberOfLines={2}>
+                {detailTitle}
+              </Text>
+              <TouchableOpacity style={styles.modalCloseButton} onPress={handleCloseDetail}>
+                <Text style={[styles.modalCloseText, { color: theme.textSecondary }]}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 本文エリア（スクロール可能） */}
+            <ScrollView
+              style={styles.modalBody}
+              contentContainerStyle={styles.modalBodyContent}
+            >
+              <Text style={[styles.modalBodyText, { color: theme.text }]}>{detailBody}</Text>
+              <Text style={[styles.modalDate, { color: theme.textSecondary }]}>
+                {detailCreatedText}
+              </Text>
+            </ScrollView>
+
+            {/* フッター：確認するボタン */}
+            <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
+              {navigateButtonLabel ? (
+                <TouchableOpacity
+                  style={[styles.navigateButton, { backgroundColor: theme.primary }]}
+                  onPress={handleNavigateFromDetail}
+                >
+                  <Text style={styles.navigateButtonText}>{navigateButtonLabel}</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity
+                style={[
+                  styles.closeButton,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                    borderWidth: 1,
+                  },
+                ]}
+                onPress={handleCloseDetail}
+              >
+                <Text style={[styles.closeButtonText, { color: theme.text }]}>閉じる</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
 
+/**
+ * スタイル定義
+ */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -216,9 +366,16 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingRight: 8,
   },
-  unreadBadge: {
-    fontSize: 12,
+  newBadge: {
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  newBadgeText: {
+    fontSize: 11,
     fontWeight: '600',
+    letterSpacing: 0.5,
   },
   cardBody: {
     marginTop: 8,
@@ -236,6 +393,84 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
+  },
+  /* 詳細モーダル */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContainer: {
+    width: '100%',
+    maxWidth: 480,
+    borderRadius: 16,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    gap: 8,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    flex: 1,
+    lineHeight: 24,
+  },
+  modalCloseButton: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCloseText: {
+    fontSize: 22,
+    lineHeight: 28,
+  },
+  modalBody: {
+    maxHeight: 300,
+  },
+  modalBodyContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 12,
+  },
+  modalBodyText: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  modalDate: {
+    fontSize: 12,
+  },
+  modalFooter: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    gap: 10,
+  },
+  navigateButton: {
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  navigateButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  closeButton: {
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    fontSize: 15,
+    fontWeight: '500',
   },
 });
 

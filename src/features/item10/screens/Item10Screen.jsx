@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 import { DigitalClock } from '../components/DigitalClock';
@@ -19,30 +19,44 @@ const SCREEN_NAME = 'タイムスケジュール・マップ';
  */
 const Item10Screen = ({ navigation }) => {
   const { theme } = useTheme();
+  const { width } = useWindowDimensions();
+  const isSmallScreen = width < 768; // タブレット以下
+  const isMobile = width < 480; // スマホ
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <ThemedHeader title={SCREEN_NAME} navigation={navigation} />
       
-      <View style={styles.contentContainer}>
-        {/* デジタル時計 */}
-        <View style={styles.topRow}>
-          <DigitalClock />
-        </View>
-
-        {/* 2列レイアウト: 左にマップ、右にスケジュール */}
-        <View style={styles.gridContainer}>
-          {/* 左列: 全体マップ */}
-          <View style={styles.leftColumn}>
-            <CampusMap />
+      <ScrollView style={styles.scrollView}>
+        <View style={[styles.contentContainer, isMobile && styles.contentContainerMobile]}>
+          {/* デジタル時計 */}
+          <View style={styles.topRow}>
+            <DigitalClock />
           </View>
 
-          {/* 右列: タイムスケジュール */}
-          <View style={styles.rightColumn}>
-            <TimeSchedule />
+          {/* レスポンシブレイアウト: 大画面は2列、小画面は1列 */}
+          <View style={[
+            styles.gridContainer,
+            isSmallScreen && styles.gridContainerSmall
+          ]}>
+            {/* 左列/上: 全体マップ */}
+            <View style={[
+              styles.leftColumn,
+              isSmallScreen && styles.columnSmall
+            ]}>
+              <CampusMap />
+            </View>
+
+            {/* 右列/下: タイムスケジュール */}
+            <View style={[
+              styles.rightColumn,
+              isSmallScreen && styles.columnSmall
+            ]}>
+              <TimeSchedule />
+            </View>
           </View>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -51,23 +65,37 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  contentContainer: {
+  scrollView: {
     flex: 1,
+  },
+  contentContainer: {
     padding: 12,
+  },
+  contentContainerMobile: {
+    padding: 8,
   },
   topRow: {
     marginBottom: 8,
   },
   gridContainer: {
-    flex: 1,
     flexDirection: 'row',
     gap: 12,
+    minHeight: 500,
+  },
+  gridContainerSmall: {
+    flexDirection: 'column',
+    gap: 8,
   },
   leftColumn: {
     flex: 1,
   },
   rightColumn: {
     flex: 1,
+  },
+  columnSmall: {
+    flex: 1,
+    width: '100%',
+    minHeight: 400,
   },
 });
 

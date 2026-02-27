@@ -262,16 +262,18 @@ const mergeConsecutiveShifts = (shifts) => {
 /**
  * 日付文字列をスプレッドシートのシート名形式に変換
  * @param {Date} date - 日付オブジェクト
- * @returns {string} シート名形式の文字列（例: "11月3日"）
+ * @returns {string} シート名形式の文字列（例: "2026年11月3日"）
  */
 export const formatDateToSheetName = (date) => {
+  /** 年 */
+  const year = date.getFullYear();
   /** 月（1始まり） */
   const month = date.getMonth() + 1;
   /** 日 */
   const day = date.getDate();
 
-  // m月d日 形式（ゼロ埋めなし）
-  return `${month}月${day}日`;
+  // YYYY年M月D日 形式（ゼロ埋めなし）
+  return `${year}年${month}月${day}日`;
 };
 
 /**
@@ -297,6 +299,79 @@ export const getUserShifts = (shiftData, userName, userOrganizations) => {
 
   // ユーザーのシフトを抽出
   return extractUserShifts(blocks, userName, userOrganizations);
+};
+
+/**
+ * 団体ブロックのグリッドデータを取得
+ * シフト変更申請画面で使用する、団体全メンバーのシフトをグリッド形式で返す
+ * @param {Object} shiftData - CSV取得レスポンス { sheetName, exists, values }
+ * @param {Array<string>} userOrganizations - ユーザーの所属団体名リスト
+ * @returns {Array<Object>} 団体グリッドデータの配列
+ *   各要素: { organizationName, timeSlots, members }
+ *   members: [{ name, cells }]
+ *   cells: [{ timeSlot, areaName, colIndex }]
+ */
+export const getOrganizationGridData = (shiftData, userOrganizations) => {
+  // シートが存在しない場合は空配列を返す
+  if (!shiftData || !shiftData.exists) {
+    return [];
+  }
+
+  // データがない場合は空配列を返す
+  if (!shiftData.values || shiftData.values.length === 0) {
+    return [];
+  }
+
+  // 団体ブロックに分割
+  const blocks = parseOrganizationBlocks(shiftData.values);
+
+  /** 団体グリッドデータ */
+  const gridDataList = [];
+
+  for (const block of blocks) {
+    // ユーザーの所属団体かチェック
+    const isUserOrg = userOrganizations.some(
+      (org) => block.organizationName === org
+    );
+
+    if (!isUserOrg) {
+      continue;
+    }
+
+    // ヘッダー行がない場合はスキップ
+    if (!block.headerRow) {
+      continue;
+    }
+
+    /** 時間帯リスト */
+    const timeSlots = block.headerRow.filter((slot) => slot !== '');
+
+    /** メンバーのグリッドデータ */
+    const members = block.members.map((member) => {
+      /** 各セルのデータ */
+      const cells = timeSlots.map((timeSlot, colIndex) => {
+        const cellValue = String(member.values[colIndex] ?? '').trim();
+        return {
+          timeSlot,
+          areaName: cellValue || null,
+          colIndex,
+        };
+      });
+
+      return {
+        name: member.name,
+        cells,
+      };
+    });
+
+    gridDataList.push({
+      organizationName: block.organizationName,
+      timeSlots,
+      members,
+    });
+  }
+
+  return gridDataList;
 };
 
 /**

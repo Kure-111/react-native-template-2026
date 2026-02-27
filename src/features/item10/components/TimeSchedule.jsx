@@ -3,9 +3,9 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '../../../shared/components/icons';
 
 // タイムスケジュールデータ（サンプル）
 const SCHEDULE_DATA = [
@@ -21,6 +21,8 @@ const SCHEDULE_DATA = [
 
 export const TimeSchedule = () => {
   const { theme } = useTheme();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 480;
   const currentTime = new Date();
   const currentHour = currentTime.getHours();
   const currentMinutes = currentTime.getMinutes();

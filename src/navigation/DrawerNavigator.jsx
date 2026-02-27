@@ -12,7 +12,7 @@ import CustomDrawerContent from './components/CustomDrawerContent';
 import ScreenErrorBoundary from '../shared/components/ScreenErrorBoundary';
 
 /* 各項目の画面をインポート */
-import Item1Screen from '../features/item1/screens/Item1Screen';
+import EventsStallsList01Screen from '../features/01_Events&Stalls_list/screens/EventsStallsList01Screen';
 import Item2Screen from '../features/item2/screens/Item2Screen';
 import Item3Screen from '../features/item3/screens/Item3Screen';
 import Item4Screen from '../features/item4/screens/Item4Screen';
@@ -29,8 +29,8 @@ import Item15Screen from '../features/item15/screens/Item15Screen';
 import Item16Screen from '../features/item16/screens/Item16Screen';
 import JimuShiftScreen from '../features/jimu-shift/screens/JimuShiftScreen';
 import SettingsThemeScreen from '../features/settings/screens/SettingsThemeScreen';
-import NotificationListScreen from '../features/notifications/screens/NotificationListScreen';
 import AdminTestNotificationScreen from '../features/admin/screens/AdminTestNotificationScreen';
+import NotificationListScreen from '../features/notifications/screens/NotificationListScreen';
 
 /** Drawerナビゲーター */
 const Drawer = createDrawerNavigator();
@@ -65,7 +65,7 @@ const createWrappedScreen = (ScreenComponent, screenName) => {
 };
 
 /* Error Boundaryでラップした画面コンポーネント */
-const WrappedItem1Screen = createWrappedScreen(Item1Screen, '項目1');
+const WrappedEventsStallsList01Screen = createWrappedScreen(EventsStallsList01Screen, '企画・屋台一覧');
 const WrappedItem2Screen = createWrappedScreen(Item2Screen, '項目2');
 const WrappedItem3Screen = createWrappedScreen(Item3Screen, '項目3');
 const WrappedItem4Screen = createWrappedScreen(Item4Screen, '項目4');
@@ -82,8 +82,8 @@ const WrappedItem15Screen = createWrappedScreen(Item15Screen, '物品対応');
 const WrappedItem16Screen = createWrappedScreen(Item16Screen, '企画者サポート');
 const WrappedJimuShiftScreen = createWrappedScreen(JimuShiftScreen, '当日部員');
 const WrappedSettingsThemeScreen = createWrappedScreen(SettingsThemeScreen, 'テーマ設定');
-const WrappedNotificationListScreen = createWrappedScreen(NotificationListScreen, '通知一覧');
 const WrappedAdminTestNotificationScreen = createWrappedScreen(AdminTestNotificationScreen, '通知送信（管理者）');
+const WrappedNotificationListScreen = createWrappedScreen(NotificationListScreen, '通知一覧');
 
 /**
  * Drawerナビゲーターコンポーネント
@@ -97,7 +97,7 @@ const DrawerNavigator = () => {
 
   return (
     <Drawer.Navigator
-      initialRouteName="Item1"
+      initialRouteName="01_Events&Stalls_list"
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
         headerShown: false,
@@ -110,8 +110,12 @@ const DrawerNavigator = () => {
         swipeEnabled: isMobile,
       }}
     >
-      {/* 項目1〜10、項目12〜16、事務シフト（Error Boundaryでラップ済み） */}
-      <Drawer.Screen name="Item1" component={WrappedItem1Screen} />
+      {/* 項目1〜10、事務シフト（Error Boundaryでラップ済み） */}
+      <Drawer.Screen
+        name="01_Events&Stalls_list"
+        component={WrappedEventsStallsList01Screen}
+        options={{ title: '企画・屋台一覧' }}
+      />
       <Drawer.Screen name="Item2" component={WrappedItem2Screen} />
       <Drawer.Screen name="Item3" component={WrappedItem3Screen} />
       <Drawer.Screen name="Item4" component={WrappedItem4Screen} />
@@ -120,8 +124,8 @@ const DrawerNavigator = () => {
       <Drawer.Screen name="Item7" component={WrappedItem7Screen} />
       <Drawer.Screen name="Item8" component={WrappedItem8Screen} />
       <Drawer.Screen name="Item9" component={WrappedItem9Screen} />
-      <Drawer.Screen 
-        name="Item10" 
+      <Drawer.Screen
+        name="Item10"
         component={WrappedItem10Screen}
         options={{ title: '本部' }}
       />
@@ -152,16 +156,8 @@ const DrawerNavigator = () => {
       />
       <Drawer.Screen name="JimuShift" component={WrappedJimuShiftScreen} />
       <Drawer.Screen name="SettingsTheme" component={WrappedSettingsThemeScreen} />
-      <Drawer.Screen
-        name="NotificationList"
-        component={WrappedNotificationListScreen}
-        options={{ title: '通知一覧' }}
-      />
-      <Drawer.Screen
-        name="AdminTestNotification"
-        component={WrappedAdminTestNotificationScreen}
-        options={{ title: '通知送信（管理者）' }}
-      />
+      <Drawer.Screen name="AdminTestNotification" component={WrappedAdminTestNotificationScreen} />
+      <Drawer.Screen name="Notifications" component={WrappedNotificationListScreen} />
     </Drawer.Navigator>
   );
 };
