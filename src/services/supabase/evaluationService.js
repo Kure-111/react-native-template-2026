@@ -35,10 +35,7 @@ export const listEvaluationChecks = async ({ evaluatorId = null, statuses = [], 
       .from(EVALUATION_CHECKS_TABLE)
       .select(
         `
-          ${EVALUATION_COLUMNS},
-          event:events(id,name,location),
-          task:patrol_tasks(id,task_no,task_type,event_name,event_location),
-          ticket:support_tickets(id,ticket_no,title,event_name,event_location)
+          ${EVALUATION_COLUMNS}
         `
       )
       .order('created_at', { ascending: false })
