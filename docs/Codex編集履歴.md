@@ -21,3 +21,5 @@
 | --- | --- | --- | --- | --- |
 | 2026-02-20 | Codex | `docs/プロジェクト全体理解.md`<br>`docs/管理部統合システム理解.md`<br>`docs/Codex編集履歴.md`<br>`AGENTS.md`<br>`docs/AI用プロンプト/AGENTS.md` | 全体理解MD・管理部統合理解MD・編集履歴MDを新規作成し、今後のスレッドでも読むための参照ルールをAGENTSへ追加 | ユーザー依頼「どこでも使えるように」対応 |
 
+| 2026-02-23 | Codex | `supabase/functions/dispatch-notification/index.ts`<br>`docs/管理部統合システム理解.md`<br>`docs/プロジェクト全体理解.md`<br>`docs/Codex編集履歴.md` | 企画制作部で発生していた通知送信403を調査。Edge Function認可を修正し、ロール通知の実運用フローを許可。version 8 をデプロイし、原因と対処を理解ドキュメントへ追記 | `item16` からの連絡案件通知で `dispatch-notification` が 403 にならないことを実機確認 |
+
