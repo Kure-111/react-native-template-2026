@@ -103,6 +103,7 @@ const getNotificationData = (event) => {
       title: 'Ikoma Festival ERP 2026',
       body: 'You have a new notification.',
       url: '/',
+      navigateTo: null,
     };
   }
 
@@ -112,12 +113,15 @@ const getNotificationData = (event) => {
       title: parsedData.title || 'Ikoma Festival ERP 2026',
       body: parsedData.body || 'You have a new notification.',
       url: parsedData.url || '/',
+      /** 遷移先情報（{ screen: string, tab: string } または null） */
+      navigateTo: parsedData.navigateTo || null,
     };
   } catch (error) {
     return {
       title: 'Ikoma Festival ERP 2026',
       body: event.data.text(),
       url: '/',
+      navigateTo: null,
     };
   }
 };
@@ -134,32 +138,62 @@ const buildNotificationOptions = (data) => {
     badge: '/icons/icon-192.png',
     data: {
       url: data.url,
+      /** 遷移先情報（postMessage で使用） */
+      navigateTo: data.navigateTo,
     },
   };
 };
 
 /**
+ * URLにクエリパラメータを付与する（アプリ未起動時のフォールバック用）
+ * @param {string} baseUrl - ベースURL
+ * @param {Object|null} navigateTo - 遷移先情報
+ * @returns {string} パラメータ付きURL
+ */
+const buildFallbackUrl = (baseUrl, navigateTo) => {
+  if (!navigateTo || !navigateTo.screen || !navigateTo.tab) {
+    return baseUrl;
+  }
+  const url = new URL(baseUrl, self.location.origin);
+  url.searchParams.set('sw_screen', navigateTo.screen);
+  url.searchParams.set('sw_tab', navigateTo.tab);
+  return url.href;
+};
+
+/**
  * 通知クリック時の遷移を処理する
+ * アプリが開いている場合は postMessage でナビゲートし、
+ * 開いていない場合はURLパラメータ付きで新規ウィンドウを開く
  * @param {NotificationEvent} event - 通知イベント
  * @returns {Promise<void>} 処理結果
  */
 const handleNotificationClick = async (event) => {
   const targetUrl = event.notification?.data?.url || '/';
-  const resolvedUrl = new URL(targetUrl, self.location.origin).href;
+  const navigateTo = event.notification?.data?.navigateTo || null;
+
   const clientList = await clients.matchAll({
     type: 'window',
     includeUncontrolled: true,
   });
 
+  // アプリが既に開いている場合：postMessage でナビゲートを通知
   for (const client of clientList) {
-    if (client.url === resolvedUrl && 'focus' in client) {
+    if (client.url.startsWith(self.location.origin)) {
       await client.focus();
+      if (navigateTo) {
+        client.postMessage({
+          type: 'SW_NAVIGATE',
+          screen: navigateTo.screen,
+          tab: navigateTo.tab,
+        });
+      }
       return;
     }
   }
 
+  // アプリが開いていない場合：URLパラメータ付きで新規ウィンドウを開く
   if (clients.openWindow) {
-    await clients.openWindow(resolvedUrl);
+    await clients.openWindow(buildFallbackUrl(targetUrl, navigateTo));
   }
 };
 

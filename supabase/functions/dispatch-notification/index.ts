@@ -74,22 +74,23 @@ const getBearerToken = (request: Request) => {
 };
 
 /**
- * 管理者ロールかどうかを判定する
+ * 通知送信権限を持つロールかどうかを判定する
+ * 管理者・祭実長・部長・事務部 のいずれかを持つユーザーが送信可能
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase - Supabaseクライアント
  * @param {string} userId - ユーザーID
- * @returns {Promise<boolean>} 管理者の場合true
+ * @returns {Promise<boolean>} 送信権限がある場合true
  */
-const isAdminUser = async (supabase: ReturnType<typeof createServiceClient>, userId: string) => {
+const isAuthorizedSender = async (supabase: ReturnType<typeof createServiceClient>, userId: string) => {
   const { data, error } = await supabase
     .from('user_roles')
     .select('roles!inner(name)')
     .eq('user_id', userId)
-    .eq('roles.name', '管理者')
+    .in('roles.name', ['管理者', '祭実長', '部長', '事務部'])
     .limit(1);
 
   if (error) {
-    console.error('admin check error:', error);
-    throw new Error('Failed to check admin role');
+    console.error('auth check error:', error);
+    throw new Error('Failed to check authorized role');
   }
 
   return Array.isArray(data) && data.length > 0;
@@ -133,8 +134,8 @@ const authenticateRequester = async (
     throw new Error('Invalid user token');
   }
 
-  const admin = await isAdminUser(supabase, user.id);
-  if (!admin) {
+  const authorized = await isAuthorizedSender(supabase, user.id);
+  if (!authorized) {
     throw new Error('Forbidden');
   }
 
@@ -180,16 +181,46 @@ const resolveRecipients = async (
 };
 
 /**
+ * 通知メタデータのタイプからアプリ内遷移先情報を導出する
+ * service-worker.js の SW_NAVIGATE_TYPE と対応している
+ * @param {Record<string, unknown> | undefined} metadata - 通知メタデータ
+ * @returns {{ screen: string; tab: string } | null} 遷移先情報
+ */
+const getNavigateTo = (
+  metadata?: Record<string, unknown>
+): { screen: string; tab: string } | null => {
+  const type = metadata?.type as string | undefined;
+  switch (type) {
+    case 'shift_change_request':
+    case 'shift_rescue_request':
+      return { screen: 'JimuShift', tab: 'jimuRequests' };
+    case 'shift_change_completed':
+    case 'shift_change_rejected':
+      return { screen: 'JimuShift', tab: 'requestHistory' };
+    case 'shift_reminder':
+      return { screen: 'JimuShift', tab: 'myShift' };
+    default:
+      return null;
+  }
+};
+
+/**
  * Push通知を送信する
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase - Supabaseクライアント
  * @param {string[]} recipientUserIds - 受信者ユーザーID一覧
- * @param {{title:string;body:string;url:string;notificationId:string}} message - 通知データ
+ * @param {{title:string;body:string;url:string;notificationId:string;navigateTo:{screen:string;tab:string}|null}} message - 通知データ
  * @returns {Promise<PushStats>} 送信統計
  */
 const sendWebPush = async (
   supabase: ReturnType<typeof createServiceClient>,
   recipientUserIds: string[],
-  message: { title: string; body: string; url: string; notificationId: string }
+  message: {
+    title: string;
+    body: string;
+    url: string;
+    notificationId: string;
+    navigateTo: { screen: string; tab: string } | null;
+  }
 ) => {
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !VAPID_SUBJECT) {
     throw new Error('VAPID secrets are not configured');
@@ -369,6 +400,7 @@ Deno.serve(async (request) => {
         body: payload.body.trim(),
         url: payload.url || '/notifications',
         notificationId: notification.id,
+        navigateTo: getNavigateTo(payload.metadata),
       });
     } catch (pushError) {
       console.error('web push dispatch error:', pushError);
