@@ -18,6 +18,7 @@ import {
   listKeyReservations,
   updateKeyReservationStatus,
 } from '../../../services/supabase/keyReservationService';
+import KeyStatusBoardModal from './KeyStatusBoardModal';
 
 const LOCK_CHECK_STATUS_LABELS = {
   locked: '施錠済',
@@ -64,6 +65,8 @@ const HQKeyManagementPanel = ({ theme, user }) => {
   const [isLoadingLoans, setIsLoadingLoans] = useState(false);
   const [isLoadingReservations, setIsLoadingReservations] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  /** 全体表示ボードモーダルの表示フラグ */
+  const [isBoardVisible, setIsBoardVisible] = useState(false);
 
   /**
    * メッセージ表示
@@ -376,18 +379,33 @@ const HQKeyManagementPanel = ({ theme, user }) => {
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
       <View style={styles.headerRow}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>鍵貸出/返却（本部）</Text>
-        <TouchableOpacity
-          style={[styles.refreshButton, { borderColor: theme.border }]}
-          onPress={() => {
-            loadKeys();
-            loadKeyLoans();
-            loadKeyReservations();
-          }}
-          disabled={isSubmitting}
-        >
-          <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={[styles.boardButton, { backgroundColor: theme.primary }]}
+            onPress={() => setIsBoardVisible(true)}
+          >
+            <Text style={styles.boardButtonText}>全体表示</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.refreshButton, { borderColor: theme.border }]}
+            onPress={() => {
+              loadKeys();
+              loadKeyLoans();
+              loadKeyReservations();
+            }}
+            disabled={isSubmitting}
+          >
+            <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {/* 全体表示ボードモーダル */}
+      <KeyStatusBoardModal
+        visible={isBoardVisible}
+        onClose={() => setIsBoardVisible(false)}
+        theme={theme}
+      />
 
       <Text style={[styles.label, { color: theme.text }]}>鍵を選択</Text>
       <View
@@ -632,6 +650,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  boardButton: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  boardButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   sectionTitle: {
     fontSize: 16,

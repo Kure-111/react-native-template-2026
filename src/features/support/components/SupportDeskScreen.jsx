@@ -32,6 +32,7 @@ import {
   updateTicketStatus,
 } from '../../../services/supabase/supportTicketService';
 import HQKeyManagementPanel from './HQKeyManagementPanel';
+import KeyMasterEditPanel from './KeyMasterEditPanel';
 import SkeletonLoader from '../../../shared/components/SkeletonLoader';
 import EmptyState from '../../../shared/components/EmptyState';
 import OfflineBanner from '../../../shared/components/OfflineBanner';
@@ -1004,6 +1005,8 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
         ) : null}
 
         {isHQRole ? <HQKeyManagementPanel theme={theme} user={user} /> : null}
+
+        {isHQRole ? <KeyMasterEditPanel theme={theme} /> : null}
 
         {isHQRole ? (
           <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}> 
