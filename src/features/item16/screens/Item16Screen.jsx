@@ -786,11 +786,58 @@ const Item16Screen = ({ navigation }) => {
   };
 
   /**
+   * 画像ファイルをCanvas APIで圧縮する（Web限定）
+   * 長辺最大1920px・JPEG品質0.75に縮小してファイルサイズを削減する
+   * 非画像（PDF等）はそのまま返す
+   * @param {File} file - 圧縮対象のファイル
+   * @returns {Promise<File>} 圧縮後のFileオブジェクト
+   */
+  const compressImageFile = async (file) => {
+    // 画像以外（PDF等）はそのまま返す
+    if (!file.type.startsWith('image/')) {
+      return file;
+    }
+    try {
+      /** デコード済み画像データ */
+      const bitmap = await createImageBitmap(file);
+      /** 長辺最大サイズ（px）: 1920px 超は縮小 */
+      const MAX_SIDE_PX = 1920;
+      const { width, height } = bitmap;
+      /** リサイズ倍率（元サイズが MAX_SIDE_PX 以下なら 1.0 のまま） */
+      const scale = Math.min(1, MAX_SIDE_PX / Math.max(width, height));
+      const targetWidth = Math.round(width * scale);
+      const targetHeight = Math.round(height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+      bitmap.close();
+      /** JPEG 品質（0.75 = 品質を保ちつつ約 60〜70% 削減） */
+      const JPEG_QUALITY = 0.75;
+      const blob = await new Promise((resolve) => {
+        canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY);
+      });
+      if (!blob) {
+        return file;
+      }
+      // 元ファイル名の拡張子を .jpg に変更
+      const baseName = file.name.replace(/\.[^.]+$/, '');
+      return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+    } catch {
+      // 圧縮失敗時は元ファイルをそのまま返す
+      return file;
+    }
+  };
+
+  /**
    * 添付ファイルを選択（Web共通）
+   * 画像の場合は自動圧縮してからコールバックを呼ぶ
    * @param {(file: File) => void} onSelected - 選択後コールバック
+   * @param {'environment'|'user'|null} [capture] - カメラ指定（null はファイル選択）
    * @returns {void}
    */
-  const pickFileFromDevice = (onSelected) => {
+  const pickFileFromDevice = (onSelected, capture = null) => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') {
       showMessage('添付不可', '現在の端末ではファイル選択に未対応です。');
       return;
@@ -798,28 +845,36 @@ const Item16Screen = ({ navigation }) => {
 
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.accept = 'image/*,application/pdf';
-    fileInput.onchange = () => {
+    // カメラ指定時は画像のみ対応、通常選択時は画像+PDF
+    fileInput.accept = capture ? 'image/*' : 'image/*,application/pdf';
+    if (capture) {
+      fileInput.capture = capture;
+    }
+    fileInput.onchange = async () => {
       const selectedFile = fileInput.files?.[0] || null;
       if (!selectedFile) {
         return;
       }
-      if (selectedFile.size > MAX_ATTACHMENT_FILE_BYTES) {
+      // 画像は圧縮してからサイズチェック（圧縮後に5MB を超えることはほぼないが念のため）
+      const processedFile = selectedFile.type.startsWith('image/')
+        ? await compressImageFile(selectedFile)
+        : selectedFile;
+      if (processedFile.size > MAX_ATTACHMENT_FILE_BYTES) {
         showMessage(
           '容量超過',
-          `添付は${MAX_ATTACHMENT_FILE_SIZE_MB}MB以下にしてください（選択: ${formatFileSize(
-            selectedFile.size
+          `添付は${MAX_ATTACHMENT_FILE_SIZE_MB}MB以下にしてください（圧縮後: ${formatFileSize(
+            processedFile.size
           )}）。`
         );
         return;
       }
-      onSelected(selectedFile);
+      onSelected(processedFile);
     };
     fileInput.click();
   };
 
   /**
-   * 新規連絡用の添付を選択
+   * 新規連絡用の添付をファイルから選択
    * @returns {void}
    */
   const pickAttachmentFile = () => {
@@ -827,11 +882,27 @@ const Item16Screen = ({ navigation }) => {
   };
 
   /**
-   * 追記用の添付を選択
+   * 新規連絡用の添付をカメラで撮影
+   * @returns {void}
+   */
+  const pickAttachmentFromCamera = () => {
+    pickFileFromDevice((file) => setAttachmentFile(file), 'environment');
+  };
+
+  /**
+   * 追記用の添付をファイルから選択
    * @returns {void}
    */
   const pickFollowupAttachmentFile = () => {
     pickFileFromDevice((file) => setFollowupAttachmentFile(file));
+  };
+
+  /**
+   * 追記用の添付をカメラで撮影
+   * @returns {void}
+   */
+  const pickFollowupAttachmentFromCamera = () => {
+    pickFileFromDevice((file) => setFollowupAttachmentFile(file), 'environment');
   };
 
   /**
@@ -1223,19 +1294,34 @@ const Item16Screen = ({ navigation }) => {
 
             <Text style={[styles.label, { color: theme.text }]}>添付情報（任意）</Text>
             <Text style={[styles.questionTargetHint, { color: theme.textSecondary }]}>
-              画像/PDFを1件添付できます（最大 {MAX_ATTACHMENT_FILE_SIZE_MB}MB）。
+              画像/PDFを1件添付できます（最大 {MAX_ATTACHMENT_FILE_SIZE_MB}MB）。画像は自動圧縮されます。
             </Text>
-            <TouchableOpacity
-              style={[
-                styles.attachPickerButton,
-                { borderColor: theme.border, backgroundColor: theme.background },
-              ]}
-              onPress={pickAttachmentFile}
-            >
-              <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
-                {attachmentFile ? '別の添付を選択' : '添付を選択'}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.attachPickerRow}>
+              <TouchableOpacity
+                style={[
+                  styles.attachPickerButton,
+                  styles.attachPickerButtonFlex,
+                  { borderColor: theme.border, backgroundColor: theme.background },
+                ]}
+                onPress={pickAttachmentFile}
+              >
+                <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
+                  {attachmentFile ? '別のファイルを選択' : 'ファイルから選択'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.attachPickerButton,
+                  styles.attachPickerButtonFlex,
+                  { borderColor: theme.border, backgroundColor: theme.background },
+                ]}
+                onPress={pickAttachmentFromCamera}
+              >
+                <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
+                  カメラで撮影
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {attachmentFile ? (
               <View
@@ -1314,6 +1400,7 @@ const Item16Screen = ({ navigation }) => {
             isSubmittingContactReply={isSubmittingContactReply}
             followupAttachmentFile={followupAttachmentFile}
             onPickFollowupAttachment={pickFollowupAttachmentFile}
+            onPickFollowupAttachmentFromCamera={pickFollowupAttachmentFromCamera}
             onClearFollowupAttachment={clearFollowupAttachment}
             followupAttachmentCaption={followupAttachmentCaption}
             onChangeFollowupAttachmentCaption={setFollowupAttachmentCaption}
@@ -1395,6 +1482,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
+  },
+  attachPickerRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  attachPickerButtonFlex: {
+    flex: 1,
   },
   attachPickerButton: {
     borderWidth: 1,

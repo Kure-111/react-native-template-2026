@@ -75,7 +75,8 @@ const formatFileSize = (fileSizeBytes) => {
  * @param {() => void} props.onSubmitContactReply - 追記送信コールバック
  * @param {boolean} props.isSubmittingContactReply - 追記送信中フラグ
  * @param {Object|null} props.followupAttachmentFile - 追記用添付ファイル
- * @param {() => void} props.onPickFollowupAttachment - 追記用添付選択コールバック
+ * @param {() => void} props.onPickFollowupAttachment - 追記用添付をファイルから選択するコールバック
+ * @param {() => void} props.onPickFollowupAttachmentFromCamera - 追記用添付をカメラで撮影するコールバック
  * @param {() => void} props.onClearFollowupAttachment - 追記用添付解除コールバック
  * @param {string} props.followupAttachmentCaption - 追記用添付メモ
  * @param {(value: string) => void} props.onChangeFollowupAttachmentCaption - 追記用添付メモ変更コールバック
@@ -104,6 +105,7 @@ const ContactHistory = ({
   isSubmittingContactReply,
   followupAttachmentFile,
   onPickFollowupAttachment,
+  onPickFollowupAttachmentFromCamera,
   onClearFollowupAttachment,
   followupAttachmentCaption,
   onChangeFollowupAttachmentCaption,
@@ -314,17 +316,32 @@ const ContactHistory = ({
 
           {/* 添付追加 */}
           <Text style={[styles.label, { color: theme.text }]}>添付追加（必要時）</Text>
-          <TouchableOpacity
-            style={[
-              styles.attachPickerButton,
-              { borderColor: theme.border, backgroundColor: theme.background },
-            ]}
-            onPress={onPickFollowupAttachment}
-          >
-            <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
-              {followupAttachmentFile ? '別の添付を選択' : '添付を選択'}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.attachPickerRow}>
+            <TouchableOpacity
+              style={[
+                styles.attachPickerButton,
+                styles.attachPickerButtonFlex,
+                { borderColor: theme.border, backgroundColor: theme.background },
+              ]}
+              onPress={onPickFollowupAttachment}
+            >
+              <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
+                {followupAttachmentFile ? '別のファイルを選択' : 'ファイルから選択'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.attachPickerButton,
+                styles.attachPickerButtonFlex,
+                { borderColor: theme.border, backgroundColor: theme.background },
+              ]}
+              onPress={onPickFollowupAttachmentFromCamera}
+            >
+              <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
+                カメラで撮影
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           {followupAttachmentFile ? (
             <View
@@ -489,6 +506,13 @@ const styles = StyleSheet.create({
     height: 132,
     borderRadius: 8,
     marginTop: 6,
+  },
+  attachPickerRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  attachPickerButtonFlex: {
+    flex: 1,
   },
   attachPickerButton: {
     borderWidth: 1,
