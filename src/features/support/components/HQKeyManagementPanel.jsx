@@ -1,11 +1,20 @@
 /**
  * 本部向け鍵管理パネル
  * 簡易貸出登録 / 返却 / 施錠確認依頼を扱う
+ * 鍵選択は「棟選択 → 教室選択」の2段階UIを採用
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
+import {
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { KEY_CATALOG } from '../../item16/data/keyCatalog';
 import {
   createKeyLoan,
@@ -35,6 +44,11 @@ const RESERVATION_STATUS_LABELS = {
 
 const normalizeText = (value) => (value || '').trim();
 
+/**
+ * フォールバック用カタログから鍵オプションを生成する
+ * DBが空の場合に使用する
+ * @returns {Array} 鍵オプション一覧
+ */
 const toFallbackKeyOptions = () => {
   return KEY_CATALOG.map((item) => ({
     id: item.id,
@@ -42,7 +56,8 @@ const toFallbackKeyOptions = () => {
     label: `${item.building} / ${item.name}`,
     location: item.location || `${item.building} / ${item.name}`,
     name: item.name,
-    building: item.building,
+    building: item.building || '',
+    classroomName: item.name || '',
   }));
 };
 
@@ -50,20 +65,36 @@ const toFallbackKeyOptions = () => {
  * @param {Object} props - プロパティ
  * @param {Object} props.theme - テーマ
  * @param {Object|null} props.user - ログインユーザー
+ * @param {Function} [props.onLoanCreated] - 貸出登録後コールバック
+ * @param {Function} [props.onLoanReturned] - 返却後コールバック
  * @returns {JSX.Element} 鍵管理パネル
  */
-const HQKeyManagementPanel = ({ theme, user }) => {
-  const [selectedKeyId, setSelectedKeyId] = useState('');
+const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) => {
+  /** 選択中の棟名 */
+  const [selectedBuilding, setSelectedBuilding] = useState('');
+  /** 選択中の鍵コード */
+  const [selectedKeyCode, setSelectedKeyCode] = useState('');
+  /** 借受人名 */
   const [borrowerName, setBorrowerName] = useState('');
+  /** 借受人連絡先 */
   const [borrowerContact, setBorrowerContact] = useState('');
+  /** 企画名 */
   const [eventName, setEventName] = useState('');
+  /** 企画場所 */
   const [eventLocation, setEventLocation] = useState('');
+  /** 全鍵オプション一覧 */
   const [keyOptions, setKeyOptions] = useState([]);
+  /** 貸出一覧 */
   const [keyLoans, setKeyLoans] = useState([]);
+  /** 鍵予約一覧 */
   const [keyReservations, setKeyReservations] = useState([]);
+  /** 鍵マスタ読み込み中フラグ */
   const [isLoadingKeys, setIsLoadingKeys] = useState(false);
+  /** 貸出一覧読み込み中フラグ */
   const [isLoadingLoans, setIsLoadingLoans] = useState(false);
+  /** 鍵予約読み込み中フラグ */
   const [isLoadingReservations, setIsLoadingReservations] = useState(false);
+  /** 処理中フラグ */
   const [isSubmitting, setIsSubmitting] = useState(false);
   /** 全体表示ボードモーダルの表示フラグ */
   const [isBoardVisible, setIsBoardVisible] = useState(false);
@@ -83,11 +114,36 @@ const HQKeyManagementPanel = ({ theme, user }) => {
   };
 
   /**
+   * 棟名一覧（ユニーク、ソート済み）
+   */
+  const buildingOptions = useMemo(() => {
+    const seen = new Set();
+    keyOptions.forEach((item) => {
+      const b = normalizeText(item.building);
+      if (b) {
+        seen.add(b);
+      }
+    });
+    return Array.from(seen).sort((a, b) => a.localeCompare(b, 'ja'));
+  }, [keyOptions]);
+
+  /**
+   * 選択した棟の鍵一覧
+   * 棟が未選択のときは全件を返す
+   */
+  const filteredKeyOptions = useMemo(() => {
+    if (!selectedBuilding) {
+      return keyOptions;
+    }
+    return keyOptions.filter((item) => item.building === selectedBuilding);
+  }, [keyOptions, selectedBuilding]);
+
+  /**
    * 選択中鍵情報
    */
   const selectedKey = useMemo(() => {
-    return keyOptions.find((item) => item.keyCode === selectedKeyId) || null;
-  }, [keyOptions, selectedKeyId]);
+    return keyOptions.find((item) => item.keyCode === selectedKeyCode) || null;
+  }, [keyOptions, selectedKeyCode]);
 
   /**
    * 貸出中一覧
@@ -97,7 +153,7 @@ const HQKeyManagementPanel = ({ theme, user }) => {
   }, [keyLoans]);
 
   /**
-   * 返却済一覧
+   * 返却済一覧（最新20件）
    */
   const returnedKeyItems = useMemo(() => {
     return keyLoans.filter((loan) => loan.status === 'returned').slice(0, 20);
@@ -107,11 +163,13 @@ const HQKeyManagementPanel = ({ theme, user }) => {
    * 承認待ち予約
    */
   const pendingReservations = useMemo(() => {
-    return keyReservations.filter((reservation) => reservation.status === KEY_RESERVATION_STATUSES.PENDING);
+    return keyReservations.filter(
+      (reservation) => reservation.status === KEY_RESERVATION_STATUSES.PENDING
+    );
   }, [keyReservations]);
 
   /**
-   * 最近の承認済/却下予約
+   * 最近の承認済/却下予約（最新20件）
    */
   const recentResolvedReservations = useMemo(() => {
     return keyReservations
@@ -120,7 +178,7 @@ const HQKeyManagementPanel = ({ theme, user }) => {
   }, [keyReservations]);
 
   /**
-   * 鍵ラベルを表示用へ変換
+   * 鍵予約の鍵ラベルを表示用へ変換
    * @param {Object} reservation - 鍵予約
    * @returns {string} 表示名
    */
@@ -155,6 +213,7 @@ const HQKeyManagementPanel = ({ theme, user }) => {
 
   /**
    * 鍵マスタを読み込む
+   * building カラムと metadata.building の両方から棟名を抽出する
    * @returns {Promise<void>} 読み込み処理
    */
   const loadKeys = async () => {
@@ -176,16 +235,19 @@ const HQKeyManagementPanel = ({ theme, user }) => {
 
     const rows = (data || []).map((row) => {
       const metadata = row?.metadata && typeof row.metadata === 'object' ? row.metadata : {};
-      const building = normalizeText(metadata.building);
-      const name = normalizeText(metadata.name) || normalizeText(row.display_name);
-      const fallbackLabel = [building, name].filter(Boolean).join(' / ');
+      /** building カラム優先、なければ metadata.building を使用 */
+      const building = normalizeText(row.building || metadata.building);
+      /** classroom_name カラム優先、なければ metadata.name を使用 */
+      const classroomName = normalizeText(row.classroom_name || metadata.name) || normalizeText(row.display_name);
+      const fallbackLabel = [building, classroomName].filter(Boolean).join(' / ');
       return {
         id: row.id,
         keyCode: normalizeText(row.key_code) || row.id,
         label: normalizeText(row.display_name) || fallbackLabel || normalizeText(row.key_code) || row.id,
         location: normalizeText(row.location_text) || fallbackLabel || normalizeText(row.display_name),
-        name,
+        name: classroomName,
         building,
+        classroomName,
       };
     });
 
@@ -257,7 +319,9 @@ const HQKeyManagementPanel = ({ theme, user }) => {
     setBorrowerContact('');
     setEventName('');
     setEventLocation('');
+    setSelectedKeyCode('');
     await loadKeyLoans();
+    onLoanCreated?.();
     showMessage('登録完了', '鍵貸出を登録しました');
   };
 
@@ -307,6 +371,7 @@ const HQKeyManagementPanel = ({ theme, user }) => {
     }
 
     await loadKeyLoans();
+    onLoanReturned?.();
     showMessage(
       '返却完了',
       createLockTask
@@ -360,14 +425,11 @@ const HQKeyManagementPanel = ({ theme, user }) => {
     }
 
     await loadKeyReservations();
-    showMessage('更新完了', status === 'approved' ? '鍵予約を承認しました' : '鍵予約を却下しました');
+    showMessage(
+      '更新完了',
+      status === 'approved' ? '鍵予約を承認しました' : '鍵予約を却下しました'
+    );
   };
-
-  useEffect(() => {
-    if (keyOptions.length > 0 && !selectedKeyId) {
-      setSelectedKeyId(keyOptions[0].keyCode);
-    }
-  }, [keyOptions, selectedKeyId]);
 
   useEffect(() => {
     loadKeys();
@@ -405,36 +467,128 @@ const HQKeyManagementPanel = ({ theme, user }) => {
         visible={isBoardVisible}
         onClose={() => setIsBoardVisible(false)}
         theme={theme}
+        user={user}
+        onLoanCreated={loadKeyLoans}
+        onLoanReturned={loadKeyLoans}
       />
 
-      <Text style={[styles.label, { color: theme.text }]}>鍵を選択</Text>
-      <View
-        style={[
-          styles.pickerContainer,
-          { backgroundColor: theme.background, borderColor: theme.border },
-        ]}
-      >
-        <Picker
-          selectedValue={selectedKeyId}
-          onValueChange={(value) => setSelectedKeyId(value)}
-          style={[styles.picker, { color: theme.text, backgroundColor: theme.surface }]}
-          itemStyle={{ color: theme.text }}
-          dropdownIconColor={theme.text}
-        >
-          {keyOptions.map((item) => (
-            <Picker.Item
-              key={item.id || item.keyCode}
-              label={item.label}
-              value={item.keyCode}
-              color={theme.text}
-            />
-          ))}
-        </Picker>
-      </View>
+      {/* ── Step 1: 棟選択 ── */}
+      <Text style={[styles.label, { color: theme.text }]}>Step 1 — 棟を選択</Text>
       {isLoadingKeys ? (
         <Text style={[styles.helpText, { color: theme.textSecondary }]}>鍵マスタを読み込み中...</Text>
+      ) : (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.buildingScrollContent}
+          style={styles.buildingScroll}
+        >
+          {/* 全棟表示ボタン */}
+          <TouchableOpacity
+            style={[
+              styles.buildingPill,
+              {
+                backgroundColor: !selectedBuilding ? theme.primary : theme.background,
+                borderColor: !selectedBuilding ? theme.primary : theme.border,
+              },
+            ]}
+            onPress={() => {
+              setSelectedBuilding('');
+              setSelectedKeyCode('');
+            }}
+          >
+            <Text
+              style={[
+                styles.buildingPillText,
+                { color: !selectedBuilding ? '#FFFFFF' : theme.textSecondary },
+              ]}
+            >
+              すべて
+            </Text>
+          </TouchableOpacity>
+          {buildingOptions.map((building) => {
+            /** 選択中かどうか */
+            const isSelected = selectedBuilding === building;
+            return (
+              <TouchableOpacity
+                key={building}
+                style={[
+                  styles.buildingPill,
+                  {
+                    backgroundColor: isSelected ? theme.primary : theme.background,
+                    borderColor: isSelected ? theme.primary : theme.border,
+                  },
+                ]}
+                onPress={() => {
+                  /** 同じ棟を再タップで解除 */
+                  setSelectedBuilding(isSelected ? '' : building);
+                  setSelectedKeyCode('');
+                }}
+              >
+                <Text
+                  style={[
+                    styles.buildingPillText,
+                    { color: isSelected ? '#FFFFFF' : theme.textSecondary },
+                  ]}
+                >
+                  {building}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      {/* ── Step 2: 教室（鍵）選択 ── */}
+      {!isLoadingKeys && filteredKeyOptions.length > 0 ? (
+        <>
+          <Text style={[styles.label, { color: theme.text }]}>
+            Step 2 — 教室を選択（{filteredKeyOptions.length}件）
+          </Text>
+          <View style={styles.keyGrid}>
+            {filteredKeyOptions.map((item) => {
+              /** 選択中かどうか */
+              const isSelected = selectedKeyCode === item.keyCode;
+              return (
+                <TouchableOpacity
+                  key={item.id || item.keyCode}
+                  style={[
+                    styles.keyCard,
+                    {
+                      backgroundColor: isSelected ? `${theme.primary}1A` : theme.background,
+                      borderColor: isSelected ? theme.primary : theme.border,
+                    },
+                  ]}
+                  onPress={() => setSelectedKeyCode(isSelected ? '' : item.keyCode)}
+                >
+                  <Text
+                    style={[styles.keyCardCode, { color: theme.textSecondary }]}
+                    numberOfLines={1}
+                  >
+                    {item.keyCode}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.keyCardName,
+                      { color: isSelected ? theme.primary : theme.text },
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {item.classroomName || item.name || item.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {selectedKey ? (
+            <Text style={[styles.selectedKeyLabel, { color: theme.primary }]}>
+              選択中: {selectedKey.label}
+            </Text>
+          ) : null}
+        </>
       ) : null}
 
+      {/* ── 貸出情報入力 ── */}
       <Text style={[styles.label, { color: theme.text }]}>借受人（任意）</Text>
       <TextInput
         value={borrowerName}
@@ -472,13 +626,19 @@ const HQKeyManagementPanel = ({ theme, user }) => {
       />
 
       <TouchableOpacity
-        style={[styles.mainActionButton, { backgroundColor: theme.primary }]}
+        style={[
+          styles.mainActionButton,
+          { backgroundColor: selectedKey ? theme.primary : theme.border },
+        ]}
         onPress={handleCreateLoan}
-        disabled={isSubmitting}
+        disabled={isSubmitting || !selectedKey}
       >
-        <Text style={styles.mainActionButtonText}>貸出登録</Text>
+        <Text style={styles.mainActionButtonText}>
+          {isSubmitting ? '登録中...' : selectedKey ? `「${selectedKey.label}」を貸出登録` : '鍵を選択してください'}
+        </Text>
       </TouchableOpacity>
 
+      {/* ── 貸出中一覧 ── */}
       <Text style={[styles.subTitle, { color: theme.text }]}>貸出中</Text>
       {isLoadingLoans ? (
         <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
@@ -526,6 +686,7 @@ const HQKeyManagementPanel = ({ theme, user }) => {
         </View>
       )}
 
+      {/* ── 返却済（施錠確認結果）── */}
       <Text style={[styles.subTitle, { color: theme.text }]}>返却済（施錠確認結果）</Text>
       {returnedKeyItems.length === 0 ? (
         <Text style={[styles.helpText, { color: theme.textSecondary }]}>返却済データはまだありません</Text>
@@ -553,6 +714,7 @@ const HQKeyManagementPanel = ({ theme, user }) => {
         </View>
       )}
 
+      {/* ── 鍵予約（承認待ち）── */}
       <Text style={[styles.subTitle, { color: theme.text }]}>鍵予約（承認待ち）</Text>
       {isLoadingReservations ? (
         <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
@@ -605,6 +767,7 @@ const HQKeyManagementPanel = ({ theme, user }) => {
         </View>
       )}
 
+      {/* ── 鍵予約（対応済み）── */}
       <Text style={[styles.subTitle, { color: theme.text }]}>鍵予約（対応済み）</Text>
       {recentResolvedReservations.length === 0 ? (
         <Text style={[styles.helpText, { color: theme.textSecondary }]}>対応済みデータはまだありません</Text>
@@ -629,7 +792,9 @@ const HQKeyManagementPanel = ({ theme, user }) => {
               </Text>
               <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
                 対応日時:{' '}
-                {reservation.approved_at ? new Date(reservation.approved_at).toLocaleString('ja-JP') : '-'}
+                {reservation.approved_at
+                  ? new Date(reservation.approved_at).toLocaleString('ja-JP')
+                  : '-'}
               </Text>
             </View>
           ))}
@@ -682,13 +847,54 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  pickerContainer: {
-    borderWidth: 1,
-    borderRadius: 10,
-    overflow: 'hidden',
+  /* 棟選択横スクロール */
+  buildingScroll: {
+    marginBottom: 2,
   },
-  picker: {
-    height: 52,
+  buildingScrollContent: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingRight: 16,
+  },
+  buildingPill: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  buildingPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  /* 鍵グリッド */
+  keyGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  keyCard: {
+    borderWidth: 1.5,
+    borderRadius: 10,
+    padding: 8,
+    width: 100,
+    minHeight: 64,
+  },
+  keyCardCode: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  keyCardName: {
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 16,
+  },
+  selectedKeyLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 4,
+    marginBottom: 4,
   },
   input: {
     borderWidth: 1,

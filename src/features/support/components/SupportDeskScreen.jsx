@@ -157,6 +157,18 @@ const PATROL_ROLE_NAMES = ['警備部', '企画管理部'];
 const ELAPSED_WARNING_MINUTES = 15;
 const ELAPSED_DANGER_MINUTES = 30;
 
+/** HQロール向けタブ定義 */
+const HQ_TABS = [
+  { key: 'keys', label: '🔑 鍵管理' },
+  { key: 'tickets', label: '📋 連絡案件' },
+  { key: 'patrol', label: '🚶 巡回・評価' },
+  { key: 'radio', label: '📡 無線' },
+  { key: 'master', label: '⚙️ 鍵マスタ' },
+];
+
+/** HQタブのデフォルト */
+const HQ_TAB_DEFAULT = 'keys';
+
 /** 経過時間アラート色 */
 const ELAPSED_COLORS = {
   normal: null,
@@ -282,6 +294,9 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   const [isLoadingPendingEvaluations, setIsLoadingPendingEvaluations] = useState(false);
   const [isReviewingEvaluation, setIsReviewingEvaluation] = useState(false);
   const [isRenotifying, setIsRenotifying] = useState(false);
+
+  /** HQロール向けアクティブタブ（初期値: 鍵管理） */
+  const [activeTab, setActiveTab] = useState(HQ_TAB_DEFAULT);
 
   /**
    * メッセージ表示
@@ -955,9 +970,47 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   }, [selectedPatrolTask?.assigned_to, selectedPatrolTask?.id]);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}> 
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <ThemedHeader title={screenName} navigation={navigation} />
       <OfflineBanner />
+
+      {/* HQロール向けタブバー: ScrollView の外側上部に固定 */}
+      {isHQRole ? (
+        <View style={[styles.iosTabBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.iosTabBarContent}
+          >
+            {HQ_TABS.map((tab) => {
+              /** タブがアクティブかどうか */
+              const isTabActive = activeTab === tab.key;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[
+                    styles.iosTabItem,
+                    {
+                      backgroundColor: isTabActive ? theme.primary : 'transparent',
+                    },
+                  ]}
+                  onPress={() => setActiveTab(tab.key)}
+                >
+                  <Text
+                    style={[
+                      styles.iosTabItemText,
+                      { color: isTabActive ? '#FFFFFF' : theme.textSecondary },
+                    ]}
+                  >
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
+
       <ScrollView contentContainerStyle={styles.content}>
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}> 
           <Text style={[styles.description, { color: theme.textSecondary }]}>{screenDescription}</Text>
@@ -968,8 +1021,19 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
           ) : null}
         </View>
 
-        {isHQRole ? (
-          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}> 
+        {/* ─── 鍵管理タブ ─── */}
+        {isHQRole && activeTab === 'keys' ? (
+          <HQKeyManagementPanel theme={theme} user={user} />
+        ) : null}
+
+        {/* ─── 鍵マスタタブ ─── */}
+        {isHQRole && activeTab === 'master' ? (
+          <KeyMasterEditPanel theme={theme} />
+        ) : null}
+
+        {/* ─── 無線タブ: ダッシュボード + 無線ログ ─── */}
+        {isHQRole && activeTab === 'radio' ? (
+          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>本部ダッシュボード</Text>
               <TouchableOpacity
@@ -984,19 +1048,19 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
               </TouchableOpacity>
             </View>
             <View style={styles.dashboardGrid}>
-              <View style={[styles.dashboardCard, { borderColor: theme.border, backgroundColor: theme.background }]}> 
+              <View style={[styles.dashboardCard, { borderColor: theme.border, backgroundColor: theme.background }]}>
                 <Text style={[styles.dashboardLabel, { color: theme.textSecondary }]}>新着連絡</Text>
                 <Text style={[styles.dashboardValue, { color: theme.text }]}>{dashboardSummary.newTickets}</Text>
               </View>
-              <View style={[styles.dashboardCard, { borderColor: theme.border, backgroundColor: theme.background }]}> 
+              <View style={[styles.dashboardCard, { borderColor: theme.border, backgroundColor: theme.background }]}>
                 <Text style={[styles.dashboardLabel, { color: theme.textSecondary }]}>遅延案件(60分+)</Text>
                 <Text style={[styles.dashboardValue, { color: '#D1242F' }]}>{dashboardSummary.delayedTickets}</Text>
               </View>
-              <View style={[styles.dashboardCard, { borderColor: theme.border, backgroundColor: theme.background }]}> 
+              <View style={[styles.dashboardCard, { borderColor: theme.border, backgroundColor: theme.background }]}>
                 <Text style={[styles.dashboardLabel, { color: theme.textSecondary }]}>巡回対応中</Text>
                 <Text style={[styles.dashboardValue, { color: theme.text }]}>{dashboardSummary.activePatrolTasks}</Text>
               </View>
-              <View style={[styles.dashboardCard, { borderColor: theme.border, backgroundColor: theme.background }]}> 
+              <View style={[styles.dashboardCard, { borderColor: theme.border, backgroundColor: theme.background }]}>
                 <Text style={[styles.dashboardLabel, { color: theme.textSecondary }]}>無線ログ(1h)</Text>
                 <Text style={[styles.dashboardValue, { color: theme.text }]}>{dashboardSummary.recentRadioLogs}</Text>
               </View>
@@ -1004,12 +1068,9 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
           </View>
         ) : null}
 
-        {isHQRole ? <HQKeyManagementPanel theme={theme} user={user} /> : null}
-
-        {isHQRole ? <KeyMasterEditPanel theme={theme} /> : null}
-
-        {isHQRole ? (
-          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}> 
+        {/* ─── 巡回・評価タブ ─── */}
+        {isHQRole && activeTab === 'patrol' ? (
+          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>巡回タスク割当</Text>
               <TouchableOpacity
@@ -1129,8 +1190,8 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
           </View>
         ) : null}
 
-        {isHQRole ? (
-          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}> 
+        {isHQRole && activeTab === 'patrol' ? (
+          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>評価承認</Text>
               <TouchableOpacity
@@ -1194,8 +1255,8 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
           </View>
         ) : null}
 
-        {isHQRole ? (
-          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}> 
+        {isHQRole && activeTab === 'radio' ? (
+          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>無線ログ</Text>
               <TouchableOpacity
@@ -1277,7 +1338,10 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
           </View>
         ) : null}
 
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}> 
+        {/* 連絡案件: HQロールはticketsタブのみ、非HQロールは常時表示 */}
+        {(!isHQRole || activeTab === 'tickets') ? (
+          <>
+        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>対象連絡案件</Text>
             <TouchableOpacity
@@ -1635,6 +1699,8 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
             </View>
           </View>
         ) : null}
+          </>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -1643,6 +1709,29 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  /** HQロール向けタブバー: ThemedHeader 直下に固定 */
+  iosTabBar: {
+    borderBottomWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  /** タブバーの横スクロールコンテンツ */
+  iosTabBarContent: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 4,
+  },
+  /** 個々のタブアイテム */
+  iosTabItem: {
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  /** タブアイテムのテキスト */
+  iosTabItemText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   content: {
     padding: 16,

@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import {
   insertKey,
+  listBuildings,
   listKeys,
   setKeyActive,
   updateKey,
@@ -40,6 +41,58 @@ const showMessage = (title, message) => {
 };
 
 /**
+ * 建物名が未入力のときに表示するプリセット一覧
+ * DBから動的取得した棟名で補完するが、空の場合のフォールバックとして使用
+ */
+const BUILDING_PRESETS_FALLBACK = ['A館', 'B館', 'C館', 'D館', 'E館', 'F館'];
+
+/**
+ * 棟選択ボタン群コンポーネント
+ * 既存の棟名をボタンで表示し、タップで選択できる
+ * @param {Object} props - プロパティ
+ * @param {string[]} props.buildings - 棟名一覧
+ * @param {string} props.selectedBuilding - 現在選択中の棟名
+ * @param {Function} props.onSelect - 選択コールバック（棟名を引数に取る）
+ * @param {Object} props.theme - テーマオブジェクト
+ * @returns {JSX.Element} 棟選択ボタン群
+ */
+const BuildingSelector = ({ buildings, selectedBuilding, onSelect, theme }) => {
+  /** 表示する棟名一覧（DBが空の場合はフォールバックを使用） */
+  const displayBuildings = buildings.length > 0 ? buildings : BUILDING_PRESETS_FALLBACK;
+
+  return (
+    <View style={styles.buildingSelectorRow}>
+      {displayBuildings.map((name) => {
+        /** 選択中かどうか */
+        const isSelected = selectedBuilding === name;
+        return (
+          <TouchableOpacity
+            key={name}
+            style={[
+              styles.buildingPill,
+              {
+                backgroundColor: isSelected ? theme.primary : theme.background,
+                borderColor: isSelected ? theme.primary : theme.border,
+              },
+            ]}
+            onPress={() => onSelect(isSelected ? '' : name)}
+          >
+            <Text
+              style={[
+                styles.buildingPillText,
+                { color: isSelected ? '#FFFFFF' : theme.textSecondary },
+              ]}
+            >
+              {name}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+};
+
+/**
  * 鍵マスタ管理パネルコンポーネント
  * @param {Object} props - プロパティ
  * @param {Object} props.theme - テーマオブジェクト
@@ -52,27 +105,53 @@ const KeyMasterEditPanel = ({ theme }) => {
   const [isLoading, setIsLoading] = useState(false);
   /** 登録/更新処理中フラグ */
   const [isSubmitting, setIsSubmitting] = useState(false);
+  /** 既存棟名一覧（ボタン選択に使用） */
+  const [buildings, setBuildings] = useState([]);
 
   /** 追加フォームの鍵コード */
   const [newKeyCode, setNewKeyCode] = useState('');
-  /** 追加フォームの表示名 */
-  const [newDisplayName, setNewDisplayName] = useState('');
-  /** 追加フォームの棟名 */
+  /** 追加フォームの棟名（ボタン選択 or カスタム入力） */
   const [newBuilding, setNewBuilding] = useState('');
-  /** 追加フォームの場所テキスト */
-  const [newLocationText, setNewLocationText] = useState('');
+  /** 追加フォームの教室名 */
+  const [newClassroomName, setNewClassroomName] = useState('');
+  /** 追加フォームの表示名（棟名+教室名から自動生成、上書き可） */
+  const [newDisplayName, setNewDisplayName] = useState('');
+  /** 追加フォームの表示名が手動で上書きされたか */
+  const [isDisplayNameManuallyEdited, setIsDisplayNameManuallyEdited] = useState(false);
 
   /** 編集中の鍵（null のとき非表示） */
   const [editingKey, setEditingKey] = useState(null);
-  /** 編集フォームの表示名 */
-  const [editDisplayName, setEditDisplayName] = useState('');
   /** 編集フォームの棟名 */
   const [editBuilding, setEditBuilding] = useState('');
-  /** 編集フォームの場所テキスト */
-  const [editLocationText, setEditLocationText] = useState('');
+  /** 編集フォームの教室名 */
+  const [editClassroomName, setEditClassroomName] = useState('');
+  /** 編集フォームの表示名 */
+  const [editDisplayName, setEditDisplayName] = useState('');
+  /** 編集フォームの表示名が手動で上書きされたか */
+  const [isEditDisplayNameManuallyEdited, setIsEditDisplayNameManuallyEdited] = useState(false);
 
   /** 一覧の表示フィルタ（all / active / inactive） */
   const [filter, setFilter] = useState('all');
+
+  /**
+   * building + classroom_name から自動生成した表示名を返す
+   * @param {string} building - 棟名
+   * @param {string} classroomName - 教室名
+   * @returns {string} 自動生成された表示名
+   */
+  const buildAutoDisplayName = (building, classroomName) => {
+    const parts = [normalizeText(building), normalizeText(classroomName)].filter(Boolean);
+    return parts.join(' ');
+  };
+
+  /**
+   * 棟名一覧を読み込む
+   * @returns {Promise<void>} 読み込み処理
+   */
+  const loadBuildings = async () => {
+    const { data } = await listBuildings();
+    setBuildings(data || []);
+  };
 
   /**
    * 鍵一覧を再読み込みする
@@ -92,8 +171,57 @@ const KeyMasterEditPanel = ({ theme }) => {
   };
 
   useEffect(() => {
+    loadBuildings();
     loadKeys();
   }, []);
+
+  /**
+   * 追加フォームの棟名が変わったとき、未手動編集なら表示名を自動更新する
+   * @param {string} building - 新しい棟名
+   * @returns {void}
+   */
+  const handleNewBuildingChange = (building) => {
+    setNewBuilding(building);
+    if (!isDisplayNameManuallyEdited) {
+      setNewDisplayName(buildAutoDisplayName(building, newClassroomName));
+    }
+  };
+
+  /**
+   * 追加フォームの教室名が変わったとき、未手動編集なら表示名を自動更新する
+   * @param {string} classroomName - 新しい教室名
+   * @returns {void}
+   */
+  const handleNewClassroomNameChange = (classroomName) => {
+    setNewClassroomName(classroomName);
+    if (!isDisplayNameManuallyEdited) {
+      setNewDisplayName(buildAutoDisplayName(newBuilding, classroomName));
+    }
+  };
+
+  /**
+   * 編集フォームの棟名が変わったとき、未手動編集なら表示名を自動更新する
+   * @param {string} building - 新しい棟名
+   * @returns {void}
+   */
+  const handleEditBuildingChange = (building) => {
+    setEditBuilding(building);
+    if (!isEditDisplayNameManuallyEdited) {
+      setEditDisplayName(buildAutoDisplayName(building, editClassroomName));
+    }
+  };
+
+  /**
+   * 編集フォームの教室名が変わったとき、未手動編集なら表示名を自動更新する
+   * @param {string} classroomName - 新しい教室名
+   * @returns {void}
+   */
+  const handleEditClassroomNameChange = (classroomName) => {
+    setEditClassroomName(classroomName);
+    if (!isEditDisplayNameManuallyEdited) {
+      setEditDisplayName(buildAutoDisplayName(editBuilding, classroomName));
+    }
+  };
 
   /**
    * 新規鍵を追加する
@@ -103,8 +231,12 @@ const KeyMasterEditPanel = ({ theme }) => {
     const keyCode = normalizeText(newKeyCode);
     const displayName = normalizeText(newDisplayName);
 
-    if (!keyCode || !displayName) {
-      showMessage('入力不足', '鍵コードと表示名は必須です');
+    if (!keyCode) {
+      showMessage('入力不足', '鍵コードは必須です');
+      return;
+    }
+    if (!displayName) {
+      showMessage('入力不足', '表示名（棟名+教室名）は必須です');
       return;
     }
 
@@ -113,7 +245,8 @@ const KeyMasterEditPanel = ({ theme }) => {
       keyCode,
       displayName,
       building: normalizeText(newBuilding),
-      locationText: normalizeText(newLocationText),
+      classroomName: normalizeText(newClassroomName),
+      locationText: displayName,
     });
     setIsSubmitting(false);
 
@@ -125,11 +258,13 @@ const KeyMasterEditPanel = ({ theme }) => {
       return;
     }
 
+    /** フォームをリセット */
     setNewKeyCode('');
-    setNewDisplayName('');
     setNewBuilding('');
-    setNewLocationText('');
-    await loadKeys();
+    setNewClassroomName('');
+    setNewDisplayName('');
+    setIsDisplayNameManuallyEdited(false);
+    await Promise.all([loadKeys(), loadBuildings()]);
     showMessage('追加完了', `「${displayName}」を追加しました`);
   };
 
@@ -140,10 +275,15 @@ const KeyMasterEditPanel = ({ theme }) => {
    */
   const handleOpenEdit = (key) => {
     const metadata = key.metadata && typeof key.metadata === 'object' ? key.metadata : {};
+    /** building カラム優先、なければ metadata.building を使用 */
+    const building = normalizeText(key.building || metadata.building);
+    const classroomName = normalizeText(key.classroom_name);
+
     setEditingKey(key);
+    setEditBuilding(building);
+    setEditClassroomName(classroomName);
     setEditDisplayName(normalizeText(key.display_name));
-    setEditBuilding(normalizeText(metadata.building));
-    setEditLocationText(normalizeText(key.location_text));
+    setIsEditDisplayNameManuallyEdited(true);
   };
 
   /**
@@ -164,7 +304,8 @@ const KeyMasterEditPanel = ({ theme }) => {
     const { error } = await updateKey(editingKey.id, {
       displayName,
       building: normalizeText(editBuilding),
-      locationText: normalizeText(editLocationText),
+      classroomName: normalizeText(editClassroomName),
+      locationText: displayName,
     });
     setIsSubmitting(false);
 
@@ -174,7 +315,7 @@ const KeyMasterEditPanel = ({ theme }) => {
     }
 
     setEditingKey(null);
-    await loadKeys();
+    await Promise.all([loadKeys(), loadBuildings()]);
     showMessage('更新完了', `「${displayName}」を更新しました`);
   };
 
@@ -236,7 +377,7 @@ const KeyMasterEditPanel = ({ theme }) => {
         <Text style={[styles.sectionTitle, { color: theme.text }]}>鍵マスタ管理</Text>
         <TouchableOpacity
           style={[styles.refreshButton, { borderColor: theme.border }]}
-          onPress={loadKeys}
+          onPress={() => { loadKeys(); loadBuildings(); }}
           disabled={isLoading || isSubmitting}
         >
           <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>
@@ -264,23 +405,29 @@ const KeyMasterEditPanel = ({ theme }) => {
         ]}
       />
 
-      <Text style={[styles.label, { color: theme.text }]}>表示名（必須）</Text>
-      <TextInput
-        value={newDisplayName}
-        onChangeText={setNewDisplayName}
-        placeholder="例: A館 1階 101教室"
-        placeholderTextColor={theme.textSecondary}
-        style={[
-          styles.input,
-          { backgroundColor: theme.background, borderColor: theme.border, color: theme.text },
-        ]}
+      <Text style={[styles.label, { color: theme.text }]}>棟名（タップで選択 or 直接入力）</Text>
+      <BuildingSelector
+        buildings={buildings}
+        selectedBuilding={newBuilding}
+        onSelect={handleNewBuildingChange}
+        theme={theme}
       />
-
-      <Text style={[styles.label, { color: theme.text }]}>棟名（任意）</Text>
       <TextInput
         value={newBuilding}
-        onChangeText={setNewBuilding}
-        placeholder="例: A館"
+        onChangeText={handleNewBuildingChange}
+        placeholder="例: A館（直接入力も可）"
+        placeholderTextColor={theme.textSecondary}
+        style={[
+          styles.input,
+          { backgroundColor: theme.background, borderColor: theme.border, color: theme.text, marginTop: 6 },
+        ]}
+      />
+
+      <Text style={[styles.label, { color: theme.text }]}>教室名</Text>
+      <TextInput
+        value={newClassroomName}
+        onChangeText={handleNewClassroomNameChange}
+        placeholder="例: 101教室"
         placeholderTextColor={theme.textSecondary}
         style={[
           styles.input,
@@ -288,11 +435,16 @@ const KeyMasterEditPanel = ({ theme }) => {
         ]}
       />
 
-      <Text style={[styles.label, { color: theme.text }]}>場所テキスト（任意）</Text>
+      <Text style={[styles.label, { color: theme.text }]}>
+        表示名（必須・棟名+教室名から自動生成、上書き可）
+      </Text>
       <TextInput
-        value={newLocationText}
-        onChangeText={setNewLocationText}
-        placeholder="例: A館 1階 101教室"
+        value={newDisplayName}
+        onChangeText={(text) => {
+          setNewDisplayName(text);
+          setIsDisplayNameManuallyEdited(true);
+        }}
+        placeholder="例: A館 101教室"
         placeholderTextColor={theme.textSecondary}
         style={[
           styles.input,
@@ -359,8 +511,10 @@ const KeyMasterEditPanel = ({ theme }) => {
         {filteredKeys.map((key) => {
           /** メタデータ */
           const metadata = key.metadata && typeof key.metadata === 'object' ? key.metadata : {};
-          /** 棟名 */
-          const building = normalizeText(metadata.building);
+          /** 棟名: building カラム優先、フォールバックで metadata.building を使用 */
+          const building = normalizeText(key.building || metadata.building);
+          /** 教室名 */
+          const classroomName = normalizeText(key.classroom_name);
 
           return (
             <View
@@ -382,15 +536,8 @@ const KeyMasterEditPanel = ({ theme }) => {
                   <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
                     コード: {key.key_code}
                     {building ? `　棟: ${building}` : ''}
+                    {classroomName ? `　教室: ${classroomName}` : ''}
                   </Text>
-                  {key.location_text ? (
-                    <Text
-                      style={[styles.listMeta, { color: theme.textSecondary }]}
-                      numberOfLines={1}
-                    >
-                      場所: {key.location_text}
-                    </Text>
-                  ) : null}
                   {!key.is_active ? (
                     <Text style={[styles.inactiveBadge, { color: theme.textSecondary }]}>
                       （無効）
@@ -461,35 +608,44 @@ const KeyMasterEditPanel = ({ theme }) => {
                 </Text>
               </View>
 
-              <Text style={[styles.label, { color: theme.text }]}>表示名（必須）</Text>
-              <TextInput
-                value={editDisplayName}
-                onChangeText={setEditDisplayName}
-                placeholder="例: A館 1階 101教室"
-                placeholderTextColor={theme.textSecondary}
-                style={[
-                  styles.input,
-                  { backgroundColor: theme.background, borderColor: theme.border, color: theme.text },
-                ]}
+              <Text style={[styles.label, { color: theme.text }]}>棟名（タップで選択 or 直接入力）</Text>
+              <BuildingSelector
+                buildings={buildings}
+                selectedBuilding={editBuilding}
+                onSelect={handleEditBuildingChange}
+                theme={theme}
               />
-
-              <Text style={[styles.label, { color: theme.text }]}>棟名（任意）</Text>
               <TextInput
                 value={editBuilding}
-                onChangeText={setEditBuilding}
+                onChangeText={handleEditBuildingChange}
                 placeholder="例: A館"
                 placeholderTextColor={theme.textSecondary}
                 style={[
                   styles.input,
+                  { backgroundColor: theme.background, borderColor: theme.border, color: theme.text, marginTop: 6 },
+                ]}
+              />
+
+              <Text style={[styles.label, { color: theme.text }]}>教室名</Text>
+              <TextInput
+                value={editClassroomName}
+                onChangeText={handleEditClassroomNameChange}
+                placeholder="例: 101教室"
+                placeholderTextColor={theme.textSecondary}
+                style={[
+                  styles.input,
                   { backgroundColor: theme.background, borderColor: theme.border, color: theme.text },
                 ]}
               />
 
-              <Text style={[styles.label, { color: theme.text }]}>場所テキスト（任意）</Text>
+              <Text style={[styles.label, { color: theme.text }]}>表示名（必須）</Text>
               <TextInput
-                value={editLocationText}
-                onChangeText={setEditLocationText}
-                placeholder="例: A館 1階 101教室"
+                value={editDisplayName}
+                onChangeText={(text) => {
+                  setEditDisplayName(text);
+                  setIsEditDisplayNameManuallyEdited(true);
+                }}
+                placeholder="例: A館 101教室"
                 placeholderTextColor={theme.textSecondary}
                 style={[
                   styles.input,
@@ -562,6 +718,21 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     fontSize: 13,
     fontWeight: '700',
+  },
+  buildingSelectorRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  buildingPill: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  buildingPillText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   input: {
     borderWidth: 1,

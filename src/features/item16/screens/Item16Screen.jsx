@@ -850,8 +850,28 @@ const Item16Screen = ({ navigation }) => {
     if (capture) {
       fileInput.capture = capture;
     }
+
+    // DOM 上では非表示の位置に配置（PWA・モバイルブラウザのセキュリティポリシー対策）
+    // DOM に append してから click しないとブロックされるブラウザがある
+    fileInput.style.position = 'fixed';
+    fileInput.style.top = '-9999px';
+    fileInput.style.left = '-9999px';
+    fileInput.style.opacity = '0';
+
+    /**
+     * fileInput を DOM から安全に削除する
+     * @returns {void}
+     */
+    const cleanup = () => {
+      if (document.body.contains(fileInput)) {
+        document.body.removeChild(fileInput);
+      }
+    };
+
     fileInput.onchange = async () => {
       const selectedFile = fileInput.files?.[0] || null;
+      // ファイル選択完了後にすぐDOMから削除
+      cleanup();
       if (!selectedFile) {
         return;
       }
@@ -870,6 +890,9 @@ const Item16Screen = ({ navigation }) => {
       }
       onSelected(processedFile);
     };
+
+    // DOM に追加してからクリックイベントを発火する（セキュリティポリシー対応）
+    document.body.appendChild(fileInput);
     fileInput.click();
   };
 

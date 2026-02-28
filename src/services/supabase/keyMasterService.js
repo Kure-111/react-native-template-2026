@@ -6,10 +6,18 @@
 import { getSupabaseClient } from './client.js';
 
 const KEYS_TABLE = 'keys';
-const KEY_COLUMNS = 'id,key_code,display_name,location_id,location_text,is_active,metadata,created_at,updated_at';
+
+/** 取得するカラム一覧（building/classroom_name は専用カラムから取得） */
+const KEY_COLUMNS =
+  'id,key_code,display_name,location_id,location_text,building,classroom_name,is_active,metadata,created_at,updated_at';
 
 const normalizeText = (value) => (value || '').trim();
 
+/**
+ * カタログアイテムをDBレコード形式に変換
+ * @param {Object} item - カタログアイテム
+ * @returns {Object} DBレコード
+ */
 const toCatalogRecord = (item) => {
   const keyCode = normalizeText(item?.keyCode || item?.id);
   const displayName = normalizeText(item?.displayName || item?.name || keyCode);
@@ -21,6 +29,8 @@ const toCatalogRecord = (item) => {
     key_code: keyCode,
     display_name: displayName,
     location_text: locationText,
+    building: building || null,
+    classroom_name: null,
     metadata: {
       building,
       name,
@@ -42,6 +52,8 @@ export const listKeys = async ({ activeOnly = true, limit = 400 } = {}) => {
     let query = getSupabaseClient()
       .from(KEYS_TABLE)
       .select(KEY_COLUMNS)
+      /** building → display_name の順でソートし、棟ごとに整列する */
+      .order('building', { ascending: true, nullsFirst: false })
       .order('display_name', { ascending: true })
       .limit(limit);
 
@@ -63,12 +75,60 @@ export const listKeys = async ({ activeOnly = true, limit = 400 } = {}) => {
 };
 
 /**
+ * 登録されている棟名の一覧を取得する（重複なし）
+ * DBの building カラムと metadata.building の両方から抽出する
+ * @returns {Promise<{data: string[], error: Error|null}>} 棟名一覧
+ */
+export const listBuildings = async () => {
+  try {
+    const { data, error } = await getSupabaseClient()
+      .from(KEYS_TABLE)
+      .select('building,metadata')
+      .eq('is_active', true)
+      .limit(500);
+
+    if (error) {
+      console.error('棟名一覧取得エラー:', error);
+      return { data: [], error };
+    }
+
+    /** @type {Set<string>} 重複排除用セット */
+    const buildingSet = new Set();
+
+    (data || []).forEach((row) => {
+      /** building カラムを優先して使用 */
+      const col = normalizeText(row.building);
+      if (col) {
+        buildingSet.add(col);
+        return;
+      }
+      /** フォールバックとして metadata.building を使用 */
+      const meta =
+        row.metadata && typeof row.metadata === 'object'
+          ? normalizeText(row.metadata.building)
+          : '';
+      if (meta) {
+        buildingSet.add(meta);
+      }
+    });
+
+    /** 棟名をロケール順でソート */
+    const sorted = Array.from(buildingSet).sort((a, b) => a.localeCompare(b, 'ja'));
+    return { data: sorted, error: null };
+  } catch (error) {
+    console.error('棟名一覧取得処理でエラー:', error);
+    return { data: [], error };
+  }
+};
+
+/**
  * 鍵を新規追加
  * @param {Object} input - 追加データ
  * @param {string} input.keyCode - 鍵コード（一意の識別子）
  * @param {string} input.displayName - 表示名
- * @param {string} [input.locationText] - 場所テキスト
  * @param {string} [input.building] - 棟名
+ * @param {string} [input.classroomName] - 教室名
+ * @param {string} [input.locationText] - 場所テキスト
  * @returns {Promise<{data: Object|null, error: Error|null}>} 追加結果
  */
 export const insertKey = async (input) => {
@@ -83,6 +143,7 @@ export const insertKey = async (input) => {
     }
 
     const building = normalizeText(input.building);
+    const classroomName = normalizeText(input.classroomName);
     const locationText = normalizeText(input.locationText) || displayName;
 
     const { data, error } = await getSupabaseClient()
@@ -91,8 +152,10 @@ export const insertKey = async (input) => {
         key_code: keyCode,
         display_name: displayName,
         location_text: locationText,
+        building: building || null,
+        classroom_name: classroomName || null,
         is_active: true,
-        metadata: { building, name: displayName, source: 'manual' },
+        metadata: { building, classroomName, name: displayName, source: 'manual' },
       })
       .select(KEY_COLUMNS)
       .single();
@@ -113,8 +176,9 @@ export const insertKey = async (input) => {
  * @param {string} id - 鍵ID
  * @param {Object} input - 更新データ
  * @param {string} input.displayName - 表示名
- * @param {string} [input.locationText] - 場所テキスト
  * @param {string} [input.building] - 棟名
+ * @param {string} [input.classroomName] - 教室名
+ * @param {string} [input.locationText] - 場所テキスト
  * @returns {Promise<{data: Object|null, error: Error|null}>} 更新結果
  */
 export const updateKey = async (id, input) => {
@@ -128,6 +192,7 @@ export const updateKey = async (id, input) => {
     }
 
     const building = normalizeText(input.building);
+    const classroomName = normalizeText(input.classroomName);
     const locationText = normalizeText(input.locationText) || displayName;
 
     const { data, error } = await getSupabaseClient()
@@ -135,7 +200,9 @@ export const updateKey = async (id, input) => {
       .update({
         display_name: displayName,
         location_text: locationText,
-        metadata: { building, name: displayName, source: 'manual' },
+        building: building || null,
+        classroom_name: classroomName || null,
+        metadata: { building, classroomName, name: displayName, source: 'manual' },
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
