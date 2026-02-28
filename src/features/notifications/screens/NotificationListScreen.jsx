@@ -19,6 +19,7 @@ import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 import { useAuth } from '../../../shared/contexts/AuthContext';
 import {
   getNotificationsForUser,
+  markNotificationRead,
   markAllNotificationsRead,
 } from '../../../shared/services/notificationService';
 import {
@@ -83,25 +84,46 @@ const NotificationListScreen = ({ navigation }) => {
   }, [loadNotifications]);
 
   /**
-   * 画面を離れた時（別タブへ移動等）に全未読を既読にしてNEWバッジをクリア
+   * 画面を離れた時（別タブへ移動等）に残った未読を全て既読にしてNEWバッジをクリア
+   * モーダルを開かずに離れたケースの補完として機能する
    */
   useEffect(() => {
     const unsubscribe = navigation.addListener('blur', () => {
-      if (user?.id && newItemIds.size > 0) {
-        markAllNotificationsRead(user.id);
-        setNewItemIds(new Set());
+      if (!user?.id) {
+        return;
       }
+      // モーダルを開かなかった未読通知を一括で既読化（補完処理）
+      markAllNotificationsRead(user.id);
+      setNewItemIds(new Set());
     });
     return unsubscribe;
-  }, [navigation, user?.id, newItemIds]);
+  }, [navigation, user?.id]);
 
   /**
-   * 通知をタップした時の処理（詳細モーダルを開く）
-   * 既読処理はベルマーク押下時に一括で行うため、ここでは行わない
+   * 通知をタップした時の処理（詳細モーダルを開き、未読なら即座に既読化する）
    * @param {Object} item - 通知アイテム
    */
   const handlePressItem = (item) => {
     setSelectedItem(item);
+
+    // 未読の場合はモーダルを開いた時点で即座に既読化する
+    if (!item.readAt) {
+      const now = new Date().toISOString();
+      // DBを更新
+      markNotificationRead(item.recipientId);
+      // items の readAt を楽観的に更新
+      setItems((prev) =>
+        prev.map((row) =>
+          row.recipientId === item.recipientId ? { ...row, readAt: now } : row
+        )
+      );
+      // NEWバッジを該当通知だけ消す
+      setNewItemIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.recipientId);
+        return next;
+      });
+    }
   };
 
   /**
