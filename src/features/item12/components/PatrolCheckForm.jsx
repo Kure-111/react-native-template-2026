@@ -15,13 +15,17 @@ import {
 import SkeletonLoader from '../../../shared/components/SkeletonLoader';
 import EmptyState from '../../../shared/components/EmptyState';
 
-/** 巡回チェック項目の選択肢 */
+/**
+ * 巡回チェック項目の選択肢
+ * チェック = 問題なし、未チェック = 問題あり（詳細はメモへ）
+ * DB の patrol_checks.check_items (jsonb) に文字列配列として保存する
+ */
 const PATROL_CHECK_ITEM_OPTIONS = [
-  '導線安全',
-  '混雑状況確認',
-  '火気・危険物なし',
-  '設備異常なし',
-  '清掃・衛生確認',
+  '企画書通り進行中',
+  '体調問題なし',
+  '困りごとなし',
+  '迷惑来場者なし',
+  '無人・未施錠教室なし',
 ];
 
 /**
@@ -73,7 +77,7 @@ const PatrolCheckForm = ({
         </TouchableOpacity>
       </View>
       <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-        写真添付は使わず、テキストのみで巡回ログを記録します。
+        企画を訪問した際の状況をチェックします。問題があった項目はチェックせずメモに詳細を記録してください。
       </Text>
 
       <Text style={[styles.label, { color: theme.text }]}>巡回場所</Text>
@@ -119,7 +123,7 @@ const PatrolCheckForm = ({
         </View>
       ) : null}
 
-      <Text style={[styles.label, { color: theme.text }]}>チェック項目</Text>
+      <Text style={[styles.label, { color: theme.text }]}>チェック項目（問題なし＝タップして選択）</Text>
       <View style={styles.optionGroup}>
         {PATROL_CHECK_ITEM_OPTIONS.map((item) => {
           /** 選択中かどうか */
@@ -144,12 +148,12 @@ const PatrolCheckForm = ({
         })}
       </View>
 
-      <Text style={[styles.label, { color: theme.text }]}>メモ（任意）</Text>
+      <Text style={[styles.label, { color: theme.text }]}>メモ（問題あり項目の詳細・気づきなど）</Text>
       <TextInput
         value={patrolCheckMemo}
         onChangeText={onChangeCheckMemo}
         multiline
-        placeholder="巡回時の気づきや状況を記録"
+        placeholder="例：体調不良者1名あり・311教室が無人で未施錠など"
         placeholderTextColor={theme.textSecondary}
         style={[
           styles.memoInput,
@@ -177,25 +181,43 @@ const PatrolCheckForm = ({
         <EmptyState icon="🔍" title="まだ巡回チェックはありません" description="巡回チェックを記録すると履歴が表示されます" theme={theme} />
       ) : (
         <View style={styles.messageList}>
-          {recentPatrolChecks.map((check) => (
-            <View
-              key={check.id}
-              style={[
-                styles.messageItem,
-                { borderColor: theme.border, backgroundColor: theme.background },
-              ]}
-            >
-              <Text style={[styles.messageAuthor, { color: theme.textSecondary }]}>
-                {check.location_text}
-              </Text>
-              <Text style={[styles.messageBody, { color: theme.text }]}>
-                {check.memo || 'メモなし'}
-              </Text>
-              <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
-                {new Date(check.checked_at || check.created_at).toLocaleString('ja-JP')}
-              </Text>
-            </View>
-          ))}
+          {recentPatrolChecks.map((check) => {
+            /** チェック済み項目（配列） */
+            const checkedItems = Array.isArray(check.check_items) ? check.check_items : [];
+            /** 未チェックの項目（問題があったもの） */
+            const uncheckedItems = PATROL_CHECK_ITEM_OPTIONS.filter(
+              (item) => !checkedItems.includes(item)
+            );
+            return (
+              <View
+                key={check.id}
+                style={[
+                  styles.messageItem,
+                  { borderColor: theme.border, backgroundColor: theme.background },
+                ]}
+              >
+                <Text style={[styles.messageAuthor, { color: theme.textSecondary }]}>
+                  {check.location_text}
+                </Text>
+                {checkedItems.length > 0 && (
+                  <Text style={[styles.checkOkText, { color: theme.primary }]}>
+                    ✓ {checkedItems.join('  ✓ ')}
+                  </Text>
+                )}
+                {uncheckedItems.length > 0 && (
+                  <Text style={[styles.checkNgText, { color: theme.error ?? '#e53e3e' }]}>
+                    ✗ {uncheckedItems.join('  ✗ ')}
+                  </Text>
+                )}
+                {check.memo ? (
+                  <Text style={[styles.messageBody, { color: theme.text }]}>{check.memo}</Text>
+                ) : null}
+                <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
+                  {new Date(check.checked_at || check.created_at).toLocaleString('ja-JP')}
+                </Text>
+              </View>
+            );
+          })}
         </View>
       )}
     </View>
@@ -287,9 +309,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginBottom: 2,
   },
+  checkOkText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+    lineHeight: 18,
+  },
+  checkNgText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+    lineHeight: 18,
+  },
   messageBody: {
     fontSize: 14,
     lineHeight: 20,
+    marginTop: 4,
   },
   messageDate: {
     fontSize: 11,
