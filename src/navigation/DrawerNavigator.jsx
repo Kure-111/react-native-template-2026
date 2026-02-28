@@ -63,7 +63,7 @@ const createWrappedScreen = (ScreenComponent, screenName) => {
 const WrappedEventsStallsList01Screen = createWrappedScreen(EventsStallsList01Screen, '企画・屋台一覧');
 const WrappedItem2Screen = createWrappedScreen(Item2Screen, '項目2');
 const WrappedItem3Screen = createWrappedScreen(Item3Screen, '項目3');
-const WrappedItem4Screen = createWrappedScreen(Item4Screen, '項目4');
+const WrappedItem4Screen = createWrappedScreen(Item4Screen, '落とし物検索');
 const WrappedItem5Screen = createWrappedScreen(Item5Screen, '項目5');
 const WrappedItem6Screen = createWrappedScreen(Item6Screen, '項目6');
 const WrappedItem7Screen = createWrappedScreen(Item7Screen, '項目7');
@@ -108,7 +108,7 @@ const DrawerNavigator = () => {
       />
       <Drawer.Screen name="Item2" component={WrappedItem2Screen} />
       <Drawer.Screen name="Item3" component={WrappedItem3Screen} />
-      <Drawer.Screen name="Item4" component={WrappedItem4Screen} />
+      <Drawer.Screen name="Item4" component={WrappedItem4Screen} options={{ title: '落とし物検索' }} />
       <Drawer.Screen name="Item5" component={WrappedItem5Screen} />
       <Drawer.Screen name="Item6" component={WrappedItem6Screen} />
       <Drawer.Screen name="Item7" component={WrappedItem7Screen} />
@@ -119,7 +119,7 @@ const DrawerNavigator = () => {
         component={WrappedItem10Screen}
         options={{ title: '本部' }}
       />
-      <Drawer.Screen name="JimuShift" component={WrappedJimuShiftScreen} />
+      <Drawer.Screen name="JimuShift" component={WrappedJimuShiftScreen} options={{ title: '当日部員' }} />
       <Drawer.Screen name="SettingsTheme" component={WrappedSettingsThemeScreen} />
       <Drawer.Screen name="AdminTestNotification" component={WrappedAdminTestNotificationScreen} />
       <Drawer.Screen name="Notifications" component={WrappedNotificationListScreen} />
