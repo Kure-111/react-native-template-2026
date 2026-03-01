@@ -481,6 +481,47 @@ const KeyLoanTerminalModal = ({ visible, onClose, theme, user, onLoanCreated, on
       .slice(0, 30);
   }, [keyLoans]);
 
+  /**
+   * 選択中の団体が過去に借りたことのある鍵一覧（ユニーク・最新順）
+   * event_name または metadata.org_id で団体を照合する
+   * 3日連続使用など、同じ鍵を再借用するときに役立てる
+   */
+  const orgPreviousKeys = useMemo(() => {
+    if (!organization) {
+      return [];
+    }
+
+    /** 対象団体の貸出履歴を絞り込む（名前 or org_id で照合） */
+    const orgLoans = keyLoans.filter((loan) => {
+      const nameMatch = loan.event_name === organization.name;
+      const idMatch =
+        loan.metadata &&
+        typeof loan.metadata === 'object' &&
+        loan.metadata.org_id === organization.id;
+      return nameMatch || idMatch;
+    });
+
+    /** key_code でユニーク化しつつ鍵マスタ情報と結合（最新順に並んでいる前提） */
+    const seen = new Set();
+    const unique = [];
+    for (const loan of orgLoans) {
+      const code = loan.key_code;
+      if (!code || seen.has(code)) {
+        continue;
+      }
+      seen.add(code);
+      /** keyOptions から対応する鍵マスタ情報を取得 */
+      const keyInfo = keyOptions.find((k) => k.keyCode === code) || null;
+      unique.push({
+        keyCode: code,
+        keyLabel: loan.key_label || keyInfo?.label || code,
+        building: keyInfo?.building || '',
+        classroomName: keyInfo?.classroomName || '',
+      });
+    }
+    return unique;
+  }, [organization, keyLoans, keyOptions]);
+
   /** 「確認へ」ボタンの活性条件 */
   const canProceedToConfirm = borrowerUser !== null && organization !== null && selectedKeyCodes.length > 0;
 
@@ -520,6 +561,23 @@ const KeyLoanTerminalModal = ({ visible, onClose, theme, user, onLoanCreated, on
     setSelectedLoanIds((prev) =>
       prev.includes(loanId) ? prev.filter((id) => id !== loanId) : [...prev, loanId]
     );
+  };
+
+  /**
+   * 団体の過去借用鍵を一括選択する
+   * 現在貸出中の鍵は除外して選択に追加する
+   * @returns {void}
+   */
+  const handleSelectAllOrgPreviousKeys = () => {
+    /** 貸出中でない過去借用鍵のコードを取得 */
+    const availableCodes = orgPreviousKeys
+      .filter((item) => !loanedKeyCodeSet.has(item.keyCode))
+      .map((item) => item.keyCode);
+    setSelectedKeyCodes((prev) => {
+      /** 既存の選択と結合してユニーク配列を作る */
+      const merged = new Set([...prev, ...availableCodes]);
+      return Array.from(merged);
+    });
   };
 
   /**
@@ -770,6 +828,66 @@ const KeyLoanTerminalModal = ({ visible, onClose, theme, user, onLoanCreated, on
         placeholder="団体名で検索..."
         theme={theme}
       />
+
+      {/* ─── この団体の過去借用鍵（団体選択後に表示） ─── */}
+      {organization && orgPreviousKeys.length > 0 ? (
+        <View style={[styles.orgHistoryBox, { backgroundColor: `${theme.primary}10`, borderColor: `${theme.primary}40` }]}>
+          <View style={styles.orgHistoryHeader}>
+            <Text style={[styles.orgHistoryTitle, { color: theme.primary }]}>
+              ⭐ この団体の過去の借用鍵（{orgPreviousKeys.length}種類）
+            </Text>
+            <TouchableOpacity
+              style={[styles.orgHistorySelectAllButton, { backgroundColor: theme.primary }]}
+              onPress={handleSelectAllOrgPreviousKeys}
+            >
+              <Text style={styles.orgHistorySelectAllText}>前回と同じ鍵を全選択</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.orgHistoryHint, { color: theme.textSecondary }]}>
+            タップで個別に追加できます。貸出中の鍵はグレー表示。
+          </Text>
+          <View style={styles.orgHistoryGrid}>
+            {orgPreviousKeys.map((item) => {
+              /** 既に選択済みかどうか */
+              const isAlreadySelected = selectedKeyCodes.includes(item.keyCode);
+              /** 現在貸出中かどうか */
+              const isCurrentlyLoaned = loanedKeyCodeSet.has(item.keyCode);
+              return (
+                <TouchableOpacity
+                  key={item.keyCode}
+                  style={[
+                    styles.orgHistoryChip,
+                    isAlreadySelected && { backgroundColor: theme.primary, borderColor: theme.primary },
+                    !isAlreadySelected && isCurrentlyLoaned && { backgroundColor: theme.background, borderColor: theme.border, opacity: 0.5 },
+                    !isAlreadySelected && !isCurrentlyLoaned && { backgroundColor: theme.surface, borderColor: `${theme.primary}60` },
+                  ]}
+                  onPress={() => {
+                    if (!isCurrentlyLoaned) {
+                      toggleKeyCode(item.keyCode);
+                    }
+                  }}
+                  disabled={isCurrentlyLoaned}
+                >
+                  {item.building ? (
+                    <Text style={[styles.orgHistoryChipBuilding, { color: isAlreadySelected ? 'rgba(255,255,255,0.75)' : theme.textSecondary }]}>
+                      {item.building}
+                    </Text>
+                  ) : null}
+                  <Text
+                    style={[styles.orgHistoryChipName, { color: isAlreadySelected ? '#FFFFFF' : isCurrentlyLoaned ? theme.textSecondary : theme.text }]}
+                    numberOfLines={2}
+                  >
+                    {isAlreadySelected ? '✓ ' : ''}{item.classroomName || item.keyLabel}
+                  </Text>
+                  {isCurrentlyLoaned ? (
+                    <Text style={[styles.orgHistoryChipBadge, { color: '#D1242F' }]}>貸出中</Text>
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
 
       {/* ─── 選択済み鍵サマリー（棟をまたいで常時表示） ─── */}
       {selectedKeys.length > 0 ? (
@@ -1363,6 +1481,69 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     paddingLeft: 34,
+  },
+  /** 団体の過去借用鍵ボックス */
+  orgHistoryBox: {
+    borderWidth: 1.5,
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
+  },
+  orgHistoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  orgHistoryTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    flex: 1,
+  },
+  orgHistorySelectAllButton: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  orgHistorySelectAllText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  orgHistoryHint: {
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: -4,
+  },
+  orgHistoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  orgHistoryChip: {
+    borderWidth: 1.5,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    minWidth: 90,
+    maxWidth: 140,
+    gap: 2,
+  },
+  orgHistoryChipBuilding: {
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  orgHistoryChipName: {
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 17,
+  },
+  orgHistoryChipBadge: {
+    fontSize: 9,
+    fontWeight: '700',
+    marginTop: 2,
   },
   /** 選択中サマリー（複数棟選択対応） */
   selectedSummary: {
