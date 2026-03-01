@@ -17,7 +17,8 @@ import { Ionicons } from '../../../shared/components/icons';
  * @param {string|null} props.item.imageUrl - 写真サムネイルURL
  * @param {string} props.item.itemName - 拾得物の名前
  * @param {string} props.item.foundTime - 拾得時間
- * @param {string} props.item.location - 拾得場所
+ * @param {string} props.item.location - 発見場所
+ * @param {string} props.item.storageLocation - 預かり場所
  * @param {string} props.item.returnDate - 返却日（空文字 = 保管中）
  * @param {boolean} props.item.isReturned - 返却済みフラグ
  * @param {boolean} props.item.isUrgent - 緊急フラグ
@@ -97,15 +98,23 @@ const LostItemCard = ({ item }) => {
           {item.itemName}
         </Text>
 
-        {/* 3行目: 預かり場所 */}
+        {/* 3行目: 発見場所 */}
         <View style={styles.detailRow}>
-          <Ionicons name="location-outline" size={14} color={theme.textSecondary} />
+          <Ionicons name="search-outline" size={14} color={theme.textSecondary} />
           <Text style={[styles.detailText, { color: theme.textSecondary }]} numberOfLines={1}>
-            預かり場所: {item.location}
+            発見場所: {item.location || '記載なし'}
           </Text>
         </View>
 
-        {/* 4行目: 拾得時刻 */}
+        {/* 4行目: 預かり場所 */}
+        <View style={styles.detailRow}>
+          <Ionicons name="location-outline" size={14} color={theme.textSecondary} />
+          <Text style={[styles.detailText, { color: theme.textSecondary }]} numberOfLines={1}>
+            預かり場所: {item.storageLocation}
+          </Text>
+        </View>
+
+        {/* 5行目: 拾得時刻 */}
         <View style={styles.detailRow}>
           <Ionicons name="time-outline" size={14} color={theme.textSecondary} />
           <Text style={[styles.detailText, { color: theme.textSecondary }]}>
@@ -113,7 +122,7 @@ const LostItemCard = ({ item }) => {
           </Text>
         </View>
 
-        {/* 返却済みの場合は返却時刻を表示 */}
+        {/* 返却済みの場合は返却時刻を表示（最終行） */}
         {item.isReturned && (
           <View style={styles.detailRow}>
             <Ionicons name="checkmark-circle-outline" size={14} color={theme.success} />

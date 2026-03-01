@@ -8,7 +8,6 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { fetchAllLostItemData } from '../services/lostItemService';
 import {
   DEFAULT_TAB,
-  STATUS_FILTERS,
   LOCATION_FILTER_ALL,
   DATE_FILTER_ALL,
 } from '../constants';
@@ -28,8 +27,6 @@ export const useLostItems = () => {
   const [activeTab, setActiveTab] = useState(DEFAULT_TAB);
   /** 検索キーワード */
   const [searchQuery, setSearchQuery] = useState('');
-  /** ステータスフィルタ */
-  const [statusFilter, setStatusFilter] = useState(STATUS_FILTERS.ALL);
   /** 場所フィルタ（LOCATION_FILTER_ALL = すべて） */
   const [locationFilter, setLocationFilter] = useState(LOCATION_FILTER_ALL);
   /** 日付フィルタ（DATE_FILTER_ALL = すべて、それ以外は "YYYY/MM/DD" 形式） */
@@ -108,11 +105,12 @@ export const useLostItems = () => {
    * 場所フィルタのプルダウン選択肢として使用する
    */
   const availableLocations = useMemo(() => {
+    // 落とし主タブは location（場所）、一般・緊急タブは storageLocation（預かり場所）を参照
     const locs = currentTabData
-      .map((item) => item.location)
+      .map((item) => activeTab === 'owner' ? item.location : item.storageLocation)
       .filter(Boolean);
     return [...new Set(locs)].sort();
-  }, [currentTabData]);
+  }, [currentTabData, activeTab]);
 
   /**
    * 現在のタブデータから重複なしの日付一覧を抽出する（新しい順）
@@ -132,8 +130,9 @@ export const useLostItems = () => {
   }, [currentTabData, activeTab]);
 
   /**
-   * テキスト検索・ステータス・場所・日付フィルタを適用した表示用データ
-   * タブ種別に応じて検索対象フィールドとステータス判定を切り替える
+   * テキスト検索・場所・日付フィルタを適用した表示用データ
+   * タブ種別に応じて検索対象フィールドを切り替える
+   * ※返却済み・対応済みはパース時点で除外済みのため、ここではフィルタ不要
    */
   const filteredItems = useMemo(() => {
     /** 小文字に変換した検索キーワード */
@@ -142,24 +141,11 @@ export const useLostItems = () => {
     const timeKey = activeTab === 'owner' ? 'noticedTime' : 'foundTime';
 
     return currentTabData.filter((item) => {
-      // ステータスフィルタの適用
-      if (statusFilter !== STATUS_FILTERS.ALL) {
-        /** 落とし主タブかどうか */
-        const isOwnerTab = activeTab === 'owner';
-        /** アイテムが返却/対応済みかどうか */
-        const isCompleted = isOwnerTab ? item.isResolved : item.isReturned;
-
-        if (statusFilter === STATUS_FILTERS.HOLDING && isCompleted) {
-          return false;
-        }
-        if (statusFilter === STATUS_FILTERS.RETURNED && !isCompleted) {
-          return false;
-        }
-      }
-
-      // 場所フィルタの適用
+      // 場所フィルタの適用（一般・緊急タブは預かり場所、落とし主タブは場所で絞り込む）
       if (locationFilter !== LOCATION_FILTER_ALL) {
-        if (item.location !== locationFilter) {
+        /** フィルタ対象フィールド（落とし主タブは location、それ以外は storageLocation） */
+        const locationKey = activeTab === 'owner' ? 'location' : 'storageLocation';
+        if (item[locationKey] !== locationFilter) {
           return false;
         }
       }
@@ -195,7 +181,7 @@ export const useLostItems = () => {
         item.location.toLowerCase().includes(query)
       );
     });
-  }, [currentTabData, searchQuery, statusFilter, locationFilter, dateFilter, activeTab]);
+  }, [currentTabData, searchQuery, locationFilter, dateFilter, activeTab]);
 
   return {
     /** 一般落とし物リスト（フィルタ前） */
@@ -212,10 +198,6 @@ export const useLostItems = () => {
     searchQuery,
     /** 検索キーワード更新関数 */
     setSearchQuery,
-    /** ステータスフィルタ値 */
-    statusFilter,
-    /** ステータスフィルタ更新関数 */
-    setStatusFilter,
     /** 場所フィルタ値 */
     locationFilter,
     /** 場所フィルタ更新関数 */

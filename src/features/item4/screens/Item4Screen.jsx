@@ -50,8 +50,6 @@ const Item4Screen = ({ navigation }) => {
     setActiveTab,
     searchQuery,
     setSearchQuery,
-    statusFilter,
-    setStatusFilter,
     locationFilter,
     setLocationFilter,
     dateFilter,
@@ -194,17 +192,14 @@ const Item4Screen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* フィルタバー（ステータス・場所・日付の3つのプルダウン） */}
+      {/* フィルタバー（場所・日付の2つのプルダウン） */}
       <FilterBar
-        statusFilter={statusFilter}
-        onStatusChange={setStatusFilter}
         locationFilter={locationFilter}
         onLocationChange={setLocationFilter}
         dateFilter={dateFilter}
         onDateChange={setDateFilter}
         availableLocations={availableLocations}
         availableDates={availableDates}
-        activeTab={activeTab}
       />
 
       {/* タブ切り替え */}

@@ -62,11 +62,11 @@ export const fetchAllLostItemData = async () => {
 
 /**
  * 一般・緊急シートの生データから表示用データに変換する
- * 個人情報（F列: 学籍番号）を除外する
+ * 個人情報（G列: 学籍番号）を除外する
  *
  * CSV列構成:
  *   A(0): 識別タグ, B(1): 写真=IMAGE()【CSV空文字・スキップ】, C(2): 拾得物名, D(3): 拾得時間,
- *   E(4): 拾得場所, F(5): 学籍番号（除外）, G(6): 返却日, H(7): 写真URL（プレーンテキスト）
+ *   E(4): 発見場所, F(5): 預かり場所, G(6): 学籍番号（除外）, H(7): 返却日, I(8): 写真URL（プレーンテキスト）
  *
  * @param {string[][]} rawValues - CSVパース後の2次元配列
  * @param {boolean} isUrgent - 緊急フラグ
@@ -81,18 +81,20 @@ export const parseLostItems = (rawValues, isUrgent) => {
     .map((row) => {
       /** 識別タグ（A列） */
       const tag = (row[0] || '').trim();
-      // B列は =IMAGE() 関数のためCSVでは空文字になる。H列のプレーンテキストURLを使用する
-      /** 写真URL（H列）からサムネイルURLを抽出 */
-      const imageUrl = extractImageUrl(row[7] || '');
+      // B列は =IMAGE() 関数のためCSVでは空文字になる。I列のプレーンテキストURLを使用する
+      /** 写真URL（I列）からサムネイルURLを抽出 */
+      const imageUrl = extractImageUrl(row[8] || '');
       /** 拾得物の名前（C列） */
       const itemName = (row[2] || '').trim();
       /** 拾得時間（D列） */
       const foundTime = (row[3] || '').trim();
-      /** 拾得場所（E列） */
+      /** 発見場所（E列） */
       const location = (row[4] || '').trim();
-      // F列（学籍番号）は個人情報のため意図的にスキップ
-      /** 返却日（G列） */
-      const returnDate = (row[6] || '').trim();
+      /** 預かり場所（F列） */
+      const storageLocation = (row[5] || '').trim();
+      // G列（学籍番号）は個人情報のため意図的にスキップ
+      /** 返却日（H列） */
+      const returnDate = (row[7] || '').trim();
       /** 返却済みかどうか */
       const isReturned = returnDate.length > 0;
 
@@ -102,11 +104,13 @@ export const parseLostItems = (rawValues, isUrgent) => {
         itemName,
         foundTime,
         location,
+        storageLocation,
         returnDate,
         isReturned,
         isUrgent,
       };
-    });
+    })
+    .filter((item) => !item.isReturned); // 返却済みは表示対象外
 };
 
 /**
@@ -152,15 +156,16 @@ export const parseOwnerInquiries = (rawValues) => {
         returnDate,
         isResolved,
       };
-    });
+    })
+    .filter((item) => !item.isResolved); // 対応済みは表示対象外
 };
 
 /**
- * CSVのH列セル値からGoogle DriveファイルIDを抽出し、サムネイル表示用URLに変換する
+ * CSVのI列セル値からGoogle DriveファイルIDを抽出し、サムネイル表示用URLに変換する
  *
  * ℹ️ B列は =IMAGE() 関数でスプレッドシート上の職員向け視認用。
  * CSVエクスポート（gviz/tq?tqx=out:csv）は =IMAGE() の値を取得できず空文字になるため、
- * GASは H列にプレーンテキストURLを別途保存している。本関数はH列の値を受け取る。
+ * GASは I列にプレーンテキストURLを別途保存している。本関数はI列の値を受け取る。
  *
  * 対応するURL形式:
  *   - https://drive.google.com/uc?export=view&id={fileId}  （GAS標準出力）
