@@ -298,6 +298,11 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   /** HQロール向けアクティブタブ（初期値: 鍵管理） */
   const [activeTab, setActiveTab] = useState(HQ_TAB_DEFAULT);
 
+  /** HQロール向けチケット種別フィルター（'all' | ticket_type） */
+  const [hqTicketTypeFilter, setHqTicketTypeFilter] = useState('all');
+  /** HQロール向け団体フィルター（'all' | org_id） */
+  const [hqOrgFilter, setHqOrgFilter] = useState('all');
+
   /**
    * メッセージ表示
    * @param {string} title - タイトル
@@ -316,7 +321,26 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   const isDepartmentRole =
     roleType === SUPPORT_DESK_ROLE_TYPES.ACCOUNTING || roleType === SUPPORT_DESK_ROLE_TYPES.PROPERTY;
 
+  /**
+   * フィルター後のチケット一覧
+   * HQロール: 種別・団体フィルターを適用
+   * 部署ロール: ステータス・緊急度フィルターを適用
+   */
   const filteredTickets = useMemo(() => {
+    /** HQロール向けフィルター */
+    if (isHQRole) {
+      let result = tickets;
+      /** 種別フィルターを適用 */
+      if (hqTicketTypeFilter !== 'all') {
+        result = result.filter((t) => t.ticket_type === hqTicketTypeFilter);
+      }
+      /** 団体フィルターを適用（org_id がある場合のみ） */
+      if (hqOrgFilter !== 'all') {
+        result = result.filter((t) => t.org_id === hqOrgFilter);
+      }
+      return result;
+    }
+
     if (!isDepartmentRole) {
       return tickets;
     }
@@ -347,7 +371,22 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     }
 
     return result;
-  }, [isDepartmentRole, ticketStatusFilter, ticketUrgencyFilter, tickets]);
+  }, [isHQRole, isDepartmentRole, hqTicketTypeFilter, hqOrgFilter, ticketStatusFilter, ticketUrgencyFilter, tickets]);
+
+  /**
+   * HQフィルター用の団体一覧（ticketsのorganizationsリレーションから動的生成）
+   * 別APIコールなしでJOIN済みデータを活用する
+   */
+  const hqFilterOrganizations = useMemo(() => {
+    /** org_id と organizations.name が揃っているチケットから一意の団体を抽出 */
+    const seen = new Map();
+    tickets.forEach((t) => {
+      if (t.org_id && t.organizations?.name && !seen.has(t.org_id)) {
+        seen.set(t.org_id, { id: t.org_id, name: t.organizations.name });
+      }
+    });
+    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  }, [tickets]);
 
   const selectedTicket = useMemo(() => {
     return filteredTickets.find((ticket) => ticket.id === selectedTicketId) || null;
@@ -1355,6 +1394,100 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
             </TouchableOpacity>
           </View>
 
+          {isHQRole ? (
+            <>
+              {/* HQロール: 種別フィルター */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.filterScrollContent}
+                style={styles.filterScroll}
+              >
+                <Pressable
+                  style={[
+                    styles.filterChip,
+                    {
+                      borderColor: hqTicketTypeFilter === 'all' ? theme.primary : theme.border,
+                      backgroundColor: hqTicketTypeFilter === 'all' ? `${theme.primary}1A` : theme.background,
+                    },
+                  ]}
+                  onPress={() => setHqTicketTypeFilter('all')}
+                >
+                  <Text style={[styles.filterChipText, { color: hqTicketTypeFilter === 'all' ? theme.primary : theme.textSecondary }]}>
+                    すべて
+                  </Text>
+                </Pressable>
+                {Object.entries(TICKET_TYPE_LABELS).map(([key, label]) => {
+                  /** 選択中かどうか */
+                  const isActive = hqTicketTypeFilter === key;
+                  return (
+                    <Pressable
+                      key={key}
+                      style={[
+                        styles.filterChip,
+                        {
+                          borderColor: isActive ? theme.primary : theme.border,
+                          backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
+                        },
+                      ]}
+                      onPress={() => setHqTicketTypeFilter(isActive ? 'all' : key)}
+                    >
+                      <Text style={[styles.filterChipText, { color: isActive ? theme.primary : theme.textSecondary }]}>
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+
+              {/* HQロール: 団体フィルター（org_id を持つチケットが存在する場合のみ表示） */}
+              {hqFilterOrganizations.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.filterScrollContent}
+                  style={styles.filterScroll}
+                >
+                  <Pressable
+                    style={[
+                      styles.filterChip,
+                      {
+                        borderColor: hqOrgFilter === 'all' ? '#1A7F37' : theme.border,
+                        backgroundColor: hqOrgFilter === 'all' ? '#1A7F371A' : theme.background,
+                      },
+                    ]}
+                    onPress={() => setHqOrgFilter('all')}
+                  >
+                    <Text style={[styles.filterChipText, { color: hqOrgFilter === 'all' ? '#1A7F37' : theme.textSecondary }]}>
+                      すべての団体
+                    </Text>
+                  </Pressable>
+                  {hqFilterOrganizations.map((org) => {
+                    /** 選択中かどうか */
+                    const isActive = hqOrgFilter === org.id;
+                    return (
+                      <Pressable
+                        key={org.id}
+                        style={[
+                          styles.filterChip,
+                          {
+                            borderColor: isActive ? '#1A7F37' : theme.border,
+                            backgroundColor: isActive ? '#1A7F371A' : theme.background,
+                          },
+                        ]}
+                        onPress={() => setHqOrgFilter(isActive ? 'all' : org.id)}
+                      >
+                        <Text style={[styles.filterChipText, { color: isActive ? '#1A7F37' : theme.textSecondary }]}>
+                          {org.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              ) : null}
+            </>
+          ) : null}
+
           {isDepartmentRole ? (
             <>
               {/* 対応状況フィルター */}
@@ -1450,7 +1583,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
                         borderLeftColor: leftBorderColor,
                       },
                     ]}
-                    onPress={() => setSelectedTicketId(ticket.id)}
+                    onPress={() => setSelectedTicketId((prev) => (prev === ticket.id ? null : ticket.id))}
                   >
                     <View style={styles.ticketTitleRow}>
                       {isUnread ? (
@@ -1790,6 +1923,15 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     marginBottom: 10,
+  },
+  /** HQフィルター横スクロール */
+  filterScroll: {
+    marginBottom: 8,
+  },
+  filterScrollContent: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingRight: 16,
   },
   inputRow: {
     flexDirection: 'row',

@@ -37,9 +37,9 @@ export const SUPPORT_TICKET_STATUSES = {
 /** 有効ステータス一覧 */
 const VALID_STATUSES = new Set(Object.values(SUPPORT_TICKET_STATUSES));
 
-/** 連絡案件の取得カラム */
+/** 連絡案件の取得カラム（organizations JOIN で団体情報を付与） */
 const TICKET_COLUMNS =
-  'id,ticket_no,ticket_type,ticket_status,priority,title,description,event_name,event_location,notify_target,created_by,created_at,updated_at';
+  'id,ticket_no,ticket_type,ticket_status,priority,title,description,event_name,event_location,notify_target,created_by,org_id,created_at,updated_at,organizations(id,name)';
 
 /** 返信の取得カラム */
 const MESSAGE_COLUMNS = 'id,ticket_id,author_id,body,created_at';

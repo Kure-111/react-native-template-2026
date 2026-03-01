@@ -61,10 +61,11 @@ export const listKeyLoans = async ({ status, limit = 80 } = {}) => {
  * @param {Object} input - 登録データ
  * @param {string} input.keyCode - 鍵コード
  * @param {string} input.keyLabel - 鍵名
- * @param {string} [input.eventName] - 企画名
+ * @param {string} [input.eventName] - 企画名（団体名を格納）
  * @param {string} [input.eventLocation] - 企画場所
  * @param {string} [input.borrowerName] - 借受人
  * @param {string} [input.borrowerContact] - 連絡先
+ * @param {Object} [input.metadata] - 追加情報（org_id, org_name など）
  * @returns {Promise<{data: Object|null, error: Error|null}>} 登録結果
  */
 export const createKeyLoan = async (input) => {
@@ -86,6 +87,8 @@ export const createKeyLoan = async (input) => {
       borrower_name: normalizeText(input.borrowerName) || null,
       borrower_contact: normalizeText(input.borrowerContact) || null,
       status: KEY_LOAN_STATUSES.LOANED,
+      /** 追加メタデータ（org_id, org_name など）。未指定時は空オブジェクト */
+      metadata: input.metadata && typeof input.metadata === 'object' ? input.metadata : {},
     };
 
     const { data, error } = await getSupabaseClient()

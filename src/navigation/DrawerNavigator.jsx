@@ -6,8 +6,9 @@
  */
 
 import React from 'react';
-import { useWindowDimensions } from 'react-native';
+import { Platform, useWindowDimensions } from 'react-native';
 import { createDrawerNavigator } from '@react-navigation/drawer';
+import { useTerminal } from '../shared/contexts/TerminalContext';
 import CustomDrawerContent from './components/CustomDrawerContent';
 import ScreenErrorBoundary from '../shared/components/ScreenErrorBoundary';
 
@@ -94,6 +95,15 @@ const DrawerNavigator = () => {
   const { width } = useWindowDimensions();
   /** モバイル判定 */
   const isMobile = width < MOBILE_BREAKPOINT;
+  /** 全画面端末が開いているかどうか */
+  const { isTerminalOpen } = useTerminal();
+
+  /**
+   * 全画面端末が開いているとき（Web PC のみ）サイドバーを非表示にする
+   * 端末モーダルは position: fixed でビューポート全体を覆うが、
+   * permanent drawer がその上に描画されるため、幅を 0 にして完全に隠す
+   */
+  const shouldHideSidebar = isTerminalOpen && !isMobile && Platform.OS === 'web';
 
   return (
     <Drawer.Navigator
@@ -103,8 +113,10 @@ const DrawerNavigator = () => {
         headerShown: false,
         drawerType: isMobile ? 'front' : 'permanent',
         drawerStyle: {
-          width: DRAWER_WIDTH,
+          width: shouldHideSidebar ? 0 : DRAWER_WIDTH,
           backgroundColor: '#1a1a2e',
+          /** 幅0のとき内容がはみ出さないようにクリップ */
+          overflow: 'hidden',
         },
         overlayColor: 'rgba(0, 0, 0, 0.5)',
         swipeEnabled: isMobile,
