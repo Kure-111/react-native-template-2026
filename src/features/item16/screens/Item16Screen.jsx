@@ -1288,77 +1288,82 @@ const Item16Screen = ({ navigation }) => {
             <Text style={[styles.sectionTitle, { color: theme.text }]}>{activeTabTitle}</Text>
             {renderActiveForm()}
 
-            <Text style={[styles.label, { color: theme.text }]}>添付情報（任意）</Text>
-            <Text style={[styles.questionTargetHint, { color: theme.textSecondary }]}>
-              画像/PDFを1件添付できます（最大 {MAX_ATTACHMENT_FILE_SIZE_MB}MB）。画像は自動圧縮されます。
-            </Text>
-            <View style={styles.attachPickerRow}>
-              <TouchableOpacity
-                style={[
-                  styles.attachPickerButton,
-                  styles.attachPickerButtonFlex,
-                  { borderColor: theme.border, backgroundColor: theme.background },
-                ]}
-                onPress={pickAttachmentFile}
-              >
-                <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
-                  {attachmentFile ? '別のファイルを選択' : 'ファイルから選択'}
+            {/* 鍵事前申請タブでは添付情報セクションを非表示（申請フォームに不要） */}
+            {activeTab !== SUPPORT_TAB_TYPES.KEY_PREAPPLY ? (
+              <>
+                <Text style={[styles.label, { color: theme.text }]}>添付情報（任意）</Text>
+                <Text style={[styles.questionTargetHint, { color: theme.textSecondary }]}>
+                  画像/PDFを1件添付できます（最大 {MAX_ATTACHMENT_FILE_SIZE_MB}MB）。画像は自動圧縮されます。
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.attachPickerButton,
-                  styles.attachPickerButtonFlex,
-                  { borderColor: theme.border, backgroundColor: theme.background },
-                ]}
-                onPress={pickAttachmentFromCamera}
-              >
-                <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
-                  カメラで撮影
-                </Text>
-              </TouchableOpacity>
-            </View>
+                <View style={styles.attachPickerRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.attachPickerButton,
+                      styles.attachPickerButtonFlex,
+                      { borderColor: theme.border, backgroundColor: theme.background },
+                    ]}
+                    onPress={pickAttachmentFile}
+                  >
+                    <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
+                      {attachmentFile ? '別のファイルを選択' : 'ファイルから選択'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.attachPickerButton,
+                      styles.attachPickerButtonFlex,
+                      { borderColor: theme.border, backgroundColor: theme.background },
+                    ]}
+                    onPress={pickAttachmentFromCamera}
+                  >
+                    <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
+                      カメラで撮影
+                    </Text>
+                  </TouchableOpacity>
+                </View>
 
-            {attachmentFile ? (
-              <View
-                style={[
-                  styles.attachmentSummary,
-                  { borderColor: theme.border, backgroundColor: theme.background },
-                ]}
-              >
-                <Text style={[styles.attachmentSummaryName, { color: theme.text }]} numberOfLines={1}>
-                  {attachmentFile.name || 'attachment.bin'}
-                </Text>
-                <Text style={[styles.attachmentSummaryMeta, { color: theme.textSecondary }]}>
-                  {formatFileSize(attachmentFile.size)} / {attachmentFile.type || 'application/octet-stream'}
-                </Text>
-                <TouchableOpacity
-                  style={[styles.removeKeyButton, { borderColor: theme.border }]}
-                  onPress={clearAttachment}
-                >
-                  <Text style={[styles.removeKeyButtonText, { color: theme.textSecondary }]}>添付解除</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
-                添付未選択（任意）
-              </Text>
-            )}
+                {attachmentFile ? (
+                  <View
+                    style={[
+                      styles.attachmentSummary,
+                      { borderColor: theme.border, backgroundColor: theme.background },
+                    ]}
+                  >
+                    <Text style={[styles.attachmentSummaryName, { color: theme.text }]} numberOfLines={1}>
+                      {attachmentFile.name || 'attachment.bin'}
+                    </Text>
+                    <Text style={[styles.attachmentSummaryMeta, { color: theme.textSecondary }]}>
+                      {formatFileSize(attachmentFile.size)} / {attachmentFile.type || 'application/octet-stream'}
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.removeKeyButton, { borderColor: theme.border }]}
+                      onPress={clearAttachment}
+                    >
+                      <Text style={[styles.removeKeyButtonText, { color: theme.textSecondary }]}>添付解除</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
+                    添付未選択（任意）
+                  </Text>
+                )}
 
-            <TextInput
-              value={attachmentCaption}
-              onChangeText={setAttachmentCaption}
-              placeholder="添付メモ（任意・最大100文字程度）"
-              placeholderTextColor={theme.textSecondary}
-              style={[
-                styles.input,
-                {
-                  backgroundColor: theme.background,
-                  borderColor: theme.border,
-                  color: theme.text,
-                },
-              ]}
-            />
+                <TextInput
+                  value={attachmentCaption}
+                  onChangeText={setAttachmentCaption}
+                  placeholder="添付メモ（任意・最大100文字程度）"
+                  placeholderTextColor={theme.textSecondary}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.background,
+                      borderColor: theme.border,
+                      color: theme.text,
+                    },
+                  ]}
+                />
+              </>
+            ) : null}
           </View>
 
           <TouchableOpacity
