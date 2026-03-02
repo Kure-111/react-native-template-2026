@@ -251,8 +251,8 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
 
   /**
    * 返却処理
-   * - 'temporary'（一時返却）: 施錠確認依頼なしで即返却
-   * - 'permanent'（もう借りない）: 返却後に施錠確認依頼の有無を選択可能
+   * - 'temporary'（返却）: 施錠確認依頼なしで即返却
+   * - 'permanent'（完全返却）: 返却後に施錠確認依頼の有無を選択可能
    * @param {string} loanId - 貸出ID
    * @param {'temporary'|'permanent'} returnType - 返却種別
    * @returns {Promise<void>} 実行処理
@@ -263,16 +263,16 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
       return;
     }
 
-    /** 施錠確認タスクを作成するか（もう借りないの場合のみ選択可能） */
+    /** 施錠確認タスクを作成するか（完全返却の場合のみ選択可能） */
     let createLockTask = false;
 
     if (returnType === 'temporary') {
       /** 一時返却：施錠確認依頼なし（確認ダイアログのみ） */
       if (Platform.OS === 'web') {
-        if (!window.confirm('一時返却を実行しますか？')) return;
+        if (!window.confirm('返却を実行しますか？')) return;
       } else {
         const confirmed = await new Promise((resolve) => {
-          Alert.alert('確認', '一時返却を実行しますか？', [
+          Alert.alert('確認', '返却を実行しますか？', [
             { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
             { text: '実行', onPress: () => resolve(true) },
           ]);
@@ -281,15 +281,15 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
       }
       createLockTask = false;
     } else {
-      /** もう借りない：施錠確認依頼の有無を選択 */
+      /** 完全返却：施錠確認依頼の有無を選択 */
       if (Platform.OS === 'web') {
         /** Web: 2段階の confirm で選択 */
-        if (!window.confirm('もう借りない（返却）を実行しますか？')) return;
+        if (!window.confirm('完全返却を実行しますか？')) return;
         createLockTask = window.confirm('施錠確認タスクも作成しますか？');
       } else {
         /** Native: Alert の3択で選択 */
         const choice = await new Promise((resolve) => {
-          Alert.alert('もう借りない（返却）', '返却方法を選んでください', [
+          Alert.alert('完全返却', '返却方法を選んでください', [
             { text: 'キャンセル', style: 'cancel', onPress: () => resolve('cancel') },
             { text: '返却のみ', onPress: () => resolve('return') },
             { text: '返却+施錠確認', onPress: () => resolve('lockTask') },
@@ -462,7 +462,7 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
               <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
                 貸出: {new Date(loan.loaned_at).toLocaleString('ja-JP')}
               </Text>
-              {/* 返却ボタン：一時返却 / もう借りない（施錠確認を選択可） */}
+              {/* 返却ボタン：返却 / 完全返却（施錠確認は完全返却時のみ選択可） */}
               <View style={styles.rowActions}>
                 <TouchableOpacity
                   style={[styles.subActionButton, { borderColor: theme.border }]}
@@ -470,7 +470,7 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
                   disabled={isSubmitting}
                 >
                   <Text style={[styles.subActionText, { color: theme.textSecondary }]}>
-                    一時返却
+                    返却
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -479,7 +479,7 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
                   disabled={isSubmitting}
                 >
                   <Text style={[styles.subActionText, { color: theme.textSecondary }]}>
-                    もう借りない
+                    完全返却
                   </Text>
                 </TouchableOpacity>
               </View>
