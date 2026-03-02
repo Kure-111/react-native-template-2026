@@ -1,0 +1,1544 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>落とし物管理</title>
+  <style>
+    /* ズーム倍率変数 */
+    :root {
+      --zoom-scale: 1.0;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --danger: #dc2626;
+      --success: #16a34a;
+      --bg: #f1f5f9;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --text: #1e293b;
+      --text-sub: #64748b;
+    }
+
+    /* メディアクエリでデバイスごとに調整 */
+    @media screen and (max-width: 1024px) {
+      :root {
+        --zoom-scale: 2.0;
+      }
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      min-height: 100vh;
+      padding: calc(24px * var(--zoom-scale));
+      font-size: calc(15px * var(--zoom-scale));
+      color: var(--text);
+    }
+
+    .container {
+      max-width: calc(600px * var(--zoom-scale));
+      margin: 0 auto;
+    }
+
+    h1 {
+      color: var(--text);
+      margin-bottom: calc(6px * var(--zoom-scale));
+      font-size: calc(22px * var(--zoom-scale));
+      font-weight: 700;
+      text-align: center;
+      letter-spacing: -0.3px;
+    }
+
+    .subtitle {
+      color: var(--text-sub);
+      margin-bottom: calc(24px * var(--zoom-scale));
+      font-size: calc(13px * var(--zoom-scale));
+      text-align: center;
+    }
+
+    /* メニュー画面 */
+    .menu-screen {
+      display: block;
+    }
+
+    .menu-btn {
+      width: 100%;
+      padding: calc(18px * var(--zoom-scale)) calc(20px * var(--zoom-scale));
+      margin-bottom: calc(12px * var(--zoom-scale));
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: calc(10px * var(--zoom-scale));
+      font-size: calc(16px * var(--zoom-scale));
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      text-align: left;
+    }
+
+    .menu-btn:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+    }
+
+    .menu-section-label {
+      font-size: calc(11px * var(--zoom-scale));
+      font-weight: 700;
+      color: var(--text-sub);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-top: calc(18px * var(--zoom-scale));
+      margin-bottom: calc(8px * var(--zoom-scale));
+      padding-left: calc(4px * var(--zoom-scale));
+      border-left: calc(3px * var(--zoom-scale)) solid var(--primary);
+      padding-left: calc(8px * var(--zoom-scale));
+    }
+
+    /* 登録画面 */
+    .register-screen {
+      display: none;
+    }
+
+    /* 確認画面 */
+    .view-screen {
+      display: none;
+    }
+
+    /* 返却済み確認画面 */
+    .returned-screen {
+      display: none;
+    }
+
+    .back-btn {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: calc(8px * var(--zoom-scale)) calc(16px * var(--zoom-scale));
+      border-radius: calc(7px * var(--zoom-scale));
+      cursor: pointer;
+      margin-bottom: calc(18px * var(--zoom-scale));
+      font-size: calc(13px * var(--zoom-scale));
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+
+    .back-btn:hover {
+      background: #f8fafc;
+    }
+
+    .filter-section {
+      margin-bottom: calc(18px * var(--zoom-scale));
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: calc(8px * var(--zoom-scale));
+    }
+
+    .filter-select {
+      width: 100%;
+      padding: calc(10px * var(--zoom-scale));
+      border: 1px solid var(--border);
+      border-radius: calc(8px * var(--zoom-scale));
+      font-size: calc(14px * var(--zoom-scale));
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .filter-select:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .items-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(calc(150px * var(--zoom-scale)), 1fr));
+      gap: calc(12px * var(--zoom-scale));
+      max-height: calc(600px * var(--zoom-scale));
+      overflow-y: auto;
+    }
+
+    .item-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: calc(10px * var(--zoom-scale));
+      cursor: pointer;
+      transition: box-shadow 0.15s, border-color 0.15s;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .item-card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      border-color: #cbd5e1;
+    }
+
+    .item-card.urgent {
+      border: calc(3px * var(--zoom-scale)) solid var(--danger);
+    }
+
+    .item-card.returned {
+      border: calc(2px * var(--zoom-scale)) solid #86efac;
+    }
+
+    .item-thumbnail {
+      width: 100%;
+      height: calc(140px * var(--zoom-scale));
+      object-fit: cover;
+      background: #e2e8f0;
+    }
+
+    .item-info {
+      padding: calc(10px * var(--zoom-scale));
+      background: var(--surface);
+    }
+
+    .item-tag {
+      font-weight: 700;
+      color: var(--primary);
+      font-size: calc(12px * var(--zoom-scale));
+      margin-bottom: calc(3px * var(--zoom-scale));
+    }
+
+    .item-name {
+      color: var(--text);
+      font-size: calc(13px * var(--zoom-scale));
+      font-weight: 500;
+      margin-bottom: calc(5px * var(--zoom-scale));
+    }
+
+    .item-status {
+      display: inline-block;
+      padding: calc(2px * var(--zoom-scale)) calc(7px * var(--zoom-scale));
+      border-radius: calc(4px * var(--zoom-scale));
+      font-size: calc(11px * var(--zoom-scale));
+      font-weight: 600;
+    }
+
+    .item-status.normal {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .item-status.urgent {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+
+    .item-status.returned {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    /* 詳細モーダル */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15,23,42,0.55);
+      z-index: 1000;
+      padding: calc(20px * var(--zoom-scale));
+      overflow-y: auto;
+    }
+
+    .modal-content {
+      max-width: calc(480px * var(--zoom-scale));
+      margin: calc(40px * var(--zoom-scale)) auto;
+      background: var(--surface);
+      border-radius: calc(14px * var(--zoom-scale));
+      padding: calc(24px * var(--zoom-scale));
+      border: 1px solid var(--border);
+    }
+
+    .modal-image {
+      width: 100%;
+      border-radius: calc(8px * var(--zoom-scale));
+      margin-bottom: calc(18px * var(--zoom-scale));
+    }
+
+    .detail-row {
+      margin-bottom: calc(12px * var(--zoom-scale));
+      padding-bottom: calc(12px * var(--zoom-scale));
+      border-bottom: 1px solid var(--border);
+    }
+
+    .detail-label {
+      color: var(--text-sub);
+      font-size: calc(11px * var(--zoom-scale));
+      margin-bottom: calc(3px * var(--zoom-scale));
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .detail-value {
+      color: var(--text);
+      font-size: calc(15px * var(--zoom-scale));
+      font-weight: 600;
+    }
+
+    .modal-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: calc(8px * var(--zoom-scale));
+      margin-top: calc(18px * var(--zoom-scale));
+    }
+
+    .close-modal-btn {
+      padding: calc(12px * var(--zoom-scale));
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: calc(8px * var(--zoom-scale));
+      font-size: calc(14px * var(--zoom-scale));
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .close-modal-btn:hover {
+      background: #f8fafc;
+    }
+
+    .return-btn {
+      padding: calc(12px * var(--zoom-scale));
+      background: var(--success);
+      color: white;
+      border: none;
+      border-radius: calc(8px * var(--zoom-scale));
+      font-size: calc(14px * var(--zoom-scale));
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+
+    .return-btn:hover {
+      background: #15803d;
+    }
+
+    /* 返却入力フォーム */
+    .return-form {
+      display: none;
+      margin-top: calc(18px * var(--zoom-scale));
+      padding-top: calc(18px * var(--zoom-scale));
+      border-top: 1px solid var(--border);
+    }
+
+    .return-form label {
+      display: block;
+      color: var(--text);
+      font-weight: 600;
+      font-size: calc(13px * var(--zoom-scale));
+      margin-bottom: calc(6px * var(--zoom-scale));
+    }
+
+    .return-form input {
+      width: 100%;
+      padding: calc(10px * var(--zoom-scale));
+      border: 1px solid var(--border);
+      border-radius: calc(8px * var(--zoom-scale));
+      font-size: calc(15px * var(--zoom-scale));
+      margin-bottom: calc(12px * var(--zoom-scale));
+      color: var(--text);
+    }
+
+    .return-form input:focus {
+      outline: none;
+      border-color: var(--success);
+    }
+
+    .confirm-return-btn {
+      width: 100%;
+      padding: calc(12px * var(--zoom-scale));
+      background: var(--success);
+      color: white;
+      border: none;
+      border-radius: calc(8px * var(--zoom-scale));
+      font-size: calc(15px * var(--zoom-scale));
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .confirm-return-btn:hover {
+      background: #15803d;
+    }
+
+    .confirm-return-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* 登録フォーム */
+    .form-group {
+      margin-bottom: calc(18px * var(--zoom-scale));
+    }
+
+    label {
+      display: block;
+      margin-bottom: calc(6px * var(--zoom-scale));
+      color: var(--text);
+      font-weight: 600;
+      font-size: calc(13px * var(--zoom-scale));
+    }
+
+    .required {
+      color: var(--danger);
+      margin-left: calc(3px * var(--zoom-scale));
+    }
+
+    input[type="text"],
+    input[type="file"],
+    select {
+      width: 100%;
+      padding: calc(10px * var(--zoom-scale));
+      border: 1px solid var(--border);
+      border-radius: calc(8px * var(--zoom-scale));
+      font-size: calc(15px * var(--zoom-scale));
+      transition: border-color 0.15s;
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    input[type="text"]:focus,
+    select:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .image-preview {
+      margin-top: calc(10px * var(--zoom-scale));
+      max-width: 100%;
+      border-radius: calc(8px * var(--zoom-scale));
+      display: none;
+      border: 1px solid var(--border);
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: calc(13px * var(--zoom-scale));
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: calc(8px * var(--zoom-scale));
+      font-size: calc(15px * var(--zoom-scale));
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .submit-btn:hover {
+      background: var(--primary-hover);
+    }
+
+    .submit-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .message {
+      margin-top: calc(16px * var(--zoom-scale));
+      padding: calc(12px * var(--zoom-scale));
+      border-radius: calc(8px * var(--zoom-scale));
+      text-align: center;
+      display: none;
+      font-size: calc(13px * var(--zoom-scale));
+      font-weight: 500;
+    }
+
+    .success {
+      background: #f0fdf4;
+      color: #15803d;
+      border: 1px solid #86efac;
+    }
+
+    .error {
+      background: #fef2f2;
+      color: #b91c1c;
+      border: 1px solid #fca5a5;
+    }
+
+    .loading {
+      text-align: center;
+      padding: calc(40px * var(--zoom-scale));
+      color: var(--text-sub);
+      font-size: calc(14px * var(--zoom-scale));
+    }
+
+    /* 落とし主リスト */
+    .owner-list {
+      display: flex;
+      flex-direction: column;
+      gap: calc(10px * var(--zoom-scale));
+      max-height: calc(600px * var(--zoom-scale));
+      overflow-y: auto;
+    }
+
+    .owner-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: calc(10px * var(--zoom-scale));
+      cursor: pointer;
+      transition: box-shadow 0.15s, border-color 0.15s;
+      padding: calc(14px * var(--zoom-scale));
+    }
+
+    .owner-card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      border-color: #cbd5e1;
+    }
+
+    .owner-card.resolved {
+      border: calc(2px * var(--zoom-scale)) solid #86efac;
+    }
+
+    .owner-id {
+      font-weight: 700;
+      color: var(--primary);
+      font-size: calc(12px * var(--zoom-scale));
+      margin-bottom: calc(3px * var(--zoom-scale));
+    }
+
+    .owner-name {
+      color: var(--text);
+      font-size: calc(15px * var(--zoom-scale));
+      font-weight: 600;
+      margin-bottom: calc(4px * var(--zoom-scale));
+    }
+
+    .owner-item {
+      color: var(--text-sub);
+      font-size: calc(13px * var(--zoom-scale));
+      margin-bottom: calc(2px * var(--zoom-scale));
+    }
+
+    /* 非対応形式モーダル */
+    .alert-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15,23,42,0.6);
+      z-index: 2000;
+      padding: calc(20px * var(--zoom-scale));
+      overflow-y: auto;
+    }
+
+    .alert-modal-content {
+      max-width: calc(420px * var(--zoom-scale));
+      margin: calc(80px * var(--zoom-scale)) auto;
+      background: var(--surface);
+      border-radius: calc(14px * var(--zoom-scale));
+      padding: calc(28px * var(--zoom-scale));
+      border: 1px solid var(--border);
+      text-align: center;
+    }
+
+    .alert-modal-icon {
+      font-size: calc(48px * var(--zoom-scale));
+      margin-bottom: calc(16px * var(--zoom-scale));
+    }
+
+    .alert-modal-title {
+      font-size: calc(17px * var(--zoom-scale));
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: calc(12px * var(--zoom-scale));
+    }
+
+    .alert-modal-body {
+      font-size: calc(14px * var(--zoom-scale));
+      color: var(--text-sub);
+      line-height: 1.7;
+      margin-bottom: calc(20px * var(--zoom-scale));
+      text-align: left;
+    }
+
+    .alert-modal-step {
+      background: #f1f5f9;
+      border-radius: calc(8px * var(--zoom-scale));
+      padding: calc(12px * var(--zoom-scale)) calc(14px * var(--zoom-scale));
+      margin-top: calc(12px * var(--zoom-scale));
+      font-size: calc(13px * var(--zoom-scale));
+      color: var(--text);
+      line-height: 1.8;
+    }
+
+    .alert-modal-step strong {
+      color: var(--primary);
+    }
+
+    .alert-modal-close {
+      width: 100%;
+      padding: calc(12px * var(--zoom-scale));
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: calc(8px * var(--zoom-scale));
+      font-size: calc(15px * var(--zoom-scale));
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .alert-modal-close:hover {
+      background: var(--primary-hover);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- メニュー画面 -->
+    <div id="menuScreen" class="menu-screen">
+      <h1>📦 落とし物管理システム</h1>
+      <p class="subtitle">操作を選択してください</p>
+      <p class="menu-section-label">落とし物</p>
+      <button class="menu-btn" onclick="showRegisterScreen()">&#x2795; 落とし物を登録する</button>
+      <button class="menu-btn" onclick="showViewScreen()">&#x1f4cb; 落とし物を確認する</button>
+      <button class="menu-btn" onclick="showReturnedScreen()">&#x2705; 落とし物の返却済みを確認する</button>
+      <p class="menu-section-label">落とし主</p>
+      <button class="menu-btn" onclick="showOwnerRegisterScreen()">&#x1f4dd; 落とし主を登録する</button>
+      <button class="menu-btn" onclick="showOwnerViewScreen()">&#x1f50d; 落とし主を確認する</button>
+      <button class="menu-btn" onclick="showOwnerResolvedScreen()">&#x2705; 落とし主の対応済みを確認する</button>
+    </div>
+
+    <!-- 確認画面 -->
+    <div id="viewScreen" class="view-screen">
+      <button class="back-btn" onclick="showMenu()">← 戻る</button>
+      <h1>📋 落とし物一覧</h1>
+      <p class="subtitle">日付・場所・ステータスでフィルタリングできます</p>
+
+      <div class="filter-section">
+        <select id="dateFilter" class="filter-select" onchange="filterItems()">
+          <option value="すべて">すべての日付</option>
+        </select>
+        <select id="locationFilter" class="filter-select" onchange="filterItems()">
+          <option value="すべて">すべての場所</option>
+          <option value="西門前">西門前</option>
+          <option value="B館前">B館前</option>
+          <option value="人工芝グラウンド">人工芝グラウンド</option>
+        </select>
+        <select id="statusFilter" class="filter-select" onchange="filterItems()" style="grid-column: span 2;">
+          <option value="すべて">すべてのステータス</option>
+          <option value="普通">普通</option>
+          <option value="緊急">緊急</option>
+        </select>
+      </div>
+
+      <div id="itemsList" class="items-list">
+        <div class="loading">読み込み中...</div>
+      </div>
+    </div>
+
+    <!-- 返却済み確認画面 -->
+    <div id="returnedScreen" class="returned-screen">
+      <button class="back-btn" onclick="showMenu()">← 戻る</button>
+      <h1>✅ 返却済み一覧</h1>
+      <p class="subtitle">日付・場所・ステータスでフィルタリングできます</p>
+
+      <div class="filter-section">
+        <select id="returnedDateFilter" class="filter-select" onchange="filterReturnedItems()">
+          <option value="すべて">すべての日付</option>
+        </select>
+        <select id="returnedLocationFilter" class="filter-select" onchange="filterReturnedItems()">
+          <option value="すべて">すべての場所</option>
+          <option value="西門前">西門前</option>
+          <option value="B館前">B館前</option>
+          <option value="人工芝グラウンド">人工芝グラウンド</option>
+        </select>
+        <select id="returnedStatusFilter" class="filter-select" onchange="filterReturnedItems()" style="grid-column: span 2;">
+          <option value="すべて">すべてのステータス</option>
+          <option value="普通">普通</option>
+          <option value="緊急">緊急</option>
+        </select>
+      </div>
+
+      <div id="returnedItemsList" class="items-list">
+        <div class="loading">読み込み中...</div>
+      </div>
+    </div>
+
+    <!-- 登録画面 -->
+    <div id="registerScreen" class="register-screen">
+      <button class="back-btn" onclick="showMenu()">← 戻る</button>
+      <h1>➕ 落とし物登録</h1>
+      <p class="subtitle">拾得物の情報を入力してください</p>
+
+      <form id="lostItemForm">
+        <div class="form-group">
+          <label>写真<span class="required">*</span></label>
+          <input type="file" id="photo" accept="image/*" required>
+          <img id="preview" class="image-preview">
+        </div>
+
+        <div class="form-group">
+          <label>拾得物の名前<span class="required">*</span></label>
+          <input type="text" id="itemName" placeholder="例：財布" required>
+        </div>
+
+        <div class="form-group">
+          <label>時間（HHMM形式）<span class="required">*</span></label>
+          <input type="text" id="time" placeholder="例：1430" pattern="[0-9]{4}" maxlength="4" required>
+        </div>
+
+        <div class="form-group">
+          <label>場所<span class="required">*</span></label>
+          <select id="location" required>
+            <option value="">選択してください</option>
+            <option value="西門前">西門前</option>
+            <option value="B館前">B館前</option>
+            <option value="人工芝グラウンド">人工芝グラウンド</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>緊急性<span class="required">*</span></label>
+          <select id="isUrgent" required>
+            <option value="">選択してください</option>
+            <option value="なし">なし</option>
+            <option value="あり">あり</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>持ち主学籍番号（任意）</label>
+          <input type="text" id="studentId" placeholder="わかる場合のみ入力">
+        </div>
+
+        <button type="submit" class="submit-btn" id="submitBtn">登録する</button>
+      </form>
+
+      <div id="message" class="message"></div>
+    </div>
+
+    <!-- 落とし主登録画面 -->
+    <div id="ownerRegisterScreen" class="register-screen">
+      <button class="back-btn" onclick="showMenu()">← 戻る</button>
+      <h1>&#x1f4dd; 落とし主登録</h1>
+      <p class="subtitle">紛失物の情報を入力してください</p>
+
+      <form id="ownerForm">
+        <div class="form-group">
+          <label>紛失者名<span class="required">*</span></label>
+          <input type="text" id="ownerName" placeholder="例：田中太郎" required>
+        </div>
+
+        <div class="form-group">
+          <label>紛失物<span class="required">*</span></label>
+          <input type="text" id="ownerLostItem" placeholder="例：財布" required>
+        </div>
+
+        <div class="form-group">
+          <label>落とした可能性のある場所<span class="required">*</span></label>
+          <input type="text" id="ownerLocation" placeholder="例：B館前" required>
+        </div>
+
+        <div class="form-group">
+          <label>気づいた日<span class="required">*</span></label>
+          <input type="date" id="ownerDate" required>
+        </div>
+
+        <div class="form-group">
+          <label>気づいた時間（HHMM形式）<span class="required">*</span></label>
+          <input type="text" id="ownerTime" placeholder="例：1430" pattern="[0-9]{4}" maxlength="4" required>
+        </div>
+
+        <div class="form-group">
+          <label>連絡先（メールまたは電話番号）<span class="required">*</span></label>
+          <input type="text" id="ownerContact" placeholder="例：example@mail.com" required>
+        </div>
+
+        <div class="form-group">
+          <label>学籍番号（任意）</label>
+          <input type="text" id="ownerStudentId" placeholder="わかる場合のみ入力">
+        </div>
+
+        <button type="submit" class="submit-btn" id="ownerSubmitBtn">登録する</button>
+      </form>
+
+      <div id="ownerMessage" class="message"></div>
+    </div>
+
+    <!-- 落とし主確認画面 -->
+    <div id="ownerViewScreen" class="register-screen">
+      <button class="back-btn" onclick="showMenu()">← 戻る</button>
+      <h1>&#x1f50d; 落とし主一覧</h1>
+      <p class="subtitle">未対応の落とし主リストです</p>
+      <div id="ownerList" class="owner-list">
+        <div class="loading">読み込み中...</div>
+      </div>
+    </div>
+
+    <!-- 落とし主対応済み確認画面 -->
+    <div id="ownerResolvedScreen" class="register-screen">
+      <button class="back-btn" onclick="showMenu()">← 戻る</button>
+      <h1>&#x2705; 落とし主 対応済み一覧</h1>
+      <p class="subtitle">対応済みの落とし主リストです</p>
+      <div id="ownerResolvedList" class="owner-list">
+        <div class="loading">読み込み中...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 非対応形式モーダル -->
+  <div id="unsupportedFileModal" class="alert-modal" onclick="closeUnsupportedModal(event)">
+    <div class="alert-modal-content" onclick="event.stopPropagation()">
+      <div class="alert-modal-icon">⚠️</div>
+      <div class="alert-modal-title">この写真形式には対応していません</div>
+      <div class="alert-modal-body">
+        DNG・RAWなどのカメラ専用形式はアップロードできません。<br>
+        <strong>スクリーンショットを撮ってから、そちらをアップロードしてください。</strong>
+        <div class="alert-modal-step">
+          <strong>① </strong>カメラロールでその写真を開く<br>
+          <strong>② </strong>サイドボタン＋音量アップボタンを同時押し<br>
+          <strong>③ </strong>撮れたスクショ（PNG）を選んでアップロード
+        </div>
+      </div>
+      <button class="alert-modal-close" onclick="document.getElementById('unsupportedFileModal').style.display='none'">わかった</button>
+    </div>
+  </div>
+
+  <!-- 詳細モーダル -->
+  <div id="detailModal" class="modal" onclick="closeModalOnBackdrop(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <img id="modalImage" class="modal-image">
+      <div class="detail-row">
+        <div class="detail-label">タグ</div>
+        <div class="detail-value" id="modalTag"></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">拾得物</div>
+        <div class="detail-value" id="modalItemName"></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">拾得日時</div>
+        <div class="detail-value" id="modalTime"></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">場所</div>
+        <div class="detail-value" id="modalLocation"></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">ステータス</div>
+        <div class="detail-value" id="modalStatus"></div>
+      </div>
+      <div class="detail-row" id="returnDateRow" style="display:none;">
+        <div class="detail-label">返却日時</div>
+        <div class="detail-value" id="modalReturnDate"></div>
+      </div>
+      <div class="detail-row" id="studentIdRow" style="display:none;">
+        <div class="detail-label">学籍番号</div>
+        <div class="detail-value" id="modalStudentId"></div>
+      </div>
+
+      <!-- 返却入力フォーム -->
+      <div id="returnForm" class="return-form">
+        <label>返却時間（HHMM形式）<span style="color:#e74c3c;">*</span></label>
+        <input type="text" id="returnTime" placeholder="例：1530" pattern="[0-9]{4}" maxlength="4">
+        <button class="confirm-return-btn" id="confirmReturnBtn" onclick="confirmReturn()">登録</button>
+      </div>
+
+      <div class="modal-buttons" id="modalButtons">
+        <button class="close-modal-btn" onclick="closeModal()">閉じる</button>
+        <button class="return-btn" id="returnBtn" onclick="showReturnForm()">返却済みにする</button>
+      </div>
+      
+      <div class="modal-buttons" id="modalButtonsReturnedOnly" style="display:none;">
+        <button class="close-modal-btn" onclick="closeModal()" style="grid-column: span 2;">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 落とし主詳細モーダル -->
+  <div id="ownerDetailModal" class="modal" onclick="closeOwnerModalOnBackdrop(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div class="detail-row">
+        <div class="detail-label">受付番号</div>
+        <div class="detail-value" id="ownerModalId"></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">紛失者名</div>
+        <div class="detail-value" id="ownerModalName"></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">紛失物</div>
+        <div class="detail-value" id="ownerModalLostItem"></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">場所</div>
+        <div class="detail-value" id="ownerModalLocation"></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">気づいた時間</div>
+        <div class="detail-value" id="ownerModalNoticedTime"></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">連絡先</div>
+        <div class="detail-value" id="ownerModalContact"></div>
+      </div>
+      <div class="detail-row" id="ownerStudentIdRow" style="display:none;">
+        <div class="detail-label">学籍番号</div>
+        <div class="detail-value" id="ownerModalStudentId"></div>
+      </div>
+      <div class="detail-row" id="ownerResolvedDateRow" style="display:none;">
+        <div class="detail-label">対応日時</div>
+        <div class="detail-value" id="ownerModalResolvedDate"></div>
+      </div>
+
+      <!-- 対応済み登録フォーム -->
+      <div id="ownerReturnForm" class="return-form">
+        <label>対応時間（HHMM形式）<span style="color:#e74c3c;">*</span></label>
+        <input type="text" id="ownerReturnTime" placeholder="例：1530" pattern="[0-9]{4}" maxlength="4">
+        <button class="confirm-return-btn" id="ownerConfirmReturnBtn" onclick="confirmOwnerReturn()">登録</button>
+      </div>
+
+      <div class="modal-buttons" id="ownerModalButtons">
+        <button class="close-modal-btn" onclick="closeOwnerModal()">閉じる</button>
+        <button class="return-btn" id="ownerReturnBtn" onclick="showOwnerReturnForm()">対応済みにする</button>
+      </div>
+
+      <div class="modal-buttons" id="ownerModalButtonsResolvedOnly" style="display:none;">
+        <button class="close-modal-btn" onclick="closeOwnerModal()" style="grid-column: span 2;">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let allItems = [];
+    let allReturnedItems = [];
+    let currentItem = null;
+
+    // 画面切り替え
+    function showMenu() {
+      document.getElementById('menuScreen').style.display = 'block';
+      document.getElementById('viewScreen').style.display = 'none';
+      document.getElementById('returnedScreen').style.display = 'none';
+      document.getElementById('registerScreen').style.display = 'none';
+      document.getElementById('ownerRegisterScreen').style.display = 'none';
+      document.getElementById('ownerViewScreen').style.display = 'none';
+      document.getElementById('ownerResolvedScreen').style.display = 'none';
+    }
+
+    function showOwnerRegisterScreen() {
+      showMenu();
+      document.getElementById('menuScreen').style.display = 'none';
+      document.getElementById('ownerRegisterScreen').style.display = 'block';
+    }
+
+    function showOwnerViewScreen() {
+      showMenu();
+      document.getElementById('menuScreen').style.display = 'none';
+      document.getElementById('ownerViewScreen').style.display = 'block';
+      loadOwners();
+    }
+
+    function showOwnerResolvedScreen() {
+      showMenu();
+      document.getElementById('menuScreen').style.display = 'none';
+      document.getElementById('ownerResolvedScreen').style.display = 'block';
+      loadResolvedOwners();
+    }
+
+    function showViewScreen() {
+      document.getElementById('menuScreen').style.display = 'none';
+      document.getElementById('viewScreen').style.display = 'block';
+      document.getElementById('returnedScreen').style.display = 'none';
+      document.getElementById('registerScreen').style.display = 'none';
+      loadAllData();
+    }
+
+    function showReturnedScreen() {
+      document.getElementById('menuScreen').style.display = 'none';
+      document.getElementById('viewScreen').style.display = 'none';
+      document.getElementById('returnedScreen').style.display = 'block';
+      document.getElementById('registerScreen').style.display = 'none';
+      loadAllData();
+    }
+
+    function showRegisterScreen() {
+      document.getElementById('menuScreen').style.display = 'none';
+      document.getElementById('viewScreen').style.display = 'none';
+      document.getElementById('returnedScreen').style.display = 'none';
+      document.getElementById('registerScreen').style.display = 'block';
+    }
+
+    // 全データを毎回シートから読み込み
+    function loadAllData() {
+      document.getElementById('itemsList').innerHTML = '<div class="loading">読み込み中...</div>';
+      document.getElementById('returnedItemsList').innerHTML = '<div class="loading">読み込み中...</div>';
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            allItems = result.items;
+            populateDateFilter();
+            filterItems();
+          } else {
+            document.getElementById('itemsList').innerHTML = '<div class="error">エラー: ' + result.error + '</div>';
+          }
+        })
+        .withFailureHandler(function(error) {
+          document.getElementById('itemsList').innerHTML = '<div class="error">読み込みエラー</div>';
+        })
+        .getLostItems('すべて');
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            allReturnedItems = result.items;
+            populateReturnedDateFilter();
+            filterReturnedItems();
+          } else {
+            document.getElementById('returnedItemsList').innerHTML = '<div class="error">エラー: ' + result.error + '</div>';
+          }
+        })
+        .withFailureHandler(function(error) {
+          document.getElementById('returnedItemsList').innerHTML = '<div class="error">読み込みエラー</div>';
+        })
+        .getReturnedItems('すべて');
+    }
+
+    // 登録後・返却後のリフレッシュ用
+    function loadItems() { loadAllData(); }
+    function loadReturnedItems() { loadAllData(); }
+
+    // 日付フィルターの選択肢を生成
+    function populateDateFilter() {
+      const dateFilter = document.getElementById('dateFilter');
+      const dates = new Set();
+      
+      allItems.forEach(item => {
+        if (item.time) {
+          const timeStr = String(item.time);
+          const dateMatch = timeStr.match(/^(\d{4}\/\d{2}\/\d{2})/);
+          if (dateMatch) {
+            dates.add(dateMatch[1]);
+          }
+        }
+      });
+      
+      const sortedDates = Array.from(dates).sort().reverse();
+      
+      dateFilter.innerHTML = '<option value="すべて">すべての日付</option>';
+      sortedDates.forEach(date => {
+        const option = document.createElement('option');
+        option.value = date;
+        option.textContent = date;
+        dateFilter.appendChild(option);
+      });
+    }
+
+    // 返却済み日付フィルターの選択肢を生成
+    function populateReturnedDateFilter() {
+      const dateFilter = document.getElementById('returnedDateFilter');
+      const dates = new Set();
+      
+      allReturnedItems.forEach(item => {
+        if (item.returnDate) {
+          const timeStr = String(item.returnDate);
+          const dateMatch = timeStr.match(/^(\d{4}\/\d{2}\/\d{2})/);
+          if (dateMatch) {
+            dates.add(dateMatch[1]);
+          }
+        }
+      });
+      
+      const sortedDates = Array.from(dates).sort().reverse();
+      
+      dateFilter.innerHTML = '<option value="すべて">すべての日付</option>';
+      sortedDates.forEach(date => {
+        const option = document.createElement('option');
+        option.value = date;
+        option.textContent = date;
+        dateFilter.appendChild(option);
+      });
+    }
+
+    // フィルタリング
+    function filterItems() {
+      const date = document.getElementById('dateFilter').value;
+      const location = document.getElementById('locationFilter').value;
+      const status = document.getElementById('statusFilter').value;
+      
+      const filtered = allItems.filter(item => {
+        let dateMatch = true;
+        if (date !== 'すべて' && item.time) {
+          const timeStr = String(item.time);
+          dateMatch = timeStr.startsWith(date);
+        }
+        
+        const locationMatch = location === 'すべて' || item.location === location;
+        const statusMatch = status === 'すべて' || 
+                          (status === '普通' && !item.isUrgent) || 
+                          (status === '緊急' && item.isUrgent);
+        return dateMatch && locationMatch && statusMatch;
+      });
+
+      const listHtml = filtered.map(item => {
+        const statusText = item.isUrgent ? '緊急' : '普通';
+        const statusClass = item.isUrgent ? 'urgent' : 'normal';
+        
+        return `
+          <div class="item-card ${item.isUrgent ? 'urgent' : ''}" onclick='showDetail(${JSON.stringify(item).replace(/'/g, "&#39;")}, false)'>
+            <img src="${item.imageUrl}" class="item-thumbnail" onerror="this.style.background='#ddd'; this.alt='画像なし';">
+            <div class="item-info">
+              <div class="item-tag">${item.tag}</div>
+              <div class="item-name">${item.itemName}</div>
+              <span class="item-status ${statusClass}">${statusText}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('itemsList').innerHTML = listHtml || '<div class="loading">該当する落とし物がありません</div>';
+    }
+
+    // 返却済みフィルタリング
+    function filterReturnedItems() {
+      const date = document.getElementById('returnedDateFilter').value;
+      const location = document.getElementById('returnedLocationFilter').value;
+      const status = document.getElementById('returnedStatusFilter').value;
+      
+      const filtered = allReturnedItems.filter(item => {
+        let dateMatch = true;
+        if (date !== 'すべて' && item.returnDate) {
+          const timeStr = String(item.returnDate);
+          dateMatch = timeStr.startsWith(date);
+        }
+        
+        const locationMatch = location === 'すべて' || item.location === location;
+        const statusMatch = status === 'すべて' || 
+                          (status === '普通' && !item.isUrgent) || 
+                          (status === '緊急' && item.isUrgent);
+        return dateMatch && locationMatch && statusMatch;
+      });
+
+      const listHtml = filtered.map(item => {
+        return `
+          <div class="item-card returned" onclick='showDetail(${JSON.stringify(item).replace(/'/g, "&#39;")}, true)'>
+            <img src="${item.imageUrl}" class="item-thumbnail" onerror="this.style.background='#ddd'; this.alt='画像なし';">
+            <div class="item-info">
+              <div class="item-tag">${item.tag}</div>
+              <div class="item-name">${item.itemName}</div>
+              <span class="item-status returned">返却済</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('returnedItemsList').innerHTML = listHtml || '<div class="loading">該当する返却済み落とし物がありません</div>';
+    }
+
+    // 詳細表示
+    function showDetail(item, isReturned) {
+      currentItem = item;
+      document.getElementById('modalImage').src = item.imageUrl;
+      document.getElementById('modalTag').textContent = item.tag;
+      document.getElementById('modalItemName').textContent = item.itemName;
+      document.getElementById('modalTime').textContent = item.time;
+      document.getElementById('modalLocation').textContent = item.location;
+      document.getElementById('modalStatus').textContent = item.isUrgent ? '緊急' : '普通';
+      
+      // 返却日表示
+      if (isReturned && item.returnDate) {
+        document.getElementById('returnDateRow').style.display = 'block';
+        document.getElementById('returnDateRow').style.borderBottom = '1px solid #e0e0e0';
+        document.getElementById('modalReturnDate').textContent = item.returnDate;
+      } else {
+        document.getElementById('returnDateRow').style.display = 'none';
+      }
+      
+      // 学籍番号表示
+      if (item.studentId) {
+        document.getElementById('studentIdRow').style.display = 'block';
+        document.getElementById('studentIdRow').style.borderBottom = '1px solid #e0e0e0';
+        document.getElementById('modalStudentId').textContent = item.studentId;
+      } else {
+        document.getElementById('studentIdRow').style.display = 'none';
+      }
+      
+      // 返却フォームをリセット
+      document.getElementById('returnForm').style.display = 'none';
+      document.getElementById('returnTime').value = '';
+      
+      // ボタン表示切り替え
+      if (isReturned) {
+        document.getElementById('modalButtons').style.display = 'none';
+        document.getElementById('modalButtonsReturnedOnly').style.display = 'grid';
+      } else {
+        document.getElementById('modalButtons').style.display = 'grid';
+        document.getElementById('modalButtonsReturnedOnly').style.display = 'none';
+      }
+      
+      document.getElementById('detailModal').style.display = 'block';
+    }
+
+    // 返却フォーム表示
+    function showReturnForm() {
+      document.getElementById('returnForm').style.display = 'block';
+      document.getElementById('returnBtn').style.display = 'none';
+    }
+
+    // 返却確定
+    function confirmReturn() {
+      const returnTime = document.getElementById('returnTime').value;
+      
+      if (!returnTime || !/^\d{4}$/.test(returnTime)) {
+        alert('返却時間をHHMM形式で入力してください（例：1530）');
+        return;
+      }
+      
+      const confirmReturnBtn = document.getElementById('confirmReturnBtn');
+      confirmReturnBtn.disabled = true;
+      confirmReturnBtn.textContent = '登録中...';
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            alert(result.message);
+            closeModal();
+            loadItems(); // リストを再読み込み
+          } else {
+            alert('エラー: ' + result.error);
+            confirmReturnBtn.disabled = false;
+            confirmReturnBtn.textContent = '登録';
+          }
+        })
+        .withFailureHandler(function(error) {
+          alert('エラー: ' + error.message);
+          confirmReturnBtn.disabled = false;
+          confirmReturnBtn.textContent = '登録';
+        })
+        .markAsReturned(currentItem.tag, returnTime);
+    }
+
+    function closeModal() {
+      document.getElementById('detailModal').style.display = 'none';
+      document.getElementById('returnBtn').style.display = 'block';
+    }
+
+    function closeModalOnBackdrop(event) {
+      if (event.target.id === 'detailModal') {
+        closeModal();
+      }
+    }
+
+    // 対応可能な画像形式チェック
+    function isAcceptedImageType(file) {
+      const rejectedExts = ['.dng', '.cr2', '.nef', '.arw', '.raf', '.rw2', '.orf', '.raw', '.sr2', '.pef'];
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif', 'image/bmp'];
+      const ext = '.' + file.name.split('.').pop().toLowerCase();
+      if (rejectedExts.includes(ext)) return false;
+      if (file.type && file.type !== '') {
+        return allowedTypes.includes(file.type.toLowerCase());
+      }
+      return true;
+    }
+
+    // 登録フォーム：画像プレビュー
+    document.getElementById('photo').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        if (!isAcceptedImageType(file)) {
+          e.target.value = '';
+          document.getElementById('preview').style.display = 'none';
+          document.getElementById('unsupportedFileModal').style.display = 'block';
+          return;
+        }
+        showMessage('', '');
+        document.getElementById('message').style.display = 'none';
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const preview = document.getElementById('preview');
+          preview.src = e.target.result;
+          preview.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // 登録フォーム：送信
+    document.getElementById('lostItemForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const submitBtn = document.getElementById('submitBtn');
+      const message = document.getElementById('message');
+      
+      submitBtn.disabled = true;
+      submitBtn.textContent = '登録中...';
+      message.style.display = 'none';
+
+      const fileInput = document.getElementById('photo');
+      const file = fileInput.files[0];
+      
+      if (!file) {
+        showMessage('写真を選択してください', 'error');
+        submitBtn.disabled = false;
+        submitBtn.textContent = '登録する';
+        return;
+      }
+
+      if (!isAcceptedImageType(file)) {
+        document.getElementById('unsupportedFileModal').style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = '登録する';
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const formData = {
+          imageData: e.target.result,
+          imageType: file.type,
+          itemName: document.getElementById('itemName').value,
+          time: document.getElementById('time').value,
+          location: document.getElementById('location').value,
+          isUrgent: document.getElementById('isUrgent').value,
+          studentId: document.getElementById('studentId').value
+        };
+
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result.success) {
+              showMessage(`登録完了！タグ: ${result.tag}`, 'success');
+              document.getElementById('lostItemForm').reset();
+              document.getElementById('preview').style.display = 'none';
+            } else {
+              showMessage('エラー: ' + result.error, 'error');
+            }
+            submitBtn.disabled = false;
+            submitBtn.textContent = '登録する';
+          })
+          .withFailureHandler(function(error) {
+            showMessage('エラー: ' + error.message, 'error');
+            submitBtn.disabled = false;
+            submitBtn.textContent = '登録する';
+          })
+          .submitLostItem(formData);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function showMessage(text, type) {
+      const message = document.getElementById('message');
+      message.textContent = text;
+      message.className = 'message ' + type;
+      message.style.display = 'block';
+    }
+
+    // === 落とし主機能 ===
+    let allOwners = [];
+    let allResolvedOwners = [];
+    let currentOwner = null;
+
+    // 落とし主データ読み込み
+    function loadOwners() {
+      document.getElementById('ownerList').innerHTML = '<div class="loading">読み込み中...</div>';
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            allOwners = result.items;
+            renderOwnerList('ownerList', allOwners, false);
+          } else {
+            document.getElementById('ownerList').innerHTML = '<div class="error">エラー: ' + result.error + '</div>';
+          }
+        })
+        .withFailureHandler(function(error) {
+          document.getElementById('ownerList').innerHTML = '<div class="error">読み込みエラー</div>';
+        })
+        .getOwners();
+    }
+
+    function loadResolvedOwners() {
+      document.getElementById('ownerResolvedList').innerHTML = '<div class="loading">読み込み中...</div>';
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            allResolvedOwners = result.items;
+            renderOwnerList('ownerResolvedList', allResolvedOwners, true);
+          } else {
+            document.getElementById('ownerResolvedList').innerHTML = '<div class="error">エラー: ' + result.error + '</div>';
+          }
+        })
+        .withFailureHandler(function(error) {
+          document.getElementById('ownerResolvedList').innerHTML = '<div class="error">読み込みエラー</div>';
+        })
+        .getResolvedOwners();
+    }
+
+    function renderOwnerList(containerId, items, isResolved) {
+      if (!items.length) {
+        document.getElementById(containerId).innerHTML = '<div class="loading">該当する落とし主がいません</div>';
+        return;
+      }
+      const html = items.map(item => `
+        <div class="owner-card ${isResolved ? 'resolved' : ''}" onclick='showOwnerDetail(${JSON.stringify(item).replace(/'/g, "&#39;")}, ${isResolved})'>
+          <div class="owner-id">受付番号: ${item.id}</div>
+          <div class="owner-name">${item.ownerName}</div>
+          <div class="owner-item">紛失物: ${item.lostItem}</div>
+          <div class="owner-item">場所: ${item.location}</div>
+          <div class="owner-item">気づいた時間: ${item.noticedTime}</div>
+        </div>
+      `).join('');
+      document.getElementById(containerId).innerHTML = html;
+    }
+
+    // 落とし主詳細モーダル
+    function showOwnerDetail(item, isResolved) {
+      currentOwner = item;
+      document.getElementById('ownerModalId').textContent = item.id;
+      document.getElementById('ownerModalName').textContent = item.ownerName;
+      document.getElementById('ownerModalLostItem').textContent = item.lostItem;
+      document.getElementById('ownerModalLocation').textContent = item.location;
+      document.getElementById('ownerModalNoticedTime').textContent = item.noticedTime;
+      document.getElementById('ownerModalContact').textContent = item.contact;
+
+      if (item.studentId) {
+        document.getElementById('ownerStudentIdRow').style.display = 'block';
+        document.getElementById('ownerModalStudentId').textContent = item.studentId;
+      } else {
+        document.getElementById('ownerStudentIdRow').style.display = 'none';
+      }
+
+      if (isResolved && item.resolvedDate) {
+        document.getElementById('ownerResolvedDateRow').style.display = 'block';
+        document.getElementById('ownerModalResolvedDate').textContent = item.resolvedDate;
+      } else {
+        document.getElementById('ownerResolvedDateRow').style.display = 'none';
+      }
+
+      document.getElementById('ownerReturnForm').style.display = 'none';
+      document.getElementById('ownerReturnTime').value = '';
+
+      if (isResolved) {
+        document.getElementById('ownerModalButtons').style.display = 'none';
+        document.getElementById('ownerModalButtonsResolvedOnly').style.display = 'grid';
+      } else {
+        document.getElementById('ownerModalButtons').style.display = 'grid';
+        document.getElementById('ownerModalButtonsResolvedOnly').style.display = 'none';
+      }
+
+      document.getElementById('ownerDetailModal').style.display = 'block';
+    }
+
+    function showOwnerReturnForm() {
+      document.getElementById('ownerReturnForm').style.display = 'block';
+      document.getElementById('ownerReturnBtn').style.display = 'none';
+    }
+
+    function confirmOwnerReturn() {
+      const returnTime = document.getElementById('ownerReturnTime').value;
+      if (!returnTime || !/^\d{4}$/.test(returnTime)) {
+        alert('対応時間をHHMM形式で入力してください（例：1530）');
+        return;
+      }
+      const btn = document.getElementById('ownerConfirmReturnBtn');
+      btn.disabled = true;
+      btn.textContent = '登録中...';
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            alert(result.message);
+            closeOwnerModal();
+            loadOwners();
+          } else {
+            alert('エラー: ' + result.error);
+            btn.disabled = false;
+            btn.textContent = '登録';
+          }
+        })
+        .withFailureHandler(function(error) {
+          alert('エラー: ' + error.message);
+          btn.disabled = false;
+          btn.textContent = '登録';
+        })
+        .markOwnerAsResolved(currentOwner.id, returnTime);
+    }
+
+    function closeOwnerModal() {
+      document.getElementById('ownerDetailModal').style.display = 'none';
+      document.getElementById('ownerReturnBtn').style.display = 'block';
+    }
+
+    function closeOwnerModalOnBackdrop(event) {
+      if (event.target.id === 'ownerDetailModal') {
+        closeOwnerModal();
+      }
+    }
+
+    function closeUnsupportedModal(event) {
+      if (event.target.id === 'unsupportedFileModal') {
+        document.getElementById('unsupportedFileModal').style.display = 'none';
+      }
+    }
+
+    // 落とし主登録フォーム送信
+    document.getElementById('ownerForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const btn = document.getElementById('ownerSubmitBtn');
+      const messageEl = document.getElementById('ownerMessage');
+      btn.disabled = true;
+      btn.textContent = '登録中...';
+      messageEl.style.display = 'none';
+
+      const dateVal = document.getElementById('ownerDate').value;
+      const timeVal = document.getElementById('ownerTime').value;
+
+      if (!dateVal || !timeVal || !/^\d{4}$/.test(timeVal)) {
+        showOwnerMessage('日付と時間を正しく入力してください', 'error');
+        btn.disabled = false;
+        btn.textContent = '登録する';
+        return;
+      }
+
+      const dateParts = dateVal.split('-');
+      const noticedTime = `${dateParts[0]}/${dateParts[1]}/${dateParts[2]} ${timeVal.substring(0,2)}:${timeVal.substring(2,4)}`;
+
+      const formData = {
+        ownerName: document.getElementById('ownerName').value,
+        lostItem: document.getElementById('ownerLostItem').value,
+        location: document.getElementById('ownerLocation').value,
+        noticedTime: noticedTime,
+        contact: document.getElementById('ownerContact').value,
+        studentId: document.getElementById('ownerStudentId').value
+      };
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            showOwnerMessage(`登録完了！受付番号: ${result.id}`, 'success');
+            document.getElementById('ownerForm').reset();
+          } else {
+            showOwnerMessage('エラー: ' + result.error, 'error');
+          }
+          btn.disabled = false;
+          btn.textContent = '登録する';
+        })
+        .withFailureHandler(function(error) {
+          showOwnerMessage('エラー: ' + error.message, 'error');
+          btn.disabled = false;
+          btn.textContent = '登録する';
+        })
+        .submitOwner(formData);
+    });
+
+    function showOwnerMessage(text, type) {
+      const msg = document.getElementById('ownerMessage');
+      msg.textContent = text;
+      msg.className = 'message ' + type;
+      msg.style.display = 'block';
+    }
+  </script>
+</body>
+</html>
