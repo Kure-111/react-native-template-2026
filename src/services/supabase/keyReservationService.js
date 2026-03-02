@@ -85,12 +85,7 @@ export const createKeyReservations = async (input) => {
     if (!eventLocation) {
       throw new Error('eventLocation が未指定です');
     }
-    if (!requestedAtText) {
-      throw new Error('requestedAtText が未指定です');
-    }
-    if (!reason) {
-      throw new Error('reason が未指定です');
-    }
+    /** requestedAtText と reason は任意（事前申請フォームから削除済み） */
 
     const keyTargets = Array.isArray(input.keyTargets) ? input.keyTargets : [];
     if (keyTargets.length === 0) {

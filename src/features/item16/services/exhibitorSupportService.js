@@ -461,19 +461,13 @@ const createKeyPreapply = async (input) => {
       }
     }
 
-    const requestedAt = validateRequestedAtText(input.requestedAt);
-    const reason = normalizeText(input.reason);
-
     if (keyTargets.length === 0) {
       throw new Error('対象の鍵を選択してください');
-    }
-    if (!reason) {
-      throw new Error('理由を入力してください');
     }
 
     const keySummaryForTitle = keyTargets.length === 1 ? keyTargets[0].name : `${keyTargets.length}件`;
     const keySummaryLines = keyTargets.map((keyItem) => `- ${keyItem.location || keyItem.name}`).join('\n');
-    const description = `${reason}\n\n対象鍵\n${keySummaryLines}`;
+    const description = `対象鍵\n${keySummaryLines}`;
 
     const payload = {
       ticket_type: 'key_preapply',
@@ -490,7 +484,6 @@ const createKeyPreapply = async (input) => {
       metadata: {
         key_target: keySummaryForTitle,
         key_targets: keyTargets,
-        requested_at: requestedAt,
       },
     };
 
@@ -505,8 +498,8 @@ const createKeyPreapply = async (input) => {
       ticketId: result.data.id,
       eventName: normalizeText(input.eventName),
       eventLocation: normalizeText(input.eventLocation),
-      requestedAtText: requestedAt,
-      reason,
+      requestedAtText: '',
+      reason: '',
       keyTargets,
     });
 

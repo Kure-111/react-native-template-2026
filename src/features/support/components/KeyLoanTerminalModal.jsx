@@ -283,6 +283,8 @@ const KeyLoanTerminalModal = ({ visible, onClose, theme, user, onLoanCreated, on
   const [clockTime, setClockTime] = useState(() => new Date());
   /** 返却モードの名前絞り込みフィルター */
   const [returnNameFilter, setReturnNameFilter] = useState('');
+  /** 返却フローのステップ: 1=名前入力, 2=鍵選択 */
+  const [returnStep, setReturnStep] = useState(1);
 
   // ─── ドロワーサイドバー制御 ──────────────────────────────────────────────────
 
@@ -811,6 +813,8 @@ const KeyLoanTerminalModal = ({ visible, onClose, theme, user, onLoanCreated, on
         style={[styles.modeBigButton, { backgroundColor: '#1A7F37' }]}
         onPress={() => {
           setMode('return');
+          setReturnStep(1);
+          setReturnNameFilter('');
           setSelectedLoanIds([]);
         }}
       >
@@ -1120,30 +1124,92 @@ const KeyLoanTerminalModal = ({ visible, onClose, theme, user, onLoanCreated, on
   );
 
   /**
-   * 返却モード画面を返す
+   * 返却モード画面を返す（ステップで分岐）
    * @returns {JSX.Element} 返却UI
    */
-  const renderReturnMode = () => (
+  const renderReturnMode = () => {
+    if (returnStep === 1) {
+      return renderReturnNameStep();
+    }
+    return renderReturnSelectStep();
+  };
+
+  /**
+   * 返却 Step 1: 名前入力画面
+   * @returns {JSX.Element} 名前入力UI
+   */
+  const renderReturnNameStep = () => (
     <View style={styles.section}>
-      {/* 名前入力欄（絞り込みフィルター） */}
-      <Text style={[styles.label, { color: theme.text }]}>返却者の名前 / 団体名で絞り込む</Text>
-      <View style={[styles.returnFilterRow, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-        <Text style={[styles.returnFilterIcon, { color: theme.textSecondary }]}>🔍</Text>
+      <Text style={[styles.returnNameTitle, { color: theme.text }]}>返却者の名前を入力してください</Text>
+      <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+        名前や団体名で絞り込めます。空欄のまま次へ進むと全件表示します。
+      </Text>
+
+      {/* 大きな名前入力欄 */}
+      <View style={[styles.returnNameInputBox, { borderColor: theme.primary, backgroundColor: theme.surface }]}>
         <TextInput
-          style={[styles.returnFilterInput, { color: theme.text }]}
+          style={[styles.returnNameInput, { color: theme.text }]}
           value={returnNameFilter}
           onChangeText={setReturnNameFilter}
-          placeholder="名前や団体名を入力..."
+          placeholder="例：山田、企画管理部..."
           placeholderTextColor={theme.textSecondary}
+          autoFocus
           autoCapitalize="none"
           autoCorrect={false}
-          clearButtonMode="while-editing"
+          returnKeyType="next"
+          onSubmitEditing={() => setReturnStep(2)}
         />
         {returnNameFilter.length > 0 ? (
-          <TouchableOpacity onPress={() => setReturnNameFilter('')} style={styles.returnFilterClear}>
+          <TouchableOpacity onPress={() => setReturnNameFilter('')} style={styles.returnNameClear}>
             <Text style={[styles.returnFilterClearText, { color: theme.textSecondary }]}>✕</Text>
           </TouchableOpacity>
         ) : null}
+      </View>
+
+      {/* 次へボタン */}
+      <TouchableOpacity
+        style={[styles.primaryButton, { backgroundColor: theme.primary }]}
+        onPress={() => setReturnStep(2)}
+      >
+        <Text style={styles.primaryButtonText}>
+          {returnNameFilter ? `「${returnNameFilter}」で検索 →` : '全件表示 →'}
+        </Text>
+      </TouchableOpacity>
+
+      {/* 戻るボタン */}
+      <TouchableOpacity
+        style={[styles.secondaryButton, { borderColor: theme.border }]}
+        onPress={() => {
+          setSelectedLoanIds([]);
+          setReturnNameFilter('');
+          setMode(null);
+        }}
+      >
+        <Text style={[styles.secondaryButtonText, { color: theme.textSecondary }]}>← モード選択に戻る</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  /**
+   * 返却 Step 2: 鍵選択・返却実行画面
+   * @returns {JSX.Element} 鍵選択UI
+   */
+  const renderReturnSelectStep = () => (
+    <View style={styles.section}>
+      {/* フィルター状態表示 + 名前入力へ戻るリンク */}
+      <View style={styles.returnStepHeader}>
+        <Text style={[styles.returnStepHeaderText, { color: theme.text }]}>
+          {returnNameFilter ? `「${returnNameFilter}」の貸出` : '全ての貸出中'}
+        </Text>
+        <TouchableOpacity
+          onPress={() => {
+            setSelectedLoanIds([]);
+            setReturnStep(1);
+          }}
+          style={[styles.returnStepBackLink, { borderColor: theme.border }]}
+        >
+          <Text style={[styles.returnStepBackLinkText, { color: theme.primary }]}>← 名前を変更</Text>
+        </TouchableOpacity>
       </View>
 
       {/* 件数表示 */}
@@ -1226,6 +1292,7 @@ const KeyLoanTerminalModal = ({ visible, onClose, theme, user, onLoanCreated, on
         onPress={() => {
           setSelectedLoanIds([]);
           setReturnNameFilter('');
+          setReturnStep(1);
           setMode(null);
         }}
         disabled={isSubmitting}
@@ -1492,7 +1559,59 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
   },
-  /** 返却モード 名前フィルター行 */
+  /** 返却 Step1: タイトル */
+  returnNameTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  /** 返却 Step1: 名前入力ボックス */
+  returnNameInputBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    marginVertical: 8,
+  },
+  /** 返却 Step1: 名前入力テキスト（大） */
+  returnNameInput: {
+    flex: 1,
+    fontSize: 28,
+    fontWeight: '500',
+    paddingVertical: 16,
+  },
+  /** 返却 Step1: クリアボタン */
+  returnNameClear: {
+    padding: 8,
+  },
+  /** 返却 Step2: ヘッダー行（フィルター状態 + 名前変更リンク） */
+  returnStepHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  returnStepHeaderText: {
+    fontSize: 16,
+    fontWeight: '700',
+    flex: 1,
+  },
+  returnStepBackLink: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  returnStepBackLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  /** 返却モード 名前フィルター行（旧・後方互換スタイル） */
   returnFilterRow: {
     flexDirection: 'row',
     alignItems: 'center',

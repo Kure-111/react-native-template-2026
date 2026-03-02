@@ -428,17 +428,18 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
                 { borderColor: theme.border, backgroundColor: theme.background },
               ]}
             >
+              {/* 申請元の企画・団体を目立つ位置に表示 */}
               <Text style={[styles.listTitle, { color: theme.text }]} numberOfLines={1}>
-                {getReservationKeyLabel(reservation)}
+                {normalizeText(reservation.event_name) || '（企画名未設定）'}
               </Text>
               <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                予約番号: {reservation.reservation_no || '-'}
+                場所: {normalizeText(reservation.event_location) || '-'}
+              </Text>
+              <Text style={[styles.listMeta, { color: theme.primary }]} numberOfLines={1}>
+                申請鍵: {getReservationKeyLabel(reservation)}
               </Text>
               <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                希望時刻: {reservation.requested_at_text}
-              </Text>
-              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={2}>
-                理由: {reservation.reason}
+                申請日時: {reservation.created_at ? new Date(reservation.created_at).toLocaleString('ja-JP') : '-'}
               </Text>
               <View style={styles.rowActions}>
                 <TouchableOpacity
@@ -480,13 +481,13 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
               ]}
             >
               <Text style={[styles.listTitle, { color: theme.text }]} numberOfLines={1}>
-                {getReservationKeyLabel(reservation)}
+                {normalizeText(reservation.event_name) || '（企画名未設定）'}
+              </Text>
+              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
+                申請鍵: {getReservationKeyLabel(reservation)}
               </Text>
               <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
                 状態: {RESERVATION_STATUS_LABELS[reservation.status] || reservation.status}
-              </Text>
-              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                希望時刻: {reservation.requested_at_text}
               </Text>
               <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
                 対応日時:{' '}

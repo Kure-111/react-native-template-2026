@@ -223,8 +223,7 @@ const Item16Screen = ({ navigation }) => {
   const [keyBuilding, setKeyBuilding] = useState(ALL_BUILDINGS_VALUE);
   const [keySelectedId, setKeySelectedId] = useState('');
   const [selectedKeyIds, setSelectedKeyIds] = useState([]);
-  const [keyRequestedAt, setKeyRequestedAt] = useState('');
-  const [keyReason, setKeyReason] = useState('');
+
 
   // 企画の開始/終了報告
   const [eventStatus, setEventStatus] = useState(EVENT_STATUS_OPTIONS[0].key);
@@ -645,9 +644,7 @@ const Item16Screen = ({ navigation }) => {
         if (drafts[STORAGE_KEYS.DRAFT_EMERGENCY_DETAIL]) {
           setEmergencyDetail(drafts[STORAGE_KEYS.DRAFT_EMERGENCY_DETAIL]);
         }
-        if (drafts[STORAGE_KEYS.DRAFT_KEY_REASON]) {
-          setKeyReason(drafts[STORAGE_KEYS.DRAFT_KEY_REASON]);
-        }
+
         if (drafts[STORAGE_KEYS.DRAFT_EVENT_MEMO]) {
           setEventMemo(drafts[STORAGE_KEYS.DRAFT_EVENT_MEMO]);
         }
@@ -668,7 +665,7 @@ const Item16Screen = ({ navigation }) => {
         await AsyncStorage.multiSet([
           [STORAGE_KEYS.DRAFT_QUESTION_DETAIL, questionDetail],
           [STORAGE_KEYS.DRAFT_EMERGENCY_DETAIL, emergencyDetail],
-          [STORAGE_KEYS.DRAFT_KEY_REASON, keyReason],
+
           [STORAGE_KEYS.DRAFT_EVENT_MEMO, eventMemo],
         ]);
       } catch (error) {
@@ -676,7 +673,7 @@ const Item16Screen = ({ navigation }) => {
       }
     };
     saveDrafts();
-  }, [questionDetail, emergencyDetail, keyReason, eventMemo, isHydrated]);
+  }, [questionDetail, emergencyDetail, eventMemo, isHydrated]);
 
   /**
    * ログインユーザーが変わったら履歴を再取得
@@ -936,18 +933,6 @@ const Item16Screen = ({ navigation }) => {
     if (!validateCommonFields()) {
       return;
     }
-    let normalizedKeyRequestedAt = keyRequestedAt;
-    if (activeTab === SUPPORT_TAB_TYPES.KEY_PREAPPLY) {
-      const validation = validateKeyRequestedAtInput(keyRequestedAt);
-      if (!validation.isValid) {
-        showMessage('入力エラー', validation.message);
-        return;
-      }
-      normalizedKeyRequestedAt = validation.normalizedValue;
-      if (normalizedKeyRequestedAt !== keyRequestedAt) {
-        setKeyRequestedAt(normalizedKeyRequestedAt);
-      }
-    }
     if (attachmentFile && attachmentFile.size > MAX_ATTACHMENT_FILE_BYTES) {
       showMessage(
         '容量超過',
@@ -958,15 +943,14 @@ const Item16Screen = ({ navigation }) => {
       return;
     }
 
-    executeSubmit(normalizedKeyRequestedAt);
+    executeSubmit();
   };
 
   /**
    * 送信実行処理
-   * @param {string} normalizedKeyRequestedAt - 正規化済み希望時刻
    * @returns {void}
    */
-  const executeSubmit = (normalizedKeyRequestedAt) => {
+  const executeSubmit = () => {
     let payload = {};
 
     if (activeTab === SUPPORT_TAB_TYPES.QUESTION) {
@@ -985,8 +969,6 @@ const Item16Screen = ({ navigation }) => {
       payload = {
         type: activeTab,
         keyTargets: selectedKeyItems,
-        requestedAt: normalizedKeyRequestedAt,
-        reason: keyReason,
       };
     } else if (activeTab === SUPPORT_TAB_TYPES.EVENT_STATUS) {
       payload = {
@@ -1050,8 +1032,6 @@ const Item16Screen = ({ navigation }) => {
         result = await exhibitorSupportService.createKeyPreapply({
           ...commonPayload,
           keyTargets: selectedKeyItems,
-          requestedAt: normalizedKeyRequestedAt,
-          reason: keyReason,
         });
       } else if (activeTab === SUPPORT_TAB_TYPES.EVENT_STATUS) {
         result = await exhibitorSupportService.createEventStatusReport({
@@ -1080,9 +1060,6 @@ const Item16Screen = ({ navigation }) => {
         setSelectedKeyIds([]);
         setKeyBuilding(ALL_BUILDINGS_VALUE);
         setKeySelectedId('');
-        setKeyRequestedAt('');
-        setKeyReason('');
-        AsyncStorage.removeItem(STORAGE_KEYS.DRAFT_KEY_REASON).catch(() => {});
       } else if (activeTab === SUPPORT_TAB_TYPES.EVENT_STATUS) {
         setEventMemo('');
         AsyncStorage.removeItem(STORAGE_KEYS.DRAFT_EVENT_MEMO).catch(() => {});
@@ -1093,7 +1070,7 @@ const Item16Screen = ({ navigation }) => {
       if (result.warning) {
         showMessage('送信完了（一部警告）', `連絡案件を登録しました。\n${result.warning}`);
       } else {
-        showMessage('送信完了', '連絡案件を登録しました。');
+        showMessage('送信完了', '本部に申請を送信しました。');
       }
       loadMyContacts();
     };
@@ -1196,10 +1173,6 @@ const Item16Screen = ({ navigation }) => {
           filteredKeyCatalog={filteredKeyCatalog}
           keyBuildings={KEY_BUILDINGS}
           allBuildingsValue={ALL_BUILDINGS_VALUE}
-          keyRequestedAt={keyRequestedAt}
-          onChangeKeyRequestedAt={setKeyRequestedAt}
-          keyReason={keyReason}
-          onChangeKeyReason={setKeyReason}
         />
       );
     }

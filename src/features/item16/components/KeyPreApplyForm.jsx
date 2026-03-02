@@ -1,19 +1,12 @@
 /**
  * 鍵事前申請フォームコンポーネント
- * 棟選択、鍵選択、複数追加、希望時刻、理由入力を提供する
+ * 棟選択、鍵選択、複数追加を提供する
+ * 希望時刻・理由・添付情報は不要のため削除済み
  */
 
 import React from 'react';
 import { Picker } from '@react-native-picker/picker';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-
-/**
- * 入力テキストの正規化（全角コロンを半角に変換、連続空白を統一）
- * @param {string} value - 入力値
- * @returns {string} 正規化後の値
- */
-const normalizeRequestedAtInput = (value) =>
-  (value || '').trim().replace(/：/g, ':').replace(/\s+/g, ' ');
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 /**
  * 鍵事前申請フォームコンポーネント
@@ -29,10 +22,6 @@ const normalizeRequestedAtInput = (value) =>
  * @param {Array} props.filteredKeyCatalog - 棟フィルタ適用後の鍵候補一覧
  * @param {Array} props.keyBuildings - 棟一覧
  * @param {string} props.allBuildingsValue - 「すべての棟」の値定数
- * @param {string} props.keyRequestedAt - 希望時刻入力値
- * @param {(value: string) => void} props.onChangeKeyRequestedAt - 希望時刻変更コールバック
- * @param {string} props.keyReason - 理由入力値
- * @param {(value: string) => void} props.onChangeKeyReason - 理由変更コールバック
  * @returns {JSX.Element} 鍵事前申請フォーム
  */
 const KeyPreApplyForm = ({
@@ -47,10 +36,6 @@ const KeyPreApplyForm = ({
   filteredKeyCatalog,
   keyBuildings,
   allBuildingsValue,
-  keyRequestedAt,
-  onChangeKeyRequestedAt,
-  keyReason,
-  onChangeKeyReason,
 }) => {
   return (
     <View style={styles.formSection}>
@@ -156,48 +141,6 @@ const KeyPreApplyForm = ({
           ))}
         </View>
       )}
-
-      <Text style={[styles.label, { color: theme.text }]}>希望時刻</Text>
-      <TextInput
-        value={keyRequestedAt}
-        onChangeText={onChangeKeyRequestedAt}
-        onBlur={() => {
-          const normalized = normalizeRequestedAtInput(keyRequestedAt);
-          if (normalized !== keyRequestedAt) {
-            onChangeKeyRequestedAt(normalized);
-          }
-        }}
-        placeholder="例）10:30 または 2026-02-16 10:30"
-        placeholderTextColor={theme.textSecondary}
-        style={[
-          styles.input,
-          {
-            backgroundColor: theme.background,
-            borderColor: theme.border,
-            color: theme.text,
-          },
-        ]}
-      />
-      <Text style={[styles.questionTargetHint, { color: theme.textSecondary }]}>
-        入力形式: HH:mm または YYYY-MM-DD HH:mm
-      </Text>
-
-      <Text style={[styles.label, { color: theme.text }]}>理由</Text>
-      <TextInput
-        value={keyReason}
-        onChangeText={onChangeKeyReason}
-        multiline
-        placeholder="利用目的を入力してください"
-        placeholderTextColor={theme.textSecondary}
-        style={[
-          styles.multilineInput,
-          {
-            backgroundColor: theme.background,
-            borderColor: theme.border,
-            color: theme.text,
-          },
-        ]}
-      />
     </View>
   );
 };
@@ -209,13 +152,6 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: '600',
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
   },
   pickerContainer: {
     borderWidth: 1,
@@ -273,19 +209,6 @@ const styles = StyleSheet.create({
   removeKeyButtonText: {
     fontSize: 12,
     fontWeight: '600',
-  },
-  questionTargetHint: {
-    fontSize: 12,
-    marginTop: -2,
-  },
-  multilineInput: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    minHeight: 100,
-    textAlignVertical: 'top',
   },
 });
 
