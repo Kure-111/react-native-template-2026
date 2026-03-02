@@ -6,7 +6,6 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -47,6 +46,7 @@ import PatrolCheckForm from '../components/PatrolCheckForm';
 import UnvisitedAlertList from '../components/UnvisitedAlertList';
 import PatrolEvaluationForm from '../components/PatrolEvaluationForm';
 import PatrolRankingCard from '../components/PatrolRankingCard';
+import ToastMessage from '../../../shared/components/ToastMessage';
 import OfflineBanner from '../../../shared/components/OfflineBanner';
 
 /** 種別ごとの完了結果候補 */
@@ -182,18 +182,26 @@ const Item12Screen = ({ navigation }) => {
   /** ランキング読み込み中フラグ */
   const [isLoadingRanking, setIsLoadingRanking] = useState(false);
 
+  /* ---- トースト通知 ---- */
+  /** トースト表示フラグ・メッセージ・種別 */
+  const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
+
   /**
-   * メッセージ表示
-   * @param {string} title - タイトル
-   * @param {string} message - 本文
+   * トースト通知を表示（確認ダイアログの代替）
+   * @param {string} message - 表示メッセージ
+   * @param {'success'|'error'|'info'} [type='success'] - 種別
    * @returns {void}
    */
-  const showMessage = (title, message) => {
-    if (Platform.OS === 'web') {
-      window.alert(`${title}\n${message}`);
-      return;
-    }
-    Alert.alert(title, message);
+  const showToast = (message, type = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  /**
+   * トースト通知を非表示にする
+   * @returns {void}
+   */
+  const hideToast = () => {
+    setToast((prev) => ({ ...prev, visible: false }));
   };
 
   /** 選択中タスク */
@@ -222,6 +230,12 @@ const Item12Screen = ({ navigation }) => {
     const { data, error } = await listPatrolTasks({
       assignedTo: user.id,
       includeUnassigned: true,
+      /** 完了・取消済みタスクは一覧から除外 */
+      statuses: [
+        PATROL_TASK_STATUSES.OPEN,
+        PATROL_TASK_STATUSES.ACCEPTED,
+        PATROL_TASK_STATUSES.EN_ROUTE,
+      ],
       limit: 120,
     });
     setIsLoadingTasks(false);
@@ -442,7 +456,7 @@ const Item12Screen = ({ navigation }) => {
    */
   const handleSubmitPatrolCheck = async () => {
     if (!user?.id) {
-      showMessage('登録エラー', 'ログイン情報が取得できません');
+      showToast('ログイン情報が取得できません', 'error');
       return;
     }
 
@@ -450,26 +464,8 @@ const Item12Screen = ({ navigation }) => {
     const locationText = patrolLocationText.trim() || selectedLocation?.label || selectedLocation?.name || '';
 
     if (!locationText) {
-      showMessage('入力不足', '巡回場所を入力してください');
+      showToast('巡回場所を入力してください', 'error');
       return;
-    }
-
-    /** 確認ダイアログを表示 */
-    const confirmMessage = `「${locationText}」の巡回チェックを記録しますか？`;
-    if (Platform.OS === 'web') {
-      if (!window.confirm(confirmMessage)) {
-        return;
-      }
-    } else {
-      const confirmed = await new Promise((resolve) => {
-        Alert.alert('確認', confirmMessage, [
-          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
-          { text: '記録', onPress: () => resolve(true) },
-        ]);
-      });
-      if (!confirmed) {
-        return;
-      }
     }
 
     setIsSubmittingPatrolCheck(true);
@@ -483,14 +479,14 @@ const Item12Screen = ({ navigation }) => {
     setIsSubmittingPatrolCheck(false);
 
     if (error) {
-      showMessage('登録エラー', error.message || '巡回チェックの登録に失敗しました');
+      showToast(error.message || '巡回チェックの登録に失敗しました', 'error');
       return;
     }
 
     setPatrolCheckMemo('');
     setPatrolCheckItems([]);
     await Promise.all([loadRecentPatrolChecks(), loadUnvisitedAlerts()]);
-    showMessage('登録完了', '巡回チェックを記録しました');
+    showToast('巡回チェックを記録しました');
   };
 
   /**
@@ -499,38 +495,20 @@ const Item12Screen = ({ navigation }) => {
    */
   const handleSubmitEvaluation = async () => {
     if (!user?.id) {
-      showMessage('登録エラー', 'ログイン情報が取得できません');
+      showToast('ログイン情報が取得できません', 'error');
       return;
     }
     if (!selectedTask) {
-      showMessage('入力不足', '評価対象のタスクを選択してください');
+      showToast('評価対象のタスクを選択してください', 'error');
       return;
     }
     if (selectedTask.task_status !== PATROL_TASK_STATUSES.DONE) {
-      showMessage('入力不足', '評価はタスク完了後に入力してください');
+      showToast('評価はタスク完了後に入力してください', 'error');
       return;
     }
     if (evaluationComment.trim().length < 4) {
-      showMessage('入力不足', '評価コメントを4文字以上で入力してください');
+      showToast('評価コメントを4文字以上で入力してください', 'error');
       return;
-    }
-
-    /** 確認ダイアログを表示 */
-    const confirmMessage = `${evaluationScore}点の評価を承認待ちとして登録しますか？`;
-    if (Platform.OS === 'web') {
-      if (!window.confirm(confirmMessage)) {
-        return;
-      }
-    } else {
-      const confirmed = await new Promise((resolve) => {
-        Alert.alert('確認', confirmMessage, [
-          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
-          { text: '登録', onPress: () => resolve(true) },
-        ]);
-      });
-      if (!confirmed) {
-        return;
-      }
     }
 
     const sourceTicket = Array.isArray(selectedTask.source_ticket)
@@ -549,42 +527,24 @@ const Item12Screen = ({ navigation }) => {
     setIsSubmittingEvaluation(false);
 
     if (error) {
-      showMessage('登録エラー', error.message || '評価入力に失敗しました');
+      showToast(error.message || '評価入力に失敗しました', 'error');
       return;
     }
 
     setEvaluationComment('');
     await loadMyEvaluationChecks();
-    showMessage('登録完了', '評価を承認待ちとして登録しました');
+    showToast('評価を承認待ちとして登録しました');
   };
 
   /**
    * 向かいます（受諾）処理
+   * 確認ダイアログなしで即実行し、結果をトーストで通知する
    * @returns {Promise<void>} 実行処理
    */
   const handleAcceptTask = async () => {
     if (!selectedTask || !user?.id) {
-      showMessage('操作エラー', 'タスクまたはログイン情報が不足しています');
+      showToast('タスクまたはログイン情報が不足しています', 'error');
       return;
-    }
-
-    /** 確認ダイアログを表示 */
-    const taskLabel = TASK_TYPE_LABELS[selectedTask.task_type] || selectedTask.task_type;
-    const confirmMessage = `「${taskLabel}」の受諾（向かいます）を実行しますか？`;
-    if (Platform.OS === 'web') {
-      if (!window.confirm(confirmMessage)) {
-        return;
-      }
-    } else {
-      const confirmed = await new Promise((resolve) => {
-        Alert.alert('確認', confirmMessage, [
-          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
-          { text: '実行', onPress: () => resolve(true) },
-        ]);
-      });
-      if (!confirmed) {
-        return;
-      }
     }
 
     setIsSubmitting(true);
@@ -604,7 +564,7 @@ const Item12Screen = ({ navigation }) => {
     setIsSubmitting(false);
 
     if (error) {
-      showMessage('更新エラー', error.message || '受諾処理に失敗しました');
+      showToast(error.message || '受諾処理に失敗しました', 'error');
       return;
     }
 
@@ -613,42 +573,26 @@ const Item12Screen = ({ navigation }) => {
       loadTaskResults(selectedTask.id),
       loadSourceMessages(selectedTask.source_ticket_id || null),
     ]);
-    showMessage('更新完了', '「向かいます」を登録しました');
+    showToast('「向かいます」を登録しました');
   };
 
   /**
    * 完了処理
+   * 確認ダイアログなしで即実行し、結果をトーストで通知する
    * @returns {Promise<void>} 実行処理
    */
   const handleCompleteTask = async () => {
     if (!selectedTask || !user?.id) {
-      showMessage('操作エラー', 'タスクまたはログイン情報が不足しています');
+      showToast('タスクまたはログイン情報が不足しています', 'error');
       return;
     }
     if (!resultCode) {
-      showMessage('入力不足', '結果を選択してください');
+      showToast('結果を選択してください', 'error');
       return;
     }
 
-    /** 確認ダイアログを表示 */
     const taskLabel = TASK_TYPE_LABELS[selectedTask.task_type] || selectedTask.task_type;
     const resultLabel = RESULT_LABELS[resultCode] || resultCode;
-    const confirmMessage = `「${taskLabel}」を「${resultLabel}」で完了しますか？`;
-    if (Platform.OS === 'web') {
-      if (!window.confirm(confirmMessage)) {
-        return;
-      }
-    } else {
-      const confirmed = await new Promise((resolve) => {
-        Alert.alert('確認', confirmMessage, [
-          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
-          { text: '完了', onPress: () => resolve(true) },
-        ]);
-      });
-      if (!confirmed) {
-        return;
-      }
-    }
 
     setIsSubmitting(true);
     const { error } = await completePatrolTask({
@@ -663,7 +607,7 @@ const Item12Screen = ({ navigation }) => {
     setIsSubmitting(false);
 
     if (error) {
-      showMessage('完了エラー', error.message || '完了処理に失敗しました');
+      showToast(error.message || '完了処理に失敗しました', 'error');
       return;
     }
 
@@ -673,7 +617,7 @@ const Item12Screen = ({ navigation }) => {
       loadTaskResults(selectedTask.id),
       loadSourceMessages(selectedTask.source_ticket_id || null),
     ]);
-    showMessage('完了', '巡回タスクを完了として登録しました');
+    showToast(`${taskLabel}を「${resultLabel}」で完了しました`);
   };
 
   /**
@@ -682,15 +626,15 @@ const Item12Screen = ({ navigation }) => {
    */
   const handleSendMemoOnly = async () => {
     if (!selectedTask?.source_ticket_id) {
-      showMessage('送信不可', 'このタスクは元連絡案件がないためメモのみ共有できません');
+      showToast('このタスクは元連絡案件がないためメモのみ共有できません', 'error');
       return;
     }
     if (!user?.id) {
-      showMessage('送信不可', 'ログイン情報が取得できません');
+      showToast('ログイン情報が取得できません', 'error');
       return;
     }
     if (!patrolMemo.trim()) {
-      showMessage('入力不足', '巡回メモを入力してください');
+      showToast('巡回メモを入力してください', 'error');
       return;
     }
 
@@ -703,13 +647,13 @@ const Item12Screen = ({ navigation }) => {
     setIsSubmitting(false);
 
     if (error) {
-      showMessage('送信エラー', error.message || 'メモ送信に失敗しました');
+      showToast(error.message || 'メモ送信に失敗しました', 'error');
       return;
     }
 
     setPatrolMemo('');
     await loadSourceMessages(selectedTask.source_ticket_id);
-    showMessage('送信完了', 'メモを共有しました');
+    showToast('メモを共有しました');
   };
 
   /** 自分のタスクまたは未割当かどうか */
@@ -918,6 +862,14 @@ const Item12Screen = ({ navigation }) => {
           )}
 
         </ScrollView>
+
+        {/* ── トースト通知（タブバーの上に浮かせる） ── */}
+        <ToastMessage
+          visible={toast.visible}
+          message={toast.message}
+          type={toast.type}
+          onHide={hideToast}
+        />
 
         {/* ── 下部 iOS タブバー ── */}
         <View style={[styles.bottomArea, { borderTopColor: theme.border, backgroundColor: theme.background }]}>

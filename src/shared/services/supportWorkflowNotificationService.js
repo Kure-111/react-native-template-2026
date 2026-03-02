@@ -3,7 +3,7 @@
  * item12〜16 の業務イベントを通知サービスへ橋渡しする
  */
 
-import { getRoles, sendNotificationToRoles } from './notificationService.js';
+import { getRoles, sendNotificationToRoles, sendNotificationToUser } from './notificationService.js';
 
 const ROLE_NAME_TARGETS = {
   hq: ['企画管理部', '管理者'],
@@ -169,13 +169,18 @@ export const notifySupportTicketCreated = async ({ ticket, senderUserId = null }
 };
 
 /**
- * 巡回タスク受諾通知（本部向け）
+ * 巡回タスク受諾通知（管理部全員 + 鍵返却者）
  * @param {Object} input
  * @param {Object} input.task - 受諾後タスク
  * @param {string|null} [input.senderUserId] - 送信者ユーザーID
+ * @param {string|null} [input.keyReturnerUserId] - 鍵を返却した人のユーザーID（施錠確認タスク時）
  * @returns {Promise<{error: Error|null, data?: Object}>}
  */
-export const notifyPatrolTaskAccepted = async ({ task, senderUserId = null }) => {
+export const notifyPatrolTaskAccepted = async ({
+  task,
+  senderUserId = null,
+  keyReturnerUserId = null,
+}) => {
   if (!task?.id) {
     return { error: new Error('タスクIDが不足しているため通知できません') };
   }
@@ -185,20 +190,43 @@ export const notifyPatrolTaskAccepted = async ({ task, senderUserId = null }) =>
   const eventName = normalizeText(task.event_name) || '企画名未設定';
   const eventLocation = normalizeText(task.event_location || task.location_text) || '場所未設定';
 
-  return sendNotificationToRoleNames({
-    roleNames: ROLE_NAME_TARGETS.hq,
+  /** 通知メタデータ */
+  const metadata = {
+    source: 'patrol_task',
+    event: 'accepted',
+    task_id: task.id,
+    task_no: task.task_no || null,
+    task_type: task.task_type || null,
+    source_ticket_id: task.source_ticket_id || null,
+  };
+
+  /** 管理部全員（警備部 + 企画管理部 + 管理者）へ通知 */
+  const { error } = await sendNotificationToRoleNames({
+    roleNames: ROLE_NAME_TARGETS.patrol,
     title: `巡回受諾: ${taskLabel}`,
     body: `${eventName} / ${eventLocation}`,
-    metadata: {
-      source: 'patrol_task',
-      event: 'accepted',
-      task_id: task.id,
-      task_no: task.task_no || null,
-      task_type: task.task_type || null,
-      source_ticket_id: task.source_ticket_id || null,
-    },
+    metadata,
     senderUserId,
   });
+
+  /** 鍵を返却した人がいれば個別にも通知（返却者 ≠ 受諾者の場合のみ） */
+  const normalizedReturnerUserId = normalizeText(keyReturnerUserId);
+  const normalizedSenderUserId = normalizeText(senderUserId);
+  const shouldNotifyReturner =
+    normalizedReturnerUserId &&
+    normalizedReturnerUserId !== normalizedSenderUserId;
+
+  if (shouldNotifyReturner) {
+    await sendNotificationToUser(
+      normalizedReturnerUserId,
+      `巡回受諾: ${taskLabel}`,
+      `${eventName} / ${eventLocation}\n担当者が施錠確認のため向かいます。`,
+      { ...metadata, event: 'accepted_notify_returner' },
+      senderUserId,
+    );
+  }
+
+  return { error: error || null };
 };
 
 /**

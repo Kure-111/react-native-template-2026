@@ -288,9 +288,21 @@ export const acceptPatrolTask = async ({ taskId, patrolUserId }) => {
     });
 
     if (!rpcError) {
+      /** 鍵返却者IDを取得（施錠確認タスクの場合） */
+      let rpcKeyReturnerUserId = null;
+      if (rpcData?.source_key_loan_id) {
+        const { data: rpcLoanData } = await getSupabaseClient()
+          .from(KEY_LOANS_TABLE)
+          .select('return_user_id')
+          .eq('id', rpcData.source_key_loan_id)
+          .single();
+        rpcKeyReturnerUserId = rpcLoanData?.return_user_id || null;
+      }
+
       const { error: notifyError } = await notifyPatrolTaskAccepted({
         task: rpcData,
         senderUserId: normalizedUserId,
+        keyReturnerUserId: rpcKeyReturnerUserId,
       });
       logNotificationError('巡回受諾', notifyError);
       return { data: rpcData, error: null };
@@ -318,9 +330,21 @@ export const acceptPatrolTask = async ({ taskId, patrolUserId }) => {
       return { data: null, error };
     }
 
+    /** 鍵返却者IDを取得（施錠確認タスクの場合） */
+    let keyReturnerUserId = null;
+    if (data.source_key_loan_id) {
+      const { data: loanData } = await getSupabaseClient()
+        .from(KEY_LOANS_TABLE)
+        .select('return_user_id')
+        .eq('id', data.source_key_loan_id)
+        .single();
+      keyReturnerUserId = loanData?.return_user_id || null;
+    }
+
     const { error: notifyError } = await notifyPatrolTaskAccepted({
       task: data,
       senderUserId: normalizedUserId,
+      keyReturnerUserId,
     });
     logNotificationError('巡回受諾', notifyError);
 
