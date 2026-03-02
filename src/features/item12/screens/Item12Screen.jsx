@@ -7,7 +7,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Platform,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -16,7 +18,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
-import { SCREEN_DESCRIPTION, SCREEN_NAME } from '../constants';
+import { PATROL_TABS, PATROL_TAB_TYPES, SCREEN_NAME } from '../constants';
 import { useAuth } from '../../../shared/contexts/AuthContext';
 import {
   acceptPatrolTask,
@@ -133,6 +135,10 @@ const getGoMessageByTaskType = (taskType) => {
 const Item12Screen = ({ navigation }) => {
   const { theme } = useTheme();
   const { user } = useAuth();
+
+  /* ---- タブ切替 ---- */
+  /** 現在表示中のタブ（デフォルト: タスク一覧） */
+  const [activeTab, setActiveTab] = useState(PATROL_TAB_TYPES.TASKS);
 
   /* ---- タスク一覧関連 ---- */
   const [tasks, setTasks] = useState([]);
@@ -805,95 +811,147 @@ const Item12Screen = ({ navigation }) => {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <ThemedHeader title={SCREEN_NAME} navigation={navigation} />
       <OfflineBanner />
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <Text style={[styles.description, { color: theme.textSecondary }]}>{SCREEN_DESCRIPTION}</Text>
+
+      <KeyboardAvoidingView
+        style={styles.body}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        {/* ── タブコンテンツ ── */}
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+
+          {/* タスクタブ */}
+          {activeTab === PATROL_TAB_TYPES.TASKS && (
+            <>
+              <PatrolTaskList
+                theme={theme}
+                user={user}
+                tasks={tasks}
+                isLoadingTasks={isLoadingTasks}
+                selectedTaskId={selectedTaskId}
+                onSelectTask={setSelectedTaskId}
+                onRefresh={() => loadTasks(selectedTaskId)}
+              />
+
+              {selectedTask ? (
+                <PatrolTaskDetail
+                  theme={theme}
+                  user={user}
+                  selectedTask={selectedTask}
+                  resultOptions={resultOptions}
+                  resultCode={resultCode}
+                  onChangeResultCode={setResultCode}
+                  patrolMemo={patrolMemo}
+                  onChangePatrolMemo={setPatrolMemo}
+                  isSubmitting={isSubmitting}
+                  canAccept={canAccept}
+                  canComplete={canComplete}
+                  onAcceptTask={handleAcceptTask}
+                  onCompleteTask={handleCompleteTask}
+                  onSendMemoOnly={handleSendMemoOnly}
+                  taskResults={taskResults}
+                  isLoadingTaskResults={isLoadingTaskResults}
+                  onRefreshTaskResults={() => loadTaskResults(selectedTask.id)}
+                  sourceMessages={sourceMessages}
+                  isLoadingSourceMessages={isLoadingSourceMessages}
+                  onRefreshSourceMessages={() => loadSourceMessages(selectedTask.source_ticket_id)}
+                />
+              ) : null}
+            </>
+          )}
+
+          {/* チェックタブ */}
+          {activeTab === PATROL_TAB_TYPES.CHECK && (
+            <>
+              <PatrolCheckForm
+                theme={theme}
+                patrolLocations={patrolLocations}
+                selectedPatrolLocationId={selectedPatrolLocationId}
+                onSelectLocation={handleSelectLocation}
+                patrolLocationText={patrolLocationText}
+                onChangeLocationText={setPatrolLocationText}
+                patrolCheckItems={patrolCheckItems}
+                onToggleCheckItem={togglePatrolCheckItem}
+                patrolCheckMemo={patrolCheckMemo}
+                onChangeCheckMemo={setPatrolCheckMemo}
+                isSubmittingPatrolCheck={isSubmittingPatrolCheck}
+                onSubmitPatrolCheck={handleSubmitPatrolCheck}
+                recentPatrolChecks={recentPatrolChecks}
+                isLoadingRecentPatrolChecks={isLoadingRecentPatrolChecks}
+                onRefresh={refreshPatrolCheckData}
+              />
+
+              <UnvisitedAlertList
+                theme={theme}
+                unvisitedLocations={unvisitedLocations}
+                isLoadingUnvisitedLocations={isLoadingUnvisitedLocations}
+                unvisitedAlertMinutes={unvisitedAlertMinutes}
+                onChangeAlertMinutes={setUnvisitedAlertMinutes}
+                onRefresh={loadUnvisitedAlerts}
+              />
+            </>
+          )}
+
+          {/* ランキングタブ */}
+          {activeTab === PATROL_TAB_TYPES.RANKING && (
+            <>
+              <PatrolRankingCard
+                theme={theme}
+                rankingData={rankingData}
+                isLoading={isLoadingRanking}
+                onRefresh={loadRanking}
+              />
+
+              <PatrolEvaluationForm
+                theme={theme}
+                selectedTask={selectedTask}
+                evaluationScore={evaluationScore}
+                onChangeScore={setEvaluationScore}
+                evaluationComment={evaluationComment}
+                onChangeComment={setEvaluationComment}
+                isSubmittingEvaluation={isSubmittingEvaluation}
+                onSubmitEvaluation={handleSubmitEvaluation}
+                myEvaluationChecks={myEvaluationChecks}
+                isLoadingMyEvaluationChecks={isLoadingMyEvaluationChecks}
+                onRefresh={loadMyEvaluationChecks}
+              />
+            </>
+          )}
+
+        </ScrollView>
+
+        {/* ── 下部 iOS タブバー ── */}
+        <View style={[styles.bottomArea, { borderTopColor: theme.border, backgroundColor: theme.background }]}>
+          <View style={[styles.iosTabBar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            {PATROL_TABS.map((tab) => {
+              /** アクティブタブかどうか */
+              const isActive = activeTab === tab.key;
+              return (
+                <Pressable
+                  key={tab.key}
+                  style={[
+                    styles.tabButton,
+                    isActive && [
+                      styles.tabButtonActive,
+                      { backgroundColor: theme.background, borderColor: theme.border },
+                    ],
+                  ]}
+                  onPress={() => setActiveTab(tab.key)}
+                >
+                  <Text style={styles.tabButtonIcon}>{tab.icon}</Text>
+                  <Text
+                    style={[
+                      styles.tabButtonText,
+                      { color: isActive ? theme.text : theme.textSecondary },
+                    ]}
+                  >
+                    {tab.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
-
-        <PatrolTaskList
-          theme={theme}
-          user={user}
-          tasks={tasks}
-          isLoadingTasks={isLoadingTasks}
-          selectedTaskId={selectedTaskId}
-          onSelectTask={setSelectedTaskId}
-          onRefresh={() => loadTasks(selectedTaskId)}
-        />
-
-        <PatrolCheckForm
-          theme={theme}
-          patrolLocations={patrolLocations}
-          selectedPatrolLocationId={selectedPatrolLocationId}
-          onSelectLocation={handleSelectLocation}
-          patrolLocationText={patrolLocationText}
-          onChangeLocationText={setPatrolLocationText}
-          patrolCheckItems={patrolCheckItems}
-          onToggleCheckItem={togglePatrolCheckItem}
-          patrolCheckMemo={patrolCheckMemo}
-          onChangeCheckMemo={setPatrolCheckMemo}
-          isSubmittingPatrolCheck={isSubmittingPatrolCheck}
-          onSubmitPatrolCheck={handleSubmitPatrolCheck}
-          recentPatrolChecks={recentPatrolChecks}
-          isLoadingRecentPatrolChecks={isLoadingRecentPatrolChecks}
-          onRefresh={refreshPatrolCheckData}
-        />
-
-        <UnvisitedAlertList
-          theme={theme}
-          unvisitedLocations={unvisitedLocations}
-          isLoadingUnvisitedLocations={isLoadingUnvisitedLocations}
-          unvisitedAlertMinutes={unvisitedAlertMinutes}
-          onChangeAlertMinutes={setUnvisitedAlertMinutes}
-          onRefresh={loadUnvisitedAlerts}
-        />
-
-        <PatrolEvaluationForm
-          theme={theme}
-          selectedTask={selectedTask}
-          evaluationScore={evaluationScore}
-          onChangeScore={setEvaluationScore}
-          evaluationComment={evaluationComment}
-          onChangeComment={setEvaluationComment}
-          isSubmittingEvaluation={isSubmittingEvaluation}
-          onSubmitEvaluation={handleSubmitEvaluation}
-          myEvaluationChecks={myEvaluationChecks}
-          isLoadingMyEvaluationChecks={isLoadingMyEvaluationChecks}
-          onRefresh={loadMyEvaluationChecks}
-        />
-
-        {/* ── 完了件数ランキング ── */}
-        <PatrolRankingCard
-          theme={theme}
-          rankingData={rankingData}
-          isLoading={isLoadingRanking}
-          onRefresh={loadRanking}
-        />
-
-        {selectedTask ? (
-          <PatrolTaskDetail
-            theme={theme}
-            user={user}
-            selectedTask={selectedTask}
-            resultOptions={resultOptions}
-            resultCode={resultCode}
-            onChangeResultCode={setResultCode}
-            patrolMemo={patrolMemo}
-            onChangePatrolMemo={setPatrolMemo}
-            isSubmitting={isSubmitting}
-            canAccept={canAccept}
-            canComplete={canComplete}
-            onAcceptTask={handleAcceptTask}
-            onCompleteTask={handleCompleteTask}
-            onSendMemoOnly={handleSendMemoOnly}
-            taskResults={taskResults}
-            isLoadingTaskResults={isLoadingTaskResults}
-            onRefreshTaskResults={() => loadTaskResults(selectedTask.id)}
-            sourceMessages={sourceMessages}
-            isLoadingSourceMessages={isLoadingSourceMessages}
-            onRefreshSourceMessages={() => loadSourceMessages(selectedTask.source_ticket_id)}
-          />
-        ) : null}
-      </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -902,18 +960,55 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  /** KeyboardAvoidingView 全体 */
+  body: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
   content: {
     padding: 16,
+    paddingBottom: 24,
     gap: 12,
   },
-  card: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
+  /** 下部タブバーエリア */
+  bottomArea: {
+    borderTopWidth: 1,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 14,
   },
-  description: {
-    fontSize: 14,
-    lineHeight: 20,
+  /** iOS スタイルのタブバー pill */
+  iosTabBar: {
+    borderWidth: 1,
+    borderRadius: 18,
+    flexDirection: 'row',
+    padding: 4,
+    gap: 4,
+  },
+  tabButton: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  tabButtonActive: {
+    borderWidth: 1,
+    shadowColor: '#000000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  tabButtonIcon: {
+    fontSize: 16,
+  },
+  tabButtonText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
 });
 

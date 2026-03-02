@@ -17,3 +17,32 @@ export const FEATURE_PLACEHOLDERS = [
   '未巡回アラート確認',
 ];
 
+/** 下部タブ種別 */
+export const PATROL_TAB_TYPES = {
+  /** 巡回タスク一覧・詳細 */
+  TASKS: 'tasks',
+  /** 巡回チェック記録・未巡回アラート */
+  CHECK: 'check',
+  /** 完了ランキング・企画評価 */
+  RANKING: 'ranking',
+};
+
+/** 下部タブ一覧 */
+export const PATROL_TABS = [
+  {
+    key: PATROL_TAB_TYPES.TASKS,
+    label: 'タスク',
+    icon: '🚨',
+  },
+  {
+    key: PATROL_TAB_TYPES.CHECK,
+    label: 'チェック',
+    icon: '📍',
+  },
+  {
+    key: PATROL_TAB_TYPES.RANKING,
+    label: 'ランキング',
+    icon: '🏆',
+  },
+];
+
