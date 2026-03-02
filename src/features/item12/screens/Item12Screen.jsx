@@ -26,6 +26,7 @@ import {
   PATROL_RESULT_CODES,
   PATROL_TASK_STATUSES,
   PATROL_TASK_TYPES,
+  selectPatrolRankingData,
 } from '../../../services/supabase/patrolTaskService';
 import { createTicketMessage, listTicketMessages } from '../../../services/supabase/supportTicketService';
 import {
@@ -43,6 +44,7 @@ import PatrolTaskDetail from '../components/PatrolTaskDetail';
 import PatrolCheckForm from '../components/PatrolCheckForm';
 import UnvisitedAlertList from '../components/UnvisitedAlertList';
 import PatrolEvaluationForm from '../components/PatrolEvaluationForm';
+import PatrolRankingCard from '../components/PatrolRankingCard';
 import OfflineBanner from '../../../shared/components/OfflineBanner';
 
 /** 種別ごとの完了結果候補 */
@@ -167,6 +169,12 @@ const Item12Screen = ({ navigation }) => {
   const [isSubmittingEvaluation, setIsSubmittingEvaluation] = useState(false);
   const [myEvaluationChecks, setMyEvaluationChecks] = useState([]);
   const [isLoadingMyEvaluationChecks, setIsLoadingMyEvaluationChecks] = useState(false);
+
+  /* ---- ランキング関連 ---- */
+  /** 完了件数ランキングデータ */
+  const [rankingData, setRankingData] = useState([]);
+  /** ランキング読み込み中フラグ */
+  const [isLoadingRanking, setIsLoadingRanking] = useState(false);
 
   /**
    * メッセージ表示
@@ -369,6 +377,23 @@ const Item12Screen = ({ navigation }) => {
     }
 
     setMyEvaluationChecks(data || []);
+  };
+
+  /**
+   * 完了件数ランキングを取得
+   * @returns {Promise<void>} 取得処理
+   */
+  const loadRanking = async () => {
+    setIsLoadingRanking(true);
+    const { data, error } = await selectPatrolRankingData({ limit: 500 });
+    setIsLoadingRanking(false);
+
+    if (error) {
+      console.error('ランキング取得に失敗:', error);
+      return;
+    }
+
+    setRankingData(data || []);
   };
 
   /**
@@ -682,29 +707,75 @@ const Item12Screen = ({ navigation }) => {
   };
 
   /** 自分のタスクまたは未割当かどうか */
-  const isMineOrUnassigned =
-    selectedTask &&
-    (!selectedTask.assigned_to || selectedTask.assigned_to === user?.id);
+  const isMineOrUnassigned = useMemo(
+    () =>
+      selectedTask != null &&
+      (!selectedTask.assigned_to || selectedTask.assigned_to === user?.id),
+    [selectedTask, user?.id]
+  );
 
-  /** 受諾可能かどうか */
-  const canAccept =
-    selectedTask &&
-    isMineOrUnassigned &&
-    [PATROL_TASK_STATUSES.OPEN, PATROL_TASK_STATUSES.ACCEPTED, PATROL_TASK_STATUSES.EN_ROUTE].includes(
-      selectedTask.task_status
+  /**
+   * 自分が現在受諾中/移動中の同種別タスクが存在するか
+   * 未割当タスクへの「行きます」可否判定に使用する
+   */
+  const hasSameTypeActiveTask = useMemo(() => {
+    if (!selectedTask || !user?.id) {
+      return false;
+    }
+    return tasks.some(
+      (task) =>
+        task.id !== selectedTask.id &&
+        task.task_type === selectedTask.task_type &&
+        task.assigned_to === user.id &&
+        [PATROL_TASK_STATUSES.ACCEPTED, PATROL_TASK_STATUSES.EN_ROUTE].includes(task.task_status)
     );
+  }, [tasks, selectedTask, user?.id]);
 
-  /** 完了可能かどうか */
-  const canComplete =
-    selectedTask &&
-    isMineOrUnassigned &&
-    [PATROL_TASK_STATUSES.OPEN, PATROL_TASK_STATUSES.ACCEPTED, PATROL_TASK_STATUSES.EN_ROUTE].includes(
-      selectedTask.task_status
-    );
+  /**
+   * 受諾可能かどうか
+   * - 自分に割り当て済み: ステータスが open/accepted/en_route であれば受諾可
+   * - 未割当: 同種別のアクティブタスクを持っていなければ受諾可
+   * - 他者に割り当て済み: 受諾不可
+   */
+  const canAccept = useMemo(() => {
+    if (!selectedTask) {
+      return false;
+    }
+    const isActiveStatus = [
+      PATROL_TASK_STATUSES.OPEN,
+      PATROL_TASK_STATUSES.ACCEPTED,
+      PATROL_TASK_STATUSES.EN_ROUTE,
+    ].includes(selectedTask.task_status);
+    if (!isActiveStatus) {
+      return false;
+    }
+    /** 自分が担当者の場合はそのまま受諾可 */
+    if (selectedTask.assigned_to === user?.id) {
+      return true;
+    }
+    /** 未割当の場合は同種別アクティブタスクがなければ受諾可 */
+    if (!selectedTask.assigned_to) {
+      return !hasSameTypeActiveTask;
+    }
+    /** 他者が担当者の場合は受諾不可 */
+    return false;
+  }, [selectedTask, user?.id, hasSameTypeActiveTask]);
+
+  /** 完了可能かどうか（自分担当または未割当のアクティブタスクのみ） */
+  const canComplete = useMemo(
+    () =>
+      selectedTask != null &&
+      isMineOrUnassigned &&
+      [PATROL_TASK_STATUSES.OPEN, PATROL_TASK_STATUSES.ACCEPTED, PATROL_TASK_STATUSES.EN_ROUTE].includes(
+        selectedTask.task_status
+      ),
+    [selectedTask, isMineOrUnassigned]
+  );
 
   useEffect(() => {
     loadTasks();
     refreshPatrolCheckData();
+    loadRanking();
   }, [user?.id]);
 
   useEffect(() => {
@@ -788,6 +859,14 @@ const Item12Screen = ({ navigation }) => {
           myEvaluationChecks={myEvaluationChecks}
           isLoadingMyEvaluationChecks={isLoadingMyEvaluationChecks}
           onRefresh={loadMyEvaluationChecks}
+        />
+
+        {/* ── 完了件数ランキング ── */}
+        <PatrolRankingCard
+          theme={theme}
+          rankingData={rankingData}
+          isLoading={isLoadingRanking}
+          onRefresh={loadRanking}
         />
 
         {selectedTask ? (
