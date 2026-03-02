@@ -281,6 +281,8 @@ const KeyLoanTerminalModal = ({ visible, onClose, theme, user, onLoanCreated, on
   const [isSubmitting, setIsSubmitting] = useState(false);
   /** デジタル時計用の現在時刻（1秒ごと更新） */
   const [clockTime, setClockTime] = useState(() => new Date());
+  /** 返却モードの名前絞り込みフィルター */
+  const [returnNameFilter, setReturnNameFilter] = useState('');
 
   // ─── ドロワーサイドバー制御 ──────────────────────────────────────────────────
 
@@ -480,6 +482,22 @@ const KeyLoanTerminalModal = ({ visible, onClose, theme, user, onLoanCreated, on
       .filter((loan) => loan.status === KEY_LOAN_STATUSES.RETURNED)
       .slice(0, 30);
   }, [keyLoans]);
+
+  /**
+   * 返却モードで表示するローン一覧
+   * 貸出中のみ対象に、returnNameFilter で借受人名・団体名を絞り込む
+   */
+  const filteredReturnLoans = useMemo(() => {
+    const query = normalizeText(returnNameFilter).toLowerCase();
+    if (!query) {
+      return loanedItems;
+    }
+    return loanedItems.filter(
+      (loan) =>
+        (loan.borrower_name || '').toLowerCase().includes(query) ||
+        (loan.event_name || '').toLowerCase().includes(query)
+    );
+  }, [loanedItems, returnNameFilter]);
 
   /**
    * 選択中の団体が過去に借りたことのある鍵一覧（ユニーク・最新順）
@@ -1107,18 +1125,44 @@ const KeyLoanTerminalModal = ({ visible, onClose, theme, user, onLoanCreated, on
    */
   const renderReturnMode = () => (
     <View style={styles.section}>
-      <Text style={[styles.label, { color: theme.text }]}>
-        返却する鍵を選択（{selectedLoanIds.length}件選択中）
-      </Text>
+      {/* 名前入力欄（絞り込みフィルター） */}
+      <Text style={[styles.label, { color: theme.text }]}>返却者の名前 / 団体名で絞り込む</Text>
+      <View style={[styles.returnFilterRow, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+        <Text style={[styles.returnFilterIcon, { color: theme.textSecondary }]}>🔍</Text>
+        <TextInput
+          style={[styles.returnFilterInput, { color: theme.text }]}
+          value={returnNameFilter}
+          onChangeText={setReturnNameFilter}
+          placeholder="名前や団体名を入力..."
+          placeholderTextColor={theme.textSecondary}
+          autoCapitalize="none"
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+        />
+        {returnNameFilter.length > 0 ? (
+          <TouchableOpacity onPress={() => setReturnNameFilter('')} style={styles.returnFilterClear}>
+            <Text style={[styles.returnFilterClearText, { color: theme.textSecondary }]}>✕</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      {/* 件数表示 */}
       <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-        ※ 返却と同時に施錠確認タスクが自動作成されます
+        {returnNameFilter
+          ? `${loanedItems.length}件中 ${filteredReturnLoans.length}件を表示 ／ `
+          : `貸出中 ${loanedItems.length}件 ／ `}
+        {selectedLoanIds.length}件選択中 ※ 返却と同時に施錠確認タスクが自動作成されます
       </Text>
 
-      {keyLoans.length === 0 ? (
+      {loanedItems.length === 0 ? (
         <Text style={[styles.emptyText, { color: theme.textSecondary }]}>貸出中の鍵はありません</Text>
+      ) : filteredReturnLoans.length === 0 ? (
+        <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+          「{returnNameFilter}」に一致する貸出はありません
+        </Text>
       ) : (
         <View style={styles.loanList}>
-          {keyLoans.map((loan) => {
+          {filteredReturnLoans.map((loan) => {
             /** 選択中かどうか */
             const isSelected = selectedLoanIds.includes(loan.id);
             return (
@@ -1181,6 +1225,7 @@ const KeyLoanTerminalModal = ({ visible, onClose, theme, user, onLoanCreated, on
         style={[styles.secondaryButton, { borderColor: theme.border }]}
         onPress={() => {
           setSelectedLoanIds([]);
+          setReturnNameFilter('');
           setMode(null);
         }}
         disabled={isSubmitting}
@@ -1446,6 +1491,31 @@ const styles = StyleSheet.create({
   confirmKeyItem: {
     fontSize: 14,
     lineHeight: 22,
+  },
+  /** 返却モード 名前フィルター行 */
+  returnFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    gap: 8,
+  },
+  returnFilterIcon: {
+    fontSize: 16,
+  },
+  returnFilterInput: {
+    flex: 1,
+    fontSize: 16,
+    paddingVertical: 10,
+  },
+  returnFilterClear: {
+    padding: 6,
+  },
+  returnFilterClearText: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   /** 返却モード */
   emptyText: {
