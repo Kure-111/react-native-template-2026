@@ -295,6 +295,13 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   const [isReviewingEvaluation, setIsReviewingEvaluation] = useState(false);
   const [isRenotifying, setIsRenotifying] = useState(false);
 
+  /** 巡回対応履歴（完了・取消済みタスク） */
+  const [patrolHistory, setPatrolHistory] = useState([]);
+  /** 巡回履歴読み込み中フラグ */
+  const [isLoadingPatrolHistory, setIsLoadingPatrolHistory] = useState(false);
+  /** 巡回履歴の担当者名マップ（user_id → name） */
+  const [patrolHistoryProfileMap, setPatrolHistoryProfileMap] = useState({});
+
   /** HQロール向けアクティブタブ（初期値: 鍵管理） */
   const [activeTab, setActiveTab] = useState(HQ_TAB_DEFAULT);
 
@@ -896,6 +903,45 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   };
 
   /**
+   * 巡回対応履歴を取得（完了・取消済みタスク + 担当者名解決）
+   * @returns {Promise<void>} 取得処理
+   */
+  const loadPatrolHistory = async () => {
+    if (!isHQRole) {
+      return;
+    }
+
+    setIsLoadingPatrolHistory(true);
+    const { data, error } = await listPatrolTasks({
+      statuses: [PATROL_TASK_STATUSES.DONE, PATROL_TASK_STATUSES.CANCELED],
+      limit: 50,
+    });
+    setIsLoadingPatrolHistory(false);
+
+    if (error) {
+      console.error('巡回履歴取得に失敗:', error);
+      return;
+    }
+
+    const nextHistory = data || [];
+    setPatrolHistory(nextHistory);
+
+    /** 担当者 user_id を一意にまとめてプロフィールを一括取得 */
+    const userIds = [...new Set(nextHistory.map((t) => t.assigned_to).filter(Boolean))];
+    if (userIds.length === 0) {
+      setPatrolHistoryProfileMap({});
+      return;
+    }
+
+    const { profiles } = await getUserProfilesByIds(userIds);
+    const profileMap = {};
+    (profiles || []).forEach((p) => {
+      profileMap[p.user_id] = p.name || p.user_id;
+    });
+    setPatrolHistoryProfileMap(profileMap);
+  };
+
+  /**
    * 評価承認状態を更新
    * @param {string} evaluationId - 評価ID
    * @param {'approved'|'rejected'|'rework'} nextStatus - 更新状態
@@ -982,6 +1028,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     loadHqPatrolTasks();
     loadPatrolAssignees();
     loadPendingEvaluations();
+    loadPatrolHistory();
   }, [roleType, user?.id]);
 
   useEffect(() => {
@@ -1289,6 +1336,64 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
                     </View>
                   </View>
                 ))}
+              </View>
+            )}
+          </View>
+        ) : null}
+
+        {/* ─── 巡回対応履歴カード ─── */}
+        {isHQRole && activeTab === 'patrol' ? (
+          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>巡回対応履歴</Text>
+              <TouchableOpacity
+                style={[styles.refreshButton, { borderColor: theme.border }]}
+                onPress={loadPatrolHistory}
+              >
+                <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+              </TouchableOpacity>
+            </View>
+
+            {isLoadingPatrolHistory ? (
+              <SkeletonLoader lines={3} baseColor={theme.border} />
+            ) : patrolHistory.length === 0 ? (
+              <EmptyState
+                icon={'\u{1F4CB}'}
+                title="完了した巡回はありません"
+                description="巡回タスクが完了すると誰が対応したかをここで確認できます。"
+                theme={theme}
+              />
+            ) : (
+              <View style={styles.messageList}>
+                {patrolHistory.map((task) => {
+                  /** 担当者名（プロフィールマップから取得、未解決時は不明） */
+                  const assigneeName = patrolHistoryProfileMap[task.assigned_to] || '不明';
+                  /** タスク種別表示名 */
+                  const taskLabel = PATROL_TASK_TYPE_LABELS[task.task_type] || task.task_type;
+                  /** ステータス表示名 */
+                  const statusLabel = PATROL_TASK_STATUS_LABELS[task.task_status] || task.task_status;
+                  /** 対応完了日時（done_at がなければ updated_at で代替） */
+                  const dateStr = task.done_at
+                    ? new Date(task.done_at).toLocaleString('ja-JP')
+                    : new Date(task.updated_at || task.created_at).toLocaleString('ja-JP');
+
+                  return (
+                    <View
+                      key={task.id}
+                      style={[styles.messageItem, { borderColor: theme.border, backgroundColor: theme.background }]}
+                    >
+                      <Text style={[styles.messageAuthor, { color: theme.textSecondary }]} numberOfLines={1}>
+                        {taskLabel} / {statusLabel}
+                      </Text>
+                      <Text style={[styles.messageBody, { color: theme.text }]} numberOfLines={1}>
+                        {task.event_name || '-'} / {task.event_location || task.location_text || '-'}
+                      </Text>
+                      <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
+                        担当: {assigneeName} / {dateStr}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
             )}
           </View>

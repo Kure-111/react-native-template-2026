@@ -25,6 +25,8 @@ export const PATROL_TAB_TYPES = {
   CHECK: 'check',
   /** 完了ランキング・企画評価 */
   RANKING: 'ranking',
+  /** 自分の対応履歴 */
+  HISTORY: 'history',
 };
 
 /** 下部タブ一覧 */
@@ -43,6 +45,11 @@ export const PATROL_TABS = [
     key: PATROL_TAB_TYPES.RANKING,
     label: 'ランキング',
     icon: '🏆',
+  },
+  {
+    key: PATROL_TAB_TYPES.HISTORY,
+    label: '履歴',
+    icon: '📜',
   },
 ];
 

@@ -182,6 +182,12 @@ const Item12Screen = ({ navigation }) => {
   /** ランキング読み込み中フラグ */
   const [isLoadingRanking, setIsLoadingRanking] = useState(false);
 
+  /* ---- 自分の履歴関連 ---- */
+  /** 自分が対応した過去タスク（完了・取消）一覧 */
+  const [myHistory, setMyHistory] = useState([]);
+  /** 履歴読み込み中フラグ */
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
   /* ---- トースト通知 ---- */
   /** トースト表示フラグ・メッセージ・種別 */
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
@@ -414,6 +420,34 @@ const Item12Screen = ({ navigation }) => {
     }
 
     setRankingData(data || []);
+  };
+
+  /**
+   * 自分の過去対応タスク履歴を取得（完了・取消済み）
+   * @returns {Promise<void>} 取得処理
+   */
+  const loadMyHistory = async () => {
+    if (!user?.id) {
+      setMyHistory([]);
+      return;
+    }
+
+    setIsLoadingHistory(true);
+    const { data, error } = await listPatrolTasks({
+      assignedTo: user.id,
+      includeUnassigned: false,
+      /** 完了・取消のみ取得 */
+      statuses: [PATROL_TASK_STATUSES.DONE, PATROL_TASK_STATUSES.CANCELED],
+      limit: 100,
+    });
+    setIsLoadingHistory(false);
+
+    if (error) {
+      console.error('巡回履歴取得に失敗:', error);
+      return;
+    }
+
+    setMyHistory(data || []);
   };
 
   /**
@@ -726,6 +760,7 @@ const Item12Screen = ({ navigation }) => {
     loadTasks();
     refreshPatrolCheckData();
     loadRanking();
+    loadMyHistory();
   }, [user?.id]);
 
   useEffect(() => {
@@ -861,6 +896,75 @@ const Item12Screen = ({ navigation }) => {
             </>
           )}
 
+          {/* 履歴タブ */}
+          {activeTab === PATROL_TAB_TYPES.HISTORY && (
+            <View style={[historyStyles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={historyStyles.header}>
+                <Text style={[historyStyles.title, { color: theme.text }]}>自分の対応履歴</Text>
+                <Pressable
+                  style={[historyStyles.refreshButton, { borderColor: theme.border }]}
+                  onPress={loadMyHistory}
+                >
+                  <Text style={[historyStyles.refreshButtonText, { color: theme.textSecondary }]}>
+                    {isLoadingHistory ? '読込中...' : '更新'}
+                  </Text>
+                </Pressable>
+              </View>
+
+              {isLoadingHistory ? (
+                <Text style={[historyStyles.emptyText, { color: theme.textSecondary }]}>読み込み中...</Text>
+              ) : myHistory.length === 0 ? (
+                <Text style={[historyStyles.emptyText, { color: theme.textSecondary }]}>
+                  完了・取消済みの巡回履歴はありません
+                </Text>
+              ) : (
+                myHistory.map((task) => {
+                  /** タスク種別の表示名 */
+                  const taskLabel = TASK_TYPE_LABELS[task.task_type] || task.task_type;
+                  /** ステータス表示名（完了/取消） */
+                  const isDone = task.task_status === PATROL_TASK_STATUSES.DONE;
+                  const statusLabel = isDone ? '完了' : '取消';
+                  /** 対応日時（完了日時 or 最終更新日時） */
+                  const dateStr = task.done_at
+                    ? new Date(task.done_at).toLocaleString('ja-JP')
+                    : new Date(task.updated_at || task.created_at).toLocaleString('ja-JP');
+
+                  return (
+                    <View
+                      key={task.id}
+                      style={[
+                        historyStyles.item,
+                        { borderColor: theme.border, backgroundColor: theme.background },
+                      ]}
+                    >
+                      <View style={historyStyles.itemRow}>
+                        <Text style={[historyStyles.itemLabel, { color: theme.text }]} numberOfLines={1}>
+                          {taskLabel}
+                        </Text>
+                        <View
+                          style={[
+                            historyStyles.statusBadge,
+                            { backgroundColor: isDone ? '#22C55E18' : '#9CA3AF18' },
+                          ]}
+                        >
+                          <Text style={[historyStyles.statusText, { color: isDone ? '#22C55E' : '#9CA3AF' }]}>
+                            {statusLabel}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={[historyStyles.itemSub, { color: theme.textSecondary }]} numberOfLines={1}>
+                        {task.event_name || '-'} / {task.event_location || task.location_text || '-'}
+                      </Text>
+                      <Text style={[historyStyles.itemDate, { color: theme.textSecondary }]}>
+                        {dateStr}
+                      </Text>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          )}
+
         </ScrollView>
 
         {/* ── トースト通知（タブバーの上に浮かせる） ── */}
@@ -907,6 +1011,72 @@ const Item12Screen = ({ navigation }) => {
     </SafeAreaView>
   );
 };
+
+/** 履歴タブ専用スタイル */
+const historyStyles = StyleSheet.create({
+  card: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+    gap: 10,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  title: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  refreshButton: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  refreshButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  emptyText: {
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  item: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    gap: 4,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  itemLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    flex: 1,
+  },
+  statusBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  itemSub: {
+    fontSize: 12,
+  },
+  itemDate: {
+    fontSize: 11,
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
