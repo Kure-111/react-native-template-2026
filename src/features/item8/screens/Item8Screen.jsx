@@ -116,12 +116,14 @@ const Item8Screen = ({ navigation }) => {
     recruits,
     historyRecruits,
     appliedRecruits,
+    applications,
     handleCreate,
     handleUpdate,
     handleClose,
     handleReopen,
     handleApply,
     handleCancelApply,
+    loadApplications,
     refresh,
   } = useRinjiHelp();
 
@@ -129,6 +131,8 @@ const Item8Screen = ({ navigation }) => {
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState(MANAGER_TABS.CREATE);
   const [toast, setToast] = useState({ message: '', type: 'success' });
+  const [openApplicantsByRecruitId, setOpenApplicantsByRecruitId] = useState({});
+  const [loadingApplicantsByRecruitId, setLoadingApplicantsByRecruitId] = useState({});
   const scrollViewRef = useRef(null);
   const toastTimerRef = useRef(null);
 
@@ -140,6 +144,8 @@ const Item8Screen = ({ navigation }) => {
 
   useEffect(() => {
     setActiveTab(manager ? MANAGER_TABS.CREATE : USER_TABS.LIST);
+    setOpenApplicantsByRecruitId({});
+    setLoadingApplicantsByRecruitId({});
   }, [manager]);
 
   /**
@@ -271,6 +277,41 @@ const Item8Screen = ({ navigation }) => {
   };
 
   /**
+   * 一覧を再読み込みし、応募者一覧の開閉状態も初期化する。
+   *
+   * @returns {Promise<void>}
+   */
+  const handleRefresh = async () => {
+    await refresh();
+    setOpenApplicantsByRecruitId({});
+    setLoadingApplicantsByRecruitId({});
+  };
+
+  /**
+   * 管理者向けに募集単位の応募者一覧を開閉する。
+   * 初回オープン時のみ応募者データを取得する。
+   *
+   * @param {string} recruitId
+   * @returns {Promise<void>}
+   */
+  const onToggleApplicants = async (recruitId) => {
+    const isOpen = Boolean(openApplicantsByRecruitId[recruitId]);
+    if (isOpen) {
+      setOpenApplicantsByRecruitId((prev) => ({ ...prev, [recruitId]: false }));
+      return;
+    }
+
+    setOpenApplicantsByRecruitId((prev) => ({ ...prev, [recruitId]: true }));
+    if (applications[recruitId]) {
+      return;
+    }
+
+    setLoadingApplicantsByRecruitId((prev) => ({ ...prev, [recruitId]: true }));
+    await loadApplications(recruitId);
+    setLoadingApplicantsByRecruitId((prev) => ({ ...prev, [recruitId]: false }));
+  };
+
+  /**
    * エラーメッセージ表示要素を返す。
    *
    * @returns {JSX.Element | null}
@@ -327,7 +368,7 @@ const Item8Screen = ({ navigation }) => {
     >
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: theme.text, fontWeight: theme.fontWeight }]}>募集一覧</Text>
-        <Button title="再読み込み" onPress={refresh} color={theme.primary} />
+        <Button title="再読み込み" onPress={handleRefresh} color={theme.primary} />
       </View>
       <RecruitList
         data={recruits}
@@ -337,8 +378,13 @@ const Item8Screen = ({ navigation }) => {
         onClose={manager ? onCloseRecruit : undefined}
         onReopen={manager ? onReopenRecruit : undefined}
         refreshing={loading}
-        onRefresh={refresh}
+        onRefresh={handleRefresh}
         appliedRecruitIds={appliedRecruits.map((recruit) => recruit.id)}
+        onToggleApplicants={manager ? onToggleApplicants : undefined}
+        applicationsByRecruitId={applications}
+        openApplicantsByRecruitId={openApplicantsByRecruitId}
+        loadingApplicantsByRecruitId={loadingApplicantsByRecruitId}
+        showApplicantsToggle={manager}
       />
     </View>
   );
@@ -361,7 +407,7 @@ const Item8Screen = ({ navigation }) => {
     >
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: theme.text, fontWeight: theme.fontWeight }]}>募集履歴</Text>
-        <Button title="再読み込み" onPress={refresh} color={theme.primary} />
+        <Button title="再読み込み" onPress={handleRefresh} color={theme.primary} />
       </View>
       <RecruitList
         data={historyRecruits}
@@ -371,7 +417,7 @@ const Item8Screen = ({ navigation }) => {
         onClose={onCloseRecruit}
         onReopen={onReopenRecruit}
         refreshing={loading}
-        onRefresh={refresh}
+        onRefresh={handleRefresh}
         emptyText="履歴はありません"
         showStatus
       />
@@ -396,12 +442,12 @@ const Item8Screen = ({ navigation }) => {
     >
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: theme.text, fontWeight: theme.fontWeight }]}>応募済み</Text>
-        <Button title="再読み込み" onPress={refresh} color={theme.primary} />
+        <Button title="再読み込み" onPress={handleRefresh} color={theme.primary} />
       </View>
       <RecruitList
         data={appliedRecruits}
         refreshing={loading}
-        onRefresh={refresh}
+        onRefresh={handleRefresh}
         emptyText="応募済みの案件はありません。"
         showStatus
         showApplyButton={false}
@@ -441,7 +487,7 @@ const Item8Screen = ({ navigation }) => {
         </View>
       )}
       {!authLoading && (
-        <LocalErrorBoundary onReload={refresh} theme={theme}>
+        <LocalErrorBoundary onReload={handleRefresh} theme={theme}>
           <View style={styles.body}>
             <ScrollView ref={scrollViewRef} style={styles.scroll} contentContainerStyle={styles.content}>
               {renderError()}

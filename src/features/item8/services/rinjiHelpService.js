@@ -206,7 +206,50 @@ export const fetchApplications = async (recruitId) => {
     .select('*')
     .eq('recruit_id', recruitId)
     .order('created_at', { ascending: false });
-  return { data, error };
+  if (error) {
+    return { data, error };
+  }
+
+  const applications = data || [];
+  const userIds = [...new Set(applications.map((item) => item.applicant_user_id).filter(Boolean))];
+  if (userIds.length === 0) {
+    return { data: applications, error: null };
+  }
+
+  const { data: profiles, error: profileError } = await supabase
+    .from('user_profiles')
+    .select('user_id, name, organization')
+    .in('user_id', userIds);
+
+  if (profileError) {
+    // プロフィール取得に失敗しても応募情報本体は返す
+    return {
+      data: applications.map((item) => ({
+        ...item,
+        applicant_name: item.applicant_user_id,
+        applicant_organization: null,
+      })),
+      error: null,
+    };
+  }
+
+  const profileByUserId = (profiles || []).reduce((acc, row) => {
+    if (!row?.user_id) return acc;
+    acc[row.user_id] = {
+      name: row.name || row.user_id,
+      organization: row.organization || null,
+    };
+    return acc;
+  }, {});
+
+  return {
+    data: applications.map((item) => ({
+      ...item,
+      applicant_name: profileByUserId[item.applicant_user_id]?.name || item.applicant_user_id,
+      applicant_organization: profileByUserId[item.applicant_user_id]?.organization || null,
+    })),
+    error: null,
+  };
 };
 
 /**

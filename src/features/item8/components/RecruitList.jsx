@@ -151,6 +151,24 @@ const formatHeadcountValue = (recruit) => {
 };
 
 /**
+ * 応募日時を「YYYY/MM/DD HH:mm」形式へ変換する。
+ *
+ * @param {string | null | undefined} value
+ * @returns {string}
+ */
+const formatAppliedAt = (value) => {
+  if (!value) return '日時不明';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '日時不明';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${y}/${m}/${d} ${hh}:${mm}`;
+};
+
+/**
  * 募集カード内の情報行を描画する。
  *
  * @param {{
@@ -196,16 +214,22 @@ const RecruitCard = ({
   onEdit,
   onClose,
   onReopen,
+  onToggleApplicants,
   theme,
   showStatus = false,
   themeMode,
   showApplyButton = true,
   showCancelButton = false,
   isAlreadyApplied = false,
+  applications = [],
+  isApplicantsOpen = false,
+  applicantsLoading = false,
+  showApplicantsToggle = false,
 }) => {
   const optional = formatOptional(recruit);
   const text = parseTitleAndDescription(recruit.description);
   const shouldShowActions = isManager || showApplyButton || showCancelButton;
+  const shouldShowApplicants = isManager && showApplicantsToggle && isApplicantsOpen;
 
   return (
     <View
@@ -303,6 +327,13 @@ const RecruitCard = ({
               ) : (
                 <Button title="再開" color={theme.success} onPress={() => onReopen?.(recruit.id)} />
               )}
+              {showApplicantsToggle ? (
+                <Button
+                  title={isApplicantsOpen ? '応募者一覧を閉じる' : '応募者一覧を開く'}
+                  color={theme.textSecondary}
+                  onPress={() => onToggleApplicants?.(recruit.id)}
+                />
+              ) : null}
             </>
           ) : (
             <>
@@ -325,6 +356,37 @@ const RecruitCard = ({
           )}
         </View>
       ) : null}
+      {shouldShowApplicants ? (
+        <View
+          style={[
+            styles.applicantsBox,
+            {
+              borderColor: theme.border,
+              backgroundColor: theme.background,
+              borderRadius: theme.borderRadius,
+            },
+          ]}
+        >
+          <Text style={[styles.applicantsTitle, { color: theme.text, fontWeight: theme.fontWeight }]}>
+            応募者一覧
+          </Text>
+          {applicantsLoading ? (
+            <Text style={[styles.applicantsRow, { color: theme.textSecondary }]}>読み込み中...</Text>
+          ) : null}
+          {!applicantsLoading && applications.length === 0 ? (
+            <Text style={[styles.applicantsRow, { color: theme.textSecondary }]}>応募者がいません</Text>
+          ) : null}
+          {!applicantsLoading &&
+            applications.map((application) => (
+              <Text
+                key={application.id || `${recruit.id}-${application.applicant_user_id}`}
+                style={[styles.applicantsRow, { color: theme.text }]}
+              >
+                ・{application.applicant_organization || '所属不明'}　{application.applicant_name || application.applicant_user_id || '不明なユーザー'}　{formatAppliedAt(application.created_at)}
+              </Text>
+            ))}
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -343,6 +405,7 @@ export const RecruitList = ({
   onEdit,
   onClose,
   onReopen,
+  onToggleApplicants,
   refreshing = false,
   onRefresh,
   emptyText = '募集がありません',
@@ -350,6 +413,10 @@ export const RecruitList = ({
   showApplyButton = true,
   showCancelButton = false,
   appliedRecruitIds = [],
+  applicationsByRecruitId = {},
+  openApplicantsByRecruitId = {},
+  loadingApplicantsByRecruitId = {},
+  showApplicantsToggle = false,
 }) => {
   const { theme, themeMode } = useTheme();
 
@@ -369,12 +436,17 @@ export const RecruitList = ({
           onEdit={onEdit}
           onClose={onClose}
           onReopen={onReopen}
+          onToggleApplicants={onToggleApplicants}
           theme={theme}
           showStatus={showStatus}
           themeMode={themeMode}
           showApplyButton={showApplyButton}
           showCancelButton={showCancelButton}
           isAlreadyApplied={appliedRecruitIds.includes(item.id)}
+          applications={applicationsByRecruitId[item.id] || []}
+          isApplicantsOpen={Boolean(openApplicantsByRecruitId[item.id])}
+          applicantsLoading={Boolean(loadingApplicantsByRecruitId[item.id])}
+          showApplicantsToggle={showApplicantsToggle}
         />
       )}
     />
@@ -448,6 +520,19 @@ const styles = StyleSheet.create({
     marginTop: 4,
     flexDirection: 'row',
     gap: 8,
+  },
+  applicantsBox: {
+    marginTop: 8,
+    borderWidth: 1,
+    padding: 8,
+    gap: 4,
+  },
+  applicantsTitle: {
+    fontSize: 13,
+  },
+  applicantsRow: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   empty: {
     textAlign: 'center',

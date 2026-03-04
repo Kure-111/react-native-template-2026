@@ -91,6 +91,7 @@ export const useRinjiHelp = () => {
    * @returns {Promise<void>}
    */
   const refresh = useCallback(async () => {
+    setApplications({});
     await loadRecruits({ includeClosed: false });
     if (manager) {
       await loadRecruits({ includeClosed: true });
