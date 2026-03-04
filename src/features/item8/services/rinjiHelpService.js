@@ -184,3 +184,64 @@ export const applyRecruit = async (recruitId, applicantUserId) => {
     .single();
   return { data, error };
 };
+
+/**
+ * 募集への応募を取り消す。
+ *
+ * @param {string} recruitId
+ * @param {string} applicantUserId
+ * @returns {Promise<{ data: any, error: any }>}
+ */
+export const cancelRecruitApplication = async (recruitId, applicantUserId) => {
+  const { data, error } = await supabase
+    .from('rinji_help_applications')
+    .delete()
+    .eq('recruit_id', recruitId)
+    .eq('applicant_user_id', applicantUserId)
+    .select('id');
+  return { data, error };
+};
+
+/**
+ * 指定ユーザーが応募済みの募集一覧を取得する。
+ *
+ * @param {string} applicantUserId
+ * @returns {Promise<{ data: any, error: any }>}
+ */
+export const fetchAppliedRecruits = async (applicantUserId) => {
+  if (!applicantUserId) {
+    return { data: [], error: null };
+  }
+
+  const { data: applications, error: applicationsError } = await supabase
+    .from('rinji_help_applications')
+    .select('recruit_id, created_at')
+    .eq('applicant_user_id', applicantUserId)
+    .order('created_at', { ascending: false });
+
+  if (applicationsError) {
+    return { data: null, error: applicationsError };
+  }
+
+  const recruitIds = [...new Set((applications || []).map((row) => row.recruit_id).filter(Boolean))];
+  if (recruitIds.length === 0) {
+    return { data: [], error: null };
+  }
+
+  const orderByAppliedAt = new Map(recruitIds.map((id, index) => [id, index]));
+  const { data: recruits, error } = await supabase
+    .from('rinji_help_recruits')
+    .select('*')
+    .in('id', recruitIds);
+
+  if (error) {
+    return { data: null, error };
+  }
+
+  const sorted = (recruits || []).sort((a, b) => {
+    const ai = orderByAppliedAt.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+    const bi = orderByAppliedAt.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+    return ai - bi;
+  });
+  return { data: sorted, error: null };
+};

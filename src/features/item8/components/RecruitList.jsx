@@ -178,15 +178,20 @@ const RecruitCard = ({
   recruit,
   isManager,
   onApply,
+  onCancelApply,
   onEdit,
   onClose,
   onReopen,
   theme,
   showStatus = false,
   themeMode,
+  showApplyButton = true,
+  showCancelButton = false,
+  isAlreadyApplied = false,
 }) => {
   const optional = formatOptional(recruit);
   const text = parseTitleAndDescription(recruit.description);
+  const shouldShowActions = isManager || showApplyButton || showCancelButton;
 
   return (
     <View
@@ -274,25 +279,38 @@ const RecruitCard = ({
         </Text>
       ) : null}
 
-      <View style={styles.actions}>
-        {isManager ? (
-          <>
-            <Button title="編集" color={theme.primary} onPress={() => onEdit?.(recruit)} />
-            {recruit.status === RINJI_STATUS.OPEN ? (
-              <Button title="終了" color={theme.error} onPress={() => onClose?.(recruit.id)} />
-            ) : (
-              <Button title="再開" color={theme.success} onPress={() => onReopen?.(recruit.id)} />
-            )}
-          </>
-        ) : (
-          <Button
-            title="応募する"
-            color={theme.primary}
-            onPress={() => onApply?.(recruit.id)}
-            disabled={recruit.status !== RINJI_STATUS.OPEN}
-          />
-        )}
-      </View>
+      {shouldShowActions ? (
+        <View style={styles.actions}>
+          {isManager ? (
+            <>
+              <Button title="編集" color={theme.primary} onPress={() => onEdit?.(recruit)} />
+              {recruit.status === RINJI_STATUS.OPEN ? (
+                <Button title="終了" color={theme.error} onPress={() => onClose?.(recruit.id)} />
+              ) : (
+                <Button title="再開" color={theme.success} onPress={() => onReopen?.(recruit.id)} />
+              )}
+            </>
+          ) : (
+            <>
+              {showApplyButton ? (
+                <Button
+                  title={isAlreadyApplied ? '応募済み' : '応募する'}
+                  color={theme.primary}
+                  onPress={() => onApply?.(recruit.id)}
+                  disabled={recruit.status !== RINJI_STATUS.OPEN || isAlreadyApplied}
+                />
+              ) : null}
+              {showCancelButton ? (
+                <Button
+                  title="応募取り消し"
+                  color={theme.error}
+                  onPress={() => onCancelApply?.(recruit.id)}
+                />
+              ) : null}
+            </>
+          )}
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -307,6 +325,7 @@ export const RecruitList = ({
   data,
   isManager = false,
   onApply,
+  onCancelApply,
   onEdit,
   onClose,
   onReopen,
@@ -314,6 +333,9 @@ export const RecruitList = ({
   onRefresh,
   emptyText = '募集がありません',
   showStatus = false,
+  showApplyButton = true,
+  showCancelButton = false,
+  appliedRecruitIds = [],
 }) => {
   const { theme, themeMode } = useTheme();
 
@@ -329,12 +351,16 @@ export const RecruitList = ({
           recruit={item}
           isManager={isManager}
           onApply={onApply}
+          onCancelApply={onCancelApply}
           onEdit={onEdit}
           onClose={onClose}
           onReopen={onReopen}
           theme={theme}
           showStatus={showStatus}
           themeMode={themeMode}
+          showApplyButton={showApplyButton}
+          showCancelButton={showCancelButton}
+          isAlreadyApplied={appliedRecruitIds.includes(item.id)}
         />
       )}
     />

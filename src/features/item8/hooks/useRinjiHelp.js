@@ -11,6 +11,8 @@ import {
   reopenRecruit,
   fetchApplications,
   applyRecruit,
+  cancelRecruitApplication,
+  fetchAppliedRecruits,
 } from '../services/rinjiHelpService.js';
 import { isManager, RINJI_STATUS } from '../constants.js';
 
@@ -26,6 +28,7 @@ import { isManager, RINJI_STATUS } from '../constants.js';
  *   userInfo: any,
  *   recruits: Array<any>,
  *   historyRecruits: Array<any>,
+ *   appliedRecruits: Array<any>,
  *   applications: Record<string, Array<any>>,
  *   refresh: () => Promise<void>,
  *   handleCreate: (payload: Record<string, any>) => Promise<boolean>,
@@ -33,6 +36,7 @@ import { isManager, RINJI_STATUS } from '../constants.js';
  *   handleClose: (id: string) => Promise<boolean>,
  *   handleReopen: (id: string) => Promise<boolean>,
  *   handleApply: (id: string) => Promise<boolean>,
+ *   handleCancelApply: (id: string) => Promise<boolean>,
  *   loadApplications: (recruitId: string) => Promise<void>,
  *   RINJI_STATUS: typeof RINJI_STATUS
  * }}
@@ -41,6 +45,7 @@ export const useRinjiHelp = () => {
   const { user, userInfo, isLoading: authLoading } = useAuth();
   const [recruits, setRecruits] = useState([]);
   const [historyRecruits, setHistoryRecruits] = useState([]);
+  const [appliedRecruits, setAppliedRecruits] = useState([]);
   const [applications, setApplications] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -89,10 +94,17 @@ export const useRinjiHelp = () => {
     await loadRecruits({ includeClosed: false });
     if (manager) {
       await loadRecruits({ includeClosed: true });
+      setAppliedRecruits([]);
     } else {
       setHistoryRecruits([]);
+      const { data, error: appliedError } = await fetchAppliedRecruits(user?.id);
+      if (appliedError) {
+        setError(appliedError.message);
+      } else {
+        setAppliedRecruits(data || []);
+      }
     }
-  }, [loadRecruits, manager]);
+  }, [loadRecruits, manager, user?.id]);
 
   useEffect(() => {
     if (!authLoading) {
@@ -187,7 +199,34 @@ export const useRinjiHelp = () => {
     async (id) => {
       const { error } = await applyRecruit(id, user?.id);
       if (error) {
+        const duplicate =
+          error?.code === '23505' ||
+          error?.message?.includes?.('uq_rinji_apps_recruit_applicant') ||
+          error?.message?.toLowerCase?.().includes?.('duplicate key');
+        setError(duplicate ? 'すでに応募済みです。応募済みタブをご確認ください。' : error.message);
+        return false;
+      }
+      await refresh();
+      return true;
+    },
+    [refresh, user?.id]
+  );
+
+  /**
+   * 指定募集への応募を取り消して一覧を更新する。
+   *
+   * @param {string} id
+   * @returns {Promise<boolean>}
+   */
+  const handleCancelApply = useCallback(
+    async (id) => {
+      const { data, error } = await cancelRecruitApplication(id, user?.id);
+      if (error) {
         setError(error.message);
+        return false;
+      }
+      if (!data || data.length === 0) {
+        setError('応募の取り消しに失敗しました。時間をおいて再度お試しください。');
         return false;
       }
       await refresh();
@@ -220,6 +259,7 @@ export const useRinjiHelp = () => {
     userInfo,
     recruits,
     historyRecruits,
+    appliedRecruits,
     applications,
     refresh,
     handleCreate,
@@ -227,6 +267,7 @@ export const useRinjiHelp = () => {
     handleClose,
     handleReopen,
     handleApply,
+    handleCancelApply,
     loadApplications,
     RINJI_STATUS,
   };
