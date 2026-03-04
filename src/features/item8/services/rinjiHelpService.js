@@ -67,6 +67,46 @@ const withOptionalDefaults = (payload = {}) => {
 };
 
 /**
+ * 募集配列に応募人数（applicant_count）を付与する。
+ *
+ * @param {Array<Record<string, any>> | null | undefined} recruits
+ * @returns {Promise<{ data: Array<Record<string, any>> | null, error: any }>}
+ */
+const withApplicantCounts = async (recruits) => {
+  const list = recruits || [];
+  if (list.length === 0) {
+    return { data: [], error: null };
+  }
+
+  const recruitIds = [...new Set(list.map((item) => item?.id).filter(Boolean))];
+  if (recruitIds.length === 0) {
+    return { data: list, error: null };
+  }
+
+  const { data: applications, error } = await supabase
+    .from('rinji_help_applications')
+    .select('recruit_id')
+    .in('recruit_id', recruitIds);
+
+  if (error) {
+    return { data: null, error };
+  }
+
+  const counts = (applications || []).reduce((acc, row) => {
+    const key = row?.recruit_id;
+    if (!key) return acc;
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  const enriched = list.map((recruit) => ({
+    ...recruit,
+    applicant_count: counts[recruit.id] || 0,
+  }));
+  return { data: enriched, error: null };
+};
+
+/**
  * 募集一覧を取得する。
  *
  * @param {{ includeClosed?: boolean, filters?: { location?: string, department_id?: string } }} params
@@ -88,7 +128,10 @@ export const fetchRecruits = async ({ includeClosed = false, filters = {} } = {}
   }
 
   const { data, error } = await query;
-  return { data, error };
+  if (error) {
+    return { data, error };
+  }
+  return withApplicantCounts(data || []);
 };
 
 /**
@@ -237,8 +280,12 @@ export const fetchAppliedRecruits = async (applicantUserId) => {
   if (error) {
     return { data: null, error };
   }
+  const { data: recruitsWithCounts, error: countError } = await withApplicantCounts(recruits || []);
+  if (countError) {
+    return { data: null, error: countError };
+  }
 
-  const sorted = (recruits || []).sort((a, b) => {
+  const sorted = (recruitsWithCounts || []).sort((a, b) => {
     const ai = orderByAppliedAt.get(a.id) ?? Number.MAX_SAFE_INTEGER;
     const bi = orderByAppliedAt.get(b.id) ?? Number.MAX_SAFE_INTEGER;
     return ai - bi;

@@ -137,6 +137,20 @@ const parseTitleAndDescription = (raw) => {
 const getStatusLabel = (status) => STATUS_LABELS[status] || status;
 
 /**
+ * 募集人数表示を「応募数 / 募集人数」の形式に整える。
+ *
+ * @param {Record<string, any>} recruit
+ * @returns {string}
+ */
+const formatHeadcountValue = (recruit) => {
+  const required = recruit?.headcount ?? '—';
+  const applicants = Number.isFinite(Number(recruit?.applicant_count))
+    ? Number(recruit.applicant_count)
+    : 0;
+  return `${applicants} / ${required}`;
+};
+
+/**
  * 募集カード内の情報行を描画する。
  *
  * @param {{
@@ -241,7 +255,7 @@ const RecruitCard = ({
         size="third"
         theme={theme}
         items={[
-          { label: '募集人数', value: recruit.headcount },
+          { label: '募集人数', value: formatHeadcountValue(recruit) },
           { label: '場所', value: recruit.location },
           { label: '集合場所', value: optional.meet_place },
         ]}
