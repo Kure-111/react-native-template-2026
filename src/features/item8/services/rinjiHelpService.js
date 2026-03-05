@@ -4,11 +4,22 @@
  */
 
 import { getSupabaseClient } from '../../../services/supabase/client.js';
-import { RINJI_STATUS, OPTIONAL_FIELD_DEFAULTS } from '../constants.js';
+import { RINJI_STATUS, RINJI_CLOSE_REASON, OPTIONAL_FIELD_DEFAULTS } from '../constants.js';
 
 const supabase = getSupabaseClient();
 const IMMEDIATE_TIME_LABEL = '現在時刻';
 const LEGACY_IMMEDIATE_TIME_LABEL = 'いますぐ';
+
+/**
+ * `close_reason` 列が未反映の環境かどうかを判定する。
+ *
+ * @param {any} error
+ * @returns {boolean}
+ */
+const isMissingCloseReasonColumnError = (error) => {
+  const text = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+  return text.includes('close_reason') && (text.includes('column') || text.includes('schema cache'));
+};
 
 /**
  * 表示用の作業時間文字列から開始時刻を推定する。
@@ -107,6 +118,168 @@ const withApplicantCounts = async (recruits) => {
 };
 
 /**
+ * 対象募集の応募件数を取得する。
+ *
+ * @param {string} recruitId
+ * @returns {Promise<{ count: number | null, error: any }>}
+ */
+const fetchApplicantCount = async (recruitId) => {
+  const { count, error } = await supabase
+    .from('rinji_help_applications')
+    .select('id', { count: 'exact', head: true })
+    .eq('recruit_id', recruitId);
+
+  if (error) {
+    return { count: null, error };
+  }
+  return { count: count || 0, error: null };
+};
+
+/**
+ * 自動終了/自動再開判定に必要な募集情報を取得する。
+ * `close_reason` 未反映環境では後方互換のためフォールバック取得する。
+ *
+ * @param {string} recruitId
+ * @returns {Promise<{ data: ({id: string, status: string, headcount: number, close_reason: string | null, hasCloseReasonColumn: boolean}) | null, error: any }>}
+ */
+const fetchRecruitForAutoControl = async (recruitId) => {
+  const { data, error } = await supabase
+    .from('rinji_help_recruits')
+    .select('id, status, headcount, close_reason')
+    .eq('id', recruitId)
+    .single();
+
+  if (!error) {
+    return {
+      data: {
+        ...data,
+        hasCloseReasonColumn: true,
+      },
+      error: null,
+    };
+  }
+
+  if (!isMissingCloseReasonColumnError(error)) {
+    return { data: null, error };
+  }
+
+  const { data: fallback, error: fallbackError } = await supabase
+    .from('rinji_help_recruits')
+    .select('id, status, headcount')
+    .eq('id', recruitId)
+    .single();
+
+  if (fallbackError) {
+    return { data: null, error: fallbackError };
+  }
+
+  return {
+    data: {
+      ...fallback,
+      close_reason: null,
+      hasCloseReasonColumn: false,
+    },
+    error: null,
+  };
+};
+
+/**
+ * 応募人数が募集人数に達していれば募集を自動終了する。
+ *
+ * @param {string} recruitId
+ * @returns {Promise<{ error: any }>}
+ */
+const autoCloseRecruitWhenFull = async (recruitId) => {
+  const { data: recruit, error: recruitError } = await fetchRecruitForAutoControl(recruitId);
+  if (recruitError || !recruit) {
+    return { error: recruitError };
+  }
+
+  if (recruit.status !== RINJI_STATUS.OPEN) {
+    return { error: null };
+  }
+
+  const headcount = Number(recruit.headcount);
+  if (!Number.isFinite(headcount) || headcount <= 0) {
+    return { error: null };
+  }
+
+  const { count, error: countError } = await fetchApplicantCount(recruitId);
+  if (countError || count === null) {
+    return { error: countError };
+  }
+
+  if (count < headcount) {
+    return { error: null };
+  }
+
+  const payload = {
+    status: RINJI_STATUS.CLOSED,
+    updated_at: new Date().toISOString(),
+  };
+  if (recruit.hasCloseReasonColumn) {
+    payload.close_reason = RINJI_CLOSE_REASON.AUTO_FULL;
+  }
+
+  const { error } = await supabase
+    .from('rinji_help_recruits')
+    .update(payload)
+    .eq('id', recruitId)
+    .eq('status', RINJI_STATUS.OPEN);
+
+  return { error };
+};
+
+/**
+ * 応募取り消し後に、満員自動終了だった募集のみ必要に応じて自動再開する。
+ *
+ * @param {string} recruitId
+ * @returns {Promise<{ error: any }>}
+ */
+const autoReopenRecruitWhenBelowCapacity = async (recruitId) => {
+  const { data: recruit, error: recruitError } = await fetchRecruitForAutoControl(recruitId);
+  if (recruitError || !recruit) {
+    return { error: recruitError };
+  }
+
+  // close_reason 列が無い環境では手動終了との区別ができないため再開しない。
+  if (!recruit.hasCloseReasonColumn) {
+    return { error: null };
+  }
+
+  if (recruit.status !== RINJI_STATUS.CLOSED || recruit.close_reason !== RINJI_CLOSE_REASON.AUTO_FULL) {
+    return { error: null };
+  }
+
+  const headcount = Number(recruit.headcount);
+  if (!Number.isFinite(headcount) || headcount <= 0) {
+    return { error: null };
+  }
+
+  const { count, error: countError } = await fetchApplicantCount(recruitId);
+  if (countError || count === null) {
+    return { error: countError };
+  }
+
+  if (count >= headcount) {
+    return { error: null };
+  }
+
+  const { error } = await supabase
+    .from('rinji_help_recruits')
+    .update({
+      status: RINJI_STATUS.OPEN,
+      close_reason: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', recruitId)
+    .eq('status', RINJI_STATUS.CLOSED)
+    .eq('close_reason', RINJI_CLOSE_REASON.AUTO_FULL);
+
+  return { error };
+};
+
+/**
  * 募集一覧を取得する。
  *
  * @param {{ includeClosed?: boolean, filters?: { location?: string, department_id?: string } }} params
@@ -173,11 +346,26 @@ export const updateRecruit = async (id, payload) => {
  * @returns {Promise<{ data: any, error: any }>}
  */
 export const closeRecruit = async (id) => {
+  const payload = {
+    status: RINJI_STATUS.CLOSED,
+    close_reason: RINJI_CLOSE_REASON.MANUAL,
+    updated_at: new Date().toISOString(),
+  };
   const { data, error } = await supabase
     .from('rinji_help_recruits')
-    .update({ status: RINJI_STATUS.CLOSED })
+    .update(payload)
     .eq('id', id);
-  return { data, error };
+
+  if (!error || !isMissingCloseReasonColumnError(error)) {
+    return { data, error };
+  }
+
+  // close_reason 列が未反映の環境向けフォールバック
+  const fallback = await supabase
+    .from('rinji_help_recruits')
+    .update({ status: RINJI_STATUS.CLOSED, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  return fallback;
 };
 
 /**
@@ -187,11 +375,26 @@ export const closeRecruit = async (id) => {
  * @returns {Promise<{ data: any, error: any }>}
  */
 export const reopenRecruit = async (id) => {
+  const payload = {
+    status: RINJI_STATUS.OPEN,
+    close_reason: null,
+    updated_at: new Date().toISOString(),
+  };
   const { data, error } = await supabase
+    .from('rinji_help_recruits')
+    .update(payload)
+    .eq('id', id);
+
+  if (!error || !isMissingCloseReasonColumnError(error)) {
+    return { data, error };
+  }
+
+  // close_reason 列が未反映の環境向けフォールバック
+  const fallback = await supabase
     .from('rinji_help_recruits')
     .update({ status: RINJI_STATUS.OPEN, updated_at: new Date().toISOString() })
     .eq('id', id);
-  return { data, error };
+  return fallback;
 };
 
 /**
@@ -268,7 +471,18 @@ export const applyRecruit = async (recruitId, applicantUserId) => {
     })
     .select()
     .single();
-  return { data, error };
+
+  if (error) {
+    return { data, error };
+  }
+
+  const { error: autoCloseError } = await autoCloseRecruitWhenFull(recruitId);
+  if (autoCloseError) {
+    // 応募登録自体は完了しているため、ここでは失敗扱いにしない。
+    console.warn('[item8] auto close skipped:', autoCloseError.message || autoCloseError);
+  }
+
+  return { data, error: null };
 };
 
 /**
@@ -285,7 +499,20 @@ export const cancelRecruitApplication = async (recruitId, applicantUserId) => {
     .eq('recruit_id', recruitId)
     .eq('applicant_user_id', applicantUserId)
     .select('id');
-  return { data, error };
+
+  if (error) {
+    return { data, error };
+  }
+
+  if ((data || []).length > 0) {
+    const { error: autoReopenError } = await autoReopenRecruitWhenBelowCapacity(recruitId);
+    if (autoReopenError) {
+      // 取り消し自体は成功しているため、ここでは失敗扱いにしない。
+      console.warn('[item8] auto reopen skipped:', autoReopenError.message || autoReopenError);
+    }
+  }
+
+  return { data, error: null };
 };
 
 /**
