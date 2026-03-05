@@ -364,42 +364,11 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
       showMessage('操作エラー', 'ログイン情報が取得できません');
       return;
     }
-    /** 施錠確認タスクを作成するか（完全返却の場合のみ選択可能） */
-    let createLockTask = false;
-
-    if (returnType === 'temporary') {
-      /** 一時返却：施錠確認依頼なし（確認ダイアログのみ） */
-      if (Platform.OS === 'web') {
-        if (!window.confirm('返却を実行しますか？')) return;
-      } else {
-        const confirmed = await new Promise((resolve) => {
-          Alert.alert('確認', '返却を実行しますか？', [
-            { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
-            { text: '実行', onPress: () => resolve(true) },
-          ]);
-        });
-        if (!confirmed) return;
-      }
-      createLockTask = false;
-    } else {
-      /** 完全返却：施錠確認依頼の有無を選択 */
-      if (Platform.OS === 'web') {
-        /** Web: 2段階の confirm で選択 */
-        if (!window.confirm('完全返却を実行しますか？')) return;
-        createLockTask = window.confirm('施錠確認タスクも作成しますか？');
-      } else {
-        /** Native: Alert の3択で選択 */
-        const choice = await new Promise((resolve) => {
-          Alert.alert('完全返却', '返却方法を選んでください', [
-            { text: 'キャンセル', style: 'cancel', onPress: () => resolve('cancel') },
-            { text: '返却のみ', onPress: () => resolve('return') },
-            { text: '返却+施錠確認', onPress: () => resolve('lockTask') },
-          ]);
-        });
-        if (choice === 'cancel') return;
-        createLockTask = choice === 'lockTask';
-      }
-    }
+    /**
+     * 施錠確認タスクを作成するか
+     * 完全返却（permanent）の場合は常に施錠確認タスクを作成する
+     */
+    const createLockTask = returnType === 'permanent';
 
     setIsSubmitting(true);
     const { error } = await returnKeyAndCreateLockTask({
@@ -416,10 +385,6 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
     }
     await loadKeyLoans();
     onLoanReturned?.();
-    showMessage(
-      '返却完了',
-      createLockTask ? '返却を登録し、施錠確認タスクを作成しました' : '返却を登録しました'
-    );
   };
 
   /**
@@ -433,18 +398,6 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
       showMessage('操作エラー', 'ログイン情報が取得できません');
       return;
     }
-    const actionLabel = status === 'approved' ? '承認' : '却下';
-    if (Platform.OS === 'web') {
-      if (!window.confirm(`鍵予約を「${actionLabel}」しますか？`)) return;
-    } else {
-      const confirmed = await new Promise((resolve) => {
-        Alert.alert('確認', `鍵予約を「${actionLabel}」しますか？`, [
-          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
-          { text: actionLabel, onPress: () => resolve(true) },
-        ]);
-      });
-      if (!confirmed) return;
-    }
     setIsSubmitting(true);
     const { error } = await updateKeyReservationStatus({
       reservationId,
@@ -457,10 +410,6 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
       return;
     }
     await loadKeyReservations();
-    showMessage(
-      '更新完了',
-      status === 'approved' ? '鍵予約を承認しました' : '鍵予約を却下しました'
-    );
   };
 
   useEffect(() => {
