@@ -377,18 +377,25 @@ const createQuestionContact = async (input) => {
 /**
  * 緊急呼び出しを作成
  * @param {Object} input - 入力値
+ * @param {string} input.emergencyLocation - 現在地・場所（必須）
+ * @param {string} [input.detail] - 緊急内容（任意）
  * @returns {Promise<Object>} 作成結果
  */
 const createEmergencyContact = async (input) => {
   try {
     validateCommonInput(input);
 
-    const detail = normalizeText(input.detail);
-    if (!detail) {
-      throw new Error('緊急内容を入力してください');
+    /** 現在地・場所（必須）: 本部側が「どこ・誰か」を即判断するための情報 */
+    const emergencyLocation = normalizeText(input.emergencyLocation);
+    if (!emergencyLocation) {
+      throw new Error('現在地・場所を入力してください');
     }
 
-    const priority = normalizeText(input.priority) || 'high';
+    /** 緊急内容（任意）: 空文字の場合はデフォルトメッセージを使用 */
+    const detail = normalizeText(input.detail) || '緊急呼び出し';
+
+    /** 優先度は常に high 固定（緊急呼び出しは最高優先度） */
+    const priority = 'high';
 
     const payload = {
       ticket_type: 'emergency',
@@ -398,12 +405,14 @@ const createEmergencyContact = async (input) => {
       description: detail,
       event_id: normalizeText(input.eventId) || null,
       event_name: normalizeText(input.eventName),
-      event_location: normalizeText(input.eventLocation),
+      /** event_location: プロフィールの場所ではなく現在地・場所を使用 */
+      event_location: emergencyLocation,
       created_by: normalizeText(input.createdBy),
       org_id: input.orgId || null,
       notify_target: 'hq',
       metadata: {
-        emergency_priority: priority,
+        /** 現在地・場所情報をメタデータにも保持 */
+        emergency_location: emergencyLocation,
       },
     };
 

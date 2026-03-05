@@ -23,7 +23,6 @@ import {
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 import {
-  EMERGENCY_PRIORITIES,
   EVENT_STATUS_OPTIONS,
   QUESTION_TYPES,
   SCREEN_NAME,
@@ -215,7 +214,8 @@ const Item16Screen = ({ navigation }) => {
   const [questionDetail, setQuestionDetail] = useState('');
 
   // 緊急呼び出し
-  const [emergencyPriority, setEmergencyPriority] = useState(EMERGENCY_PRIORITIES[0].key);
+  /** 現在地・場所（必須）: ユーザープロフィールの企画場所を初期値として設定 */
+  const [emergencyLocation, setEmergencyLocation] = useState('');
   const [emergencyDetail, setEmergencyDetail] = useState('');
 
   // 鍵の事前申請
@@ -531,6 +531,8 @@ const Item16Screen = ({ navigation }) => {
 
         setEventName(profileEventName || storedEventName);
         setEventLocation(profileEventLocation || storedEventLocation);
+        /** 緊急呼び出し用の初期場所: プロフィールの企画場所をプリフィル */
+        setEmergencyLocation(profileEventLocation || storedEventLocation);
       } catch (error) {
         console.error('企画情報の復元に失敗しました:', error);
       } finally {
@@ -945,7 +947,7 @@ const Item16Screen = ({ navigation }) => {
     } else if (activeTab === SUPPORT_TAB_TYPES.EMERGENCY) {
       payload = {
         type: activeTab,
-        priority: emergencyPriority,
+        emergencyLocation,
         detail: emergencyDetail,
       };
     } else if (activeTab === SUPPORT_TAB_TYPES.KEY_PREAPPLY) {
@@ -1008,7 +1010,7 @@ const Item16Screen = ({ navigation }) => {
       } else if (activeTab === SUPPORT_TAB_TYPES.EMERGENCY) {
         result = await exhibitorSupportService.createEmergencyContact({
           ...commonPayload,
-          priority: emergencyPriority,
+          emergencyLocation,
           detail: emergencyDetail,
         });
       } else if (activeTab === SUPPORT_TAB_TYPES.KEY_PREAPPLY) {
@@ -1133,11 +1135,10 @@ const Item16Screen = ({ navigation }) => {
       return (
         <EmergencyForm
           theme={theme}
-          emergencyPriority={emergencyPriority}
-          onChangePriority={setEmergencyPriority}
+          emergencyLocation={emergencyLocation}
+          onChangeLocation={setEmergencyLocation}
           emergencyDetail={emergencyDetail}
           onChangeDetail={setEmergencyDetail}
-          renderOptionButtons={renderOptionButtons}
         />
       );
     }

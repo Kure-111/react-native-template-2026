@@ -764,6 +764,14 @@ const Item12Screen = ({ navigation }) => {
   }, [user?.id]);
 
   useEffect(() => {
+    /** 30秒ごとに自動更新（他者が受諾したタスクを即座に非表示にする） */
+    const interval = setInterval(() => {
+      loadTasks(selectedTaskId);
+    }, 30 * 1000);
+    return () => clearInterval(interval);
+  }, [selectedTaskId]);
+
+  useEffect(() => {
     loadTaskResults(selectedTaskId);
   }, [selectedTaskId]);
 
