@@ -902,27 +902,11 @@ const Item16Screen = ({ navigation }) => {
   };
 
   /**
-   * 新規連絡用の添付をカメラで撮影
-   * @returns {void}
-   */
-  const pickAttachmentFromCamera = () => {
-    pickFileFromDevice((file) => setAttachmentFile(file), 'environment');
-  };
-
-  /**
    * 追記用の添付をファイルから選択
    * @returns {void}
    */
   const pickFollowupAttachmentFile = () => {
     pickFileFromDevice((file) => setFollowupAttachmentFile(file));
-  };
-
-  /**
-   * 追記用の添付をカメラで撮影
-   * @returns {void}
-   */
-  const pickFollowupAttachmentFromCamera = () => {
-    pickFileFromDevice((file) => setFollowupAttachmentFile(file), 'environment');
   };
 
   /**
@@ -1295,32 +1279,20 @@ const Item16Screen = ({ navigation }) => {
                 <Text style={[styles.questionTargetHint, { color: theme.textSecondary }]}>
                   画像/PDFを1件添付できます（最大 {MAX_ATTACHMENT_FILE_SIZE_MB}MB）。画像は自動圧縮されます。
                 </Text>
-                <View style={styles.attachPickerRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.attachPickerButton,
-                      styles.attachPickerButtonFlex,
-                      { borderColor: theme.border, backgroundColor: theme.background },
-                    ]}
-                    onPress={pickAttachmentFile}
-                  >
-                    <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
-                      {attachmentFile ? '別のファイルを選択' : 'ファイルから選択'}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.attachPickerButton,
-                      styles.attachPickerButtonFlex,
-                      { borderColor: theme.border, backgroundColor: theme.background },
-                    ]}
-                    onPress={pickAttachmentFromCamera}
-                  >
-                    <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
-                      カメラで撮影
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+                <Text style={[styles.attachDiscordHint, { color: theme.textSecondary }]}>
+                  ファイルが大きい場合はDiscordで送ってください。
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.attachPickerButton,
+                    { borderColor: theme.border, backgroundColor: theme.background },
+                  ]}
+                  onPress={pickAttachmentFile}
+                >
+                  <Text style={[styles.attachPickerButtonText, { color: theme.textSecondary }]}>
+                    {attachmentFile ? '別のファイルを選択' : 'ファイルから選択'}
+                  </Text>
+                </TouchableOpacity>
 
                 {attachmentFile ? (
                   <View
@@ -1401,7 +1373,6 @@ const Item16Screen = ({ navigation }) => {
             isSubmittingContactReply={isSubmittingContactReply}
             followupAttachmentFile={followupAttachmentFile}
             onPickFollowupAttachment={pickFollowupAttachmentFile}
-            onPickFollowupAttachmentFromCamera={pickFollowupAttachmentFromCamera}
             onClearFollowupAttachment={clearFollowupAttachment}
             followupAttachmentCaption={followupAttachmentCaption}
             onChangeFollowupAttachmentCaption={setFollowupAttachmentCaption}
@@ -1484,12 +1455,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 15,
   },
-  attachPickerRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  attachPickerButtonFlex: {
-    flex: 1,
+  /** 添付エリアのDiscord誘導注意文 */
+  attachDiscordHint: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 6,
   },
   attachPickerButton: {
     borderWidth: 1,
