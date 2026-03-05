@@ -42,7 +42,7 @@
 
 ### events (RLS: ON)
 企画テーブル
-- カラム: id, name, type, capacity_per_slot, slot_duration_minutes, estimated_wait_minutes, description, image_path, category, sub_category, location_id, event_organization_id, created_at, updated_at
+- カラム: id, name, description, image_path, category_id, location_id, event_organization_id, is_published, created_at, updated_at
 - 対応: `src/features/item1/services/`
 
 ### event_dates (RLS: ON)
@@ -59,11 +59,11 @@
 
 ### event_locations (RLS: ON)
 企画場所マスタ
-- カラム: id, name, display_order, area_id, created_at, updated_at
+- カラム: id, name, display_order, building_id, created_at, updated_at
 
 ### stalls (RLS: ON)
 屋台情報
-- カラム: id, stall_organization_id, location_id, name, description, image_path, category, sub_category, temperature, menu_items, is_active, created_at, updated_at
+- カラム: id, stall_organization_id, location_id, name, description, image_path, category_id, is_published, created_at, updated_at
 - 対応: `src/features/item2/services/`
 
 ### stall_organizations (RLS: ON)
@@ -76,7 +76,7 @@
 
 ### stall_locations (RLS: ON)
 屋台場所マスタ
-- カラム: id, name, display_order, area_id, created_at, updated_at
+- カラム: id, display_order, created_at, updated_at, area_id, building_id, area_letter, stall_number, name
 
 ### locations (RLS: ON)
 場所マスタ（共通）
