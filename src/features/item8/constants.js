@@ -18,6 +18,7 @@ export const RINJI_STATUS = {
 export const RINJI_CLOSE_REASON = {
   MANUAL: 'manual',
   AUTO_FULL: 'auto_full',
+  AUTO_DATE_PASSED: 'auto_date_passed',
 };
 
 /**

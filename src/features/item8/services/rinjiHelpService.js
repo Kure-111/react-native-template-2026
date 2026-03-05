@@ -35,6 +35,17 @@ const isMissingCloseReasonColumnError = (error) => {
 };
 
 /**
+ * 期限切れ自動クローズ用 RPC 関数未作成エラーかを判定する。
+ *
+ * @param {any} error
+ * @returns {boolean}
+ */
+const isMissingExpiredCloseFunctionError = (error) => {
+  const text = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+  return text.includes('close_expired_rinji_recruits') && (text.includes('function') || text.includes('does not exist'));
+};
+
+/**
  * 表示用の作業時間文字列から開始時刻を推定する。
  *
  * @param {string | null | undefined} workTime
@@ -308,6 +319,23 @@ const autoReopenRecruitWhenBelowCapacity = async (recruitId) => {
 };
 
 /**
+ * 募集日の翌日 00:00 を過ぎた open 募集を自動クローズに同期する。
+ * DB 側の security definer RPC が存在しない環境では何もしない。
+ *
+ * @returns {Promise<{ error: any }>}
+ */
+export const syncExpiredRecruitStatuses = async () => {
+  const { error } = await supabase.rpc('close_expired_rinji_recruits');
+  if (!error) {
+    return { error: null };
+  }
+  if (isMissingExpiredCloseFunctionError(error)) {
+    return { error: null };
+  }
+  return { error };
+};
+
+/**
  * 募集検索共通フィルタをクエリに適用する。
  *
  * @param {any} query
@@ -349,7 +377,7 @@ export const fetchRecruits = async ({ includeClosed = false, includeAutoFullClos
           .from('rinji_help_recruits')
           .select('*')
           .eq('status', RINJI_STATUS.CLOSED)
-          .eq('close_reason', RINJI_CLOSE_REASON.AUTO_FULL)
+          .in('close_reason', [RINJI_CLOSE_REASON.AUTO_FULL, RINJI_CLOSE_REASON.AUTO_DATE_PASSED])
           .order('updated_at', { ascending: false }),
         filters
       );

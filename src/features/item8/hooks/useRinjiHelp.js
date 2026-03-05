@@ -13,6 +13,7 @@ import {
   applyRecruit,
   cancelRecruitApplication,
   fetchAppliedRecruits,
+  syncExpiredRecruitStatuses,
 } from '../services/rinjiHelpService.js';
 import { isManager, RINJI_STATUS } from '../constants.js';
 
@@ -92,6 +93,10 @@ export const useRinjiHelp = () => {
    */
   const refresh = useCallback(async () => {
     setApplications({});
+    const { error: syncError } = await syncExpiredRecruitStatuses();
+    if (syncError) {
+      console.warn('[item8] sync expired recruits skipped:', syncError.message || syncError);
+    }
     await loadRecruits({ includeClosed: false, includeAutoFullClosed: manager });
     if (manager) {
       await loadRecruits({ includeClosed: true });

@@ -442,6 +442,7 @@ const Item8Screen = ({ navigation }) => {
         openApplicantsByRecruitId={openApplicantsByRecruitId}
         loadingApplicantsByRecruitId={loadingApplicantsByRecruitId}
         showApplicantsToggle
+        showAutoClosedBadge
       />
     </View>
   );

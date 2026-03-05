@@ -234,6 +234,9 @@ const RecruitCard = ({
   const shouldShowApplicants = isManager && showApplicantsToggle && isApplicantsOpen;
   const isAutoClosedByCapacity =
     recruit.status === RINJI_STATUS.CLOSED && recruit.close_reason === RINJI_CLOSE_REASON.AUTO_FULL;
+  const isAutoClosedByDate =
+    recruit.status === RINJI_STATUS.CLOSED &&
+    recruit.close_reason === RINJI_CLOSE_REASON.AUTO_DATE_PASSED;
 
   return (
     <View
@@ -288,6 +291,20 @@ const RecruitCard = ({
             ]}
           >
             <Text style={[styles.autoCloseBadgeText, { color: theme.error }]}>募集人数到達済み</Text>
+          </View>
+        ) : null}
+        {showAutoClosedBadge && isAutoClosedByDate ? (
+          <View
+            style={[
+              styles.autoDateBadge,
+              {
+                backgroundColor: withAlpha(theme.primary, '22'),
+                borderColor: theme.primary,
+                borderRadius: theme.borderRadius,
+              },
+            ]}
+          >
+            <Text style={[styles.autoDateBadgeText, { color: theme.primary }]}>募集日経過</Text>
           </View>
         ) : null}
       </View>
@@ -518,6 +535,15 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   autoCloseBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  autoDateBadge: {
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  autoDateBadgeText: {
     fontSize: 12,
     fontWeight: '700',
   },
