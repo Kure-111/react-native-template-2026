@@ -26,7 +26,6 @@ import {
   EMERGENCY_PRIORITIES,
   EVENT_STATUS_OPTIONS,
   QUESTION_TYPES,
-  SCREEN_DESCRIPTION,
   SCREEN_NAME,
   STORAGE_KEYS,
   SUPPORT_TABS,
@@ -1182,10 +1181,6 @@ const Item16Screen = ({ navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
-          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Text style={[styles.description, { color: theme.textSecondary }]}>{SCREEN_DESCRIPTION}</Text>
-          </View>
-
           {/* よくある質問セクション（常時表示） */}
           <View style={[styles.card, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}>
             <Text style={[styles.sectionTitle, { color: '#0369A1' }]}>

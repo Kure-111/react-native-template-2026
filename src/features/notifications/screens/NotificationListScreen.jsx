@@ -84,6 +84,16 @@ const NotificationListScreen = ({ navigation }) => {
   }, [loadNotifications]);
 
   /**
+   * 自動更新：60秒ごとに通知一覧を再取得する
+   * マウント中はポーリングを継続し、アンマウント時にインターバルをクリアする
+   */
+  useEffect(() => {
+    /** 60秒間隔の更新タイマー */
+    const interval = setInterval(loadNotifications, 60 * 1000);
+    return () => clearInterval(interval);
+  }, [loadNotifications]);
+
+  /**
    * 画面を離れた時（別タブへ移動等）に残った未読を全て既読にしてNEWバッジをクリア
    * モーダルを開かずに離れたケースの補完として機能する
    */

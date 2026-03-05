@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import {
+  createKeyLoan,
   listKeyLoans,
   returnKeyAndCreateLockTask,
 } from '../../../services/supabase/keyLoanService';
@@ -159,6 +160,11 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
   const [lockCheckFilter, setLockCheckFilter] = useState('pending');
   /** 予約一覧の検索文字列（承認待ち・対応済み共通） */
   const [reservationSearch, setReservationSearch] = useState('');
+  /** 各セクションの折りたたみ状態（true = 折りたたみ中） */
+  const [isLoansCollapsed, setIsLoansCollapsed] = useState(false);
+  const [isLockCheckCollapsed, setIsLockCheckCollapsed] = useState(false);
+  const [isPendingReservationsCollapsed, setIsPendingReservationsCollapsed] = useState(false);
+  const [isResolvedReservationsCollapsed, setIsResolvedReservationsCollapsed] = useState(true);
 
   /**
    * メッセージ表示（Web/Native共通）
@@ -388,7 +394,7 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
   };
 
   /**
-   * 鍵予約を承認/却下
+   * 鍵予約を承認/却下し、承認時は貸出記録を自動作成する
    * @param {string} reservationId - 予約ID
    * @param {'approved'|'rejected'} status - 更新ステータス
    * @returns {Promise<void>} 更新処理
@@ -398,23 +404,124 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
       showMessage('操作エラー', 'ログイン情報が取得できません');
       return;
     }
+    /**
+     * 更新前の予約データを state から取得（keys join を含むため、貸出作成時の鍵ラベル解決に使用）
+     */
+    const originalReservation = keyReservations.find((r) => r.id === reservationId);
+
     setIsSubmitting(true);
     const { error } = await updateKeyReservationStatus({
       reservationId,
       status,
       approvedBy: user.id,
     });
-    setIsSubmitting(false);
     if (error) {
+      setIsSubmitting(false);
       showMessage('更新エラー', error.message || '鍵予約の更新に失敗しました');
       return;
     }
+
+    /** 承認時は貸出記録を自動作成する（承認＝貸し出し） */
+    if (status === KEY_RESERVATION_STATUSES.APPROVED && originalReservation) {
+      const keyCode = normalizeText(originalReservation.key_code);
+      /** keys join を優先し、なければ metadata.key_name、最後に key_code を使用 */
+      const keyLabel = getReservationKeyLabel(originalReservation);
+      if (keyCode && keyLabel) {
+        const { error: loanError } = await createKeyLoan({
+          keyCode,
+          keyLabel,
+          eventName: normalizeText(originalReservation.event_name) || null,
+          eventLocation: normalizeText(originalReservation.event_location) || null,
+          metadata: {
+            /** 予約IDをメタデータに保存して予約との紐付けを維持 */
+            reservation_id: originalReservation.id,
+            org_id: originalReservation.org_id || null,
+          },
+        });
+        if (loanError) {
+          console.warn('貸出自動作成エラー（承認後）:', loanError);
+        }
+      }
+    }
+
+    setIsSubmitting(false);
     await loadKeyReservations();
+    /** 承認時は貸出一覧も再取得して即座に反映 */
+    if (status === KEY_RESERVATION_STATUSES.APPROVED) {
+      await loadKeyLoans();
+    }
+  };
+
+  /**
+   * グループ内の全予約を一括承認し、それぞれ貸出記録を自動作成する
+   * @param {Array} reservations - 承認対象の予約配列（グループ内の全予約）
+   * @returns {Promise<void>} 一括承認処理
+   */
+  const handleApproveGroup = async (reservations) => {
+    if (!user?.id) {
+      showMessage('操作エラー', 'ログイン情報が取得できません');
+      return;
+    }
+    if (reservations.length === 0) return;
+
+    setIsSubmitting(true);
+    /** 各予約を直列で承認→貸出作成（並列にすると DB 競合の可能性があるため） */
+    for (const reservation of reservations) {
+      const keyCode = normalizeText(reservation.key_code);
+      /** keys join を優先し、なければ metadata.key_name、最後に key_code を使用 */
+      const keyLabel = getReservationKeyLabel(reservation);
+
+      const { error } = await updateKeyReservationStatus({
+        reservationId: reservation.id,
+        status: KEY_RESERVATION_STATUSES.APPROVED,
+        approvedBy: user.id,
+      });
+      if (error) {
+        console.error('一括承認エラー（一件）:', error);
+        /** エラーがあっても次の予約の処理を継続 */
+        continue;
+      }
+
+      /** 貸出記録を自動作成 */
+      if (keyCode && keyLabel) {
+        const { error: loanError } = await createKeyLoan({
+          keyCode,
+          keyLabel,
+          eventName: normalizeText(reservation.event_name) || null,
+          eventLocation: normalizeText(reservation.event_location) || null,
+          metadata: {
+            reservation_id: reservation.id,
+            org_id: reservation.org_id || null,
+          },
+        });
+        if (loanError) {
+          console.warn('貸出自動作成エラー（一括承認後）:', loanError);
+        }
+      }
+    }
+
+    setIsSubmitting(false);
+    /** 承認後に予約・貸出一覧を両方再取得 */
+    await loadKeyReservations();
+    await loadKeyLoans();
   };
 
   useEffect(() => {
     loadKeyLoans();
     loadKeyReservations();
+  }, []);
+
+  /**
+   * 自動更新：30秒ごとに貸出・予約一覧を再取得する
+   * 操作中の isSubmitting フラグが立っているときはスキップし、二重更新を防ぐ
+   */
+  useEffect(() => {
+    /** 30秒間隔の更新タイマー */
+    const interval = setInterval(() => {
+      loadKeyLoans();
+      loadKeyReservations();
+    }, 30 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
   /** 現在貸出中の鍵の合計件数 */
@@ -488,9 +595,20 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
       {/* ══════════════════════════════════════════
           貸出中セクション（団体別グループ表示）
           ══════════════════════════════════════════ */}
-      <Text style={[styles.subTitle, { color: theme.text }]}>
-        貸出中（{totalLoanedCount}本）
-      </Text>
+      <TouchableOpacity
+        style={styles.sectionHeader}
+        onPress={() => setIsLoansCollapsed((v) => !v)}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.subTitle, styles.subTitleNoMargin, { color: theme.text }]}>
+          貸出中（{totalLoanedCount}本）
+        </Text>
+        <Text style={[styles.collapseIcon, { color: theme.textSecondary }]}>
+          {isLoansCollapsed ? '▶' : '▼'}
+        </Text>
+      </TouchableOpacity>
+      {!isLoansCollapsed && (
+        <>
       <SearchBar
         value={loanSearch}
         onChange={setLoanSearch}
@@ -570,11 +688,34 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
           ))}
         </View>
       )}
+      </>
+      )}
 
       {/* ══════════════════════════════════════════
           施錠確認状況セクション
           ══════════════════════════════════════════ */}
-      <Text style={[styles.subTitle, { color: theme.text }]}>施錠確認状況</Text>
+      <TouchableOpacity
+        style={styles.sectionHeader}
+        onPress={() => setIsLockCheckCollapsed((v) => !v)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.sectionHeaderLeft}>
+          <Text style={[styles.subTitle, styles.subTitleNoMargin, { color: theme.text }]}>
+            施錠確認状況
+          </Text>
+          {/* 未確認件数バッジ：折りたたみ中でも件数を把握できるよう常時表示 */}
+          {lockCheckSummary.pending > 0 && (
+            <View style={[styles.countBadge, { backgroundColor: '#3B5BDB' }]}>
+              <Text style={styles.countBadgeText}>⏳ {lockCheckSummary.pending}</Text>
+            </View>
+          )}
+        </View>
+        <Text style={[styles.collapseIcon, { color: theme.textSecondary }]}>
+          {isLockCheckCollapsed ? '▶' : '▼'}
+        </Text>
+      </TouchableOpacity>
+      {!isLockCheckCollapsed && (
+        <>
 
       {/* サマリーバッジ行（未確認/施錠済/未施錠/確認不可を一覧表示） */}
       <View style={styles.lockSummaryRow}>
@@ -712,13 +853,34 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
           })}
         </View>
       )}
+        </>
+      )}
 
       {/* ══════════════════════════════════════════
           鍵予約（承認待ち）
           ══════════════════════════════════════════ */}
-      <Text style={[styles.subTitle, { color: theme.text }]}>
-        鍵予約（承認待ち）（{pendingReservationCount}件）
-      </Text>
+      <TouchableOpacity
+        style={styles.sectionHeader}
+        onPress={() => setIsPendingReservationsCollapsed((v) => !v)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.sectionHeaderLeft}>
+          <Text style={[styles.subTitle, styles.subTitleNoMargin, { color: theme.text }]}>
+            鍵予約（承認待ち）
+          </Text>
+          {/* 承認待ち件数バッジ：折りたたみ中でも件数を把握できるよう常時表示 */}
+          {pendingReservationCount > 0 && (
+            <View style={[styles.countBadge, { backgroundColor: '#F0A500' }]}>
+              <Text style={styles.countBadgeText}>{pendingReservationCount}件</Text>
+            </View>
+          )}
+        </View>
+        <Text style={[styles.collapseIcon, { color: theme.textSecondary }]}>
+          {isPendingReservationsCollapsed ? '▶' : '▼'}
+        </Text>
+      </TouchableOpacity>
+      {!isPendingReservationsCollapsed && (
+        <>
       <SearchBar
         value={reservationSearch}
         onChange={setReservationSearch}
@@ -738,7 +900,7 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
               key={group.eventName}
               style={[styles.orgGroup, { borderColor: theme.border, backgroundColor: theme.background }]}
             >
-              {/* グループヘッダー：企画名 / 鍵数バッジ / 申請日時 */}
+              {/* グループヘッダー：企画名 / 鍵数バッジ / 申請日時 / 全て承認ボタン */}
               <View style={[styles.orgHeader, { borderBottomColor: theme.border }]}>
                 <Text style={[styles.orgName, { color: theme.text }]} numberOfLines={1}>
                   {group.eventName}
@@ -749,6 +911,16 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
                 <Text style={[styles.orgTime, { color: theme.textSecondary }]}>
                   申請: {formatCompactDateTime(group.earliestCreatedAt)}
                 </Text>
+                {/* 複数鍵の場合は一括承認ボタンを表示（単一鍵は個別ボタンで対応） */}
+                {group.reservations.length > 1 && (
+                  <TouchableOpacity
+                    style={[styles.approveAllButton, { backgroundColor: '#22A06B' }]}
+                    onPress={() => handleApproveGroup(group.reservations)}
+                    disabled={isSubmitting}
+                  >
+                    <Text style={styles.approveAllButtonText}>全て承認</Text>
+                  </TouchableOpacity>
+                )}
               </View>
               {/* 場所情報 */}
               <Text
@@ -801,11 +973,26 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
           ))}
         </View>
       )}
+        </>
+      )}
 
       {/* ══════════════════════════════════════════
           鍵予約（対応済み）
           ══════════════════════════════════════════ */}
-      <Text style={[styles.subTitle, { color: theme.text }]}>鍵予約（対応済み）</Text>
+      <TouchableOpacity
+        style={styles.sectionHeader}
+        onPress={() => setIsResolvedReservationsCollapsed((v) => !v)}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.subTitle, styles.subTitleNoMargin, { color: theme.text }]}>
+          鍵予約（対応済み）
+        </Text>
+        <Text style={[styles.collapseIcon, { color: theme.textSecondary }]}>
+          {isResolvedReservationsCollapsed ? '▶' : '▼'}
+        </Text>
+      </TouchableOpacity>
+      {!isResolvedReservationsCollapsed && (
+        <>
       {recentResolvedReservations.length === 0 ? (
         <Text style={[styles.helpText, { color: theme.textSecondary }]}>
           {reservationSearch ? '検索結果がありません' : '対応済みデータはまだありません'}
@@ -842,6 +1029,8 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
             </View>
           ))}
         </View>
+      )}
+        </>
       )}
     </View>
   );
@@ -899,6 +1088,31 @@ const styles = StyleSheet.create({
     marginTop: 14,
     marginBottom: 4,
     fontSize: 14,
+    fontWeight: '700',
+  },
+  /** 折りたたみヘッダー行（タイトル + 矢印アイコン） */
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    marginBottom: 4,
+    paddingVertical: 2,
+  },
+  /** sectionHeader 内の左側（タイトル + バッジ） */
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  /** 折りたたみ時にマージンを消すための上書き */
+  subTitleNoMargin: {
+    marginTop: 0,
+    marginBottom: 0,
+  },
+  /** 折りたたみ矢印アイコン */
+  collapseIcon: {
+    fontSize: 11,
     fontWeight: '700',
   },
   /** 検索バー */
@@ -1124,6 +1338,18 @@ const styles = StyleSheet.create({
   helpText: {
     fontSize: 13,
     lineHeight: 20,
+  },
+  /** グループ一括承認ボタン */
+  approveAllButton: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginLeft: 4,
+  },
+  approveAllButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
 
