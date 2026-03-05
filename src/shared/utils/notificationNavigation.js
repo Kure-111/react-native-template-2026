@@ -23,6 +23,8 @@ const NAVIGATION_TARGET_BY_TYPE = {
   shift_change_rejected: { screen: 'JimuShift', tab: 'requestHistory' },
   /** シフトリマインド（マイシフトタブへ） */
   shift_reminder: { screen: 'JimuShift', tab: 'myShift' },
+  /** 鍵の事前申請（本部向け：本部サポートの鍵管理タブへ） */
+  key_preapply: { screen: 'Item13', tab: 'keys' },
 };
 
 /**
@@ -56,6 +58,8 @@ export const getNavigationButtonLabel = (type) => {
       return '申請履歴を確認する';
     case 'shift_reminder':
       return 'マイシフトを確認する';
+    case 'key_preapply':
+      return '鍵申請を確認する';
     default:
       return '確認する';
   }

@@ -250,9 +250,10 @@ const formatFileSize = (fileSizeBytes) => {
  * @param {string} props.screenName - 画面名
  * @param {string} props.screenDescription - 画面説明
  * @param {'hq'|'accounting'|'property'} props.roleType - 担当種別
+ * @param {string|null} [props.initialTab] - 初期表示タブキー（通知タップなど外部からの指定用）
  * @returns {JSX.Element} 対応画面
  */
-const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType }) => {
+const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType, initialTab }) => {
   const { theme } = useTheme();
   const { user } = useAuth();
 
@@ -302,8 +303,18 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   /** 巡回履歴の担当者名マップ（user_id → name） */
   const [patrolHistoryProfileMap, setPatrolHistoryProfileMap] = useState({});
 
-  /** HQロール向けアクティブタブ（初期値: 鍵管理） */
-  const [activeTab, setActiveTab] = useState(HQ_TAB_DEFAULT);
+  /** HQロール向けアクティブタブ（初期値: 外部指定がある場合はそれ、なければ鍵管理） */
+  const [activeTab, setActiveTab] = useState(initialTab || HQ_TAB_DEFAULT);
+
+  /**
+   * 通知タップなど外部からの initialTab 変更に追従する
+   * Drawerナビゲーターでは画面がマウントされたまま params が更新されるため useEffect で同期する
+   */
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   /** HQロール向けチケット種別フィルター（'all' | ticket_type） */
   const [hqTicketTypeFilter, setHqTicketTypeFilter] = useState('all');

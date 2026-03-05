@@ -1,9 +1,9 @@
 /**
  * 連絡案件履歴・詳細コンポーネント
- * 案件リスト、詳細表示、添付、メッセージスレッド、追記投稿、添付追加を提供する
+ * 案件リスト（種別グループ・折りたたみ）、詳細表示、添付、メッセージスレッド、追記投稿、添付追加を提供する
  */
 
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -26,6 +26,36 @@ const STATUS_LABELS = {
   [SUPPORT_TICKET_STATUSES.RESOLVED]: '解決済み',
   [SUPPORT_TICKET_STATUSES.CLOSED]: 'クローズ',
 };
+
+/**
+ * 種別ごとのグループ表示情報
+ * アイコン・ラベルを一元管理する
+ */
+const TICKET_TYPE_GROUP_INFO = {
+  emergency:           { icon: '🚨', label: '緊急連絡' },
+  key_preapply:        { icon: '🔑', label: '鍵の事前申請' },
+  start_report:        { icon: '▶️', label: '企画開始報告' },
+  end_report:          { icon: '⏹️', label: '企画終了報告' },
+  rule_question:       { icon: '❓', label: 'ルール問い合わせ' },
+  layout_change:       { icon: '📐', label: '配置図変更' },
+  distribution_change: { icon: '📦', label: '配布ルール変更' },
+  damage_report:       { icon: '🛠️', label: '物品破損報告' },
+};
+
+/**
+ * 種別グループの表示順
+ * 緊急を最上位、鍵申請・報告類・相談類の順で並べる
+ */
+const TICKET_TYPE_ORDER = [
+  'emergency',
+  'key_preapply',
+  'start_report',
+  'end_report',
+  'rule_question',
+  'layout_change',
+  'distribution_change',
+  'damage_report',
+];
 
 /**
  * テキストを正規化（トリム）
@@ -112,6 +142,60 @@ const ContactHistory = ({
   onSubmitFollowupAttachment,
   isSubmittingFollowupAttachment,
 }) => {
+  /**
+   * 折りたたみ中の種別キーセット
+   * 初期値は空（全グループ展開）
+   */
+  const [collapsedTypes, setCollapsedTypes] = useState(new Set());
+
+  /**
+   * 種別グループのトグル処理
+   * @param {string} typeKey - 種別キー
+   */
+  const toggleType = (typeKey) => {
+    setCollapsedTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(typeKey)) {
+        next.delete(typeKey);
+      } else {
+        next.add(typeKey);
+      }
+      return next;
+    });
+  };
+
+  /**
+   * myContacts を ticket_type でグループ化する
+   * TICKET_TYPE_ORDER に沿った順で並べ、未知の種別は末尾にまとめる
+   */
+  const groupedContacts = useMemo(() => {
+    /** ticket_type → 案件配列 のマップ */
+    const map = {};
+    (myContacts || []).forEach((contact) => {
+      const typeKey = contact.ticket_type || 'other';
+      if (!map[typeKey]) {
+        map[typeKey] = [];
+      }
+      map[typeKey].push(contact);
+    });
+
+    /** TICKET_TYPE_ORDER の順でグループ配列を構築する */
+    const ordered = TICKET_TYPE_ORDER.filter((key) => map[key]).map((key) => ({
+      typeKey: key,
+      items: map[key],
+    }));
+
+    /** 既知の種別以外（'other' など）を末尾に追加 */
+    const knownKeys = new Set(TICKET_TYPE_ORDER);
+    Object.keys(map)
+      .filter((key) => !knownKeys.has(key))
+      .forEach((key) => {
+        ordered.push({ typeKey: key, items: map[key] });
+      });
+
+    return ordered;
+  }, [myContacts]);
+
   return (
     <>
       {/* 案件リスト */}
@@ -133,33 +217,71 @@ const ContactHistory = ({
         ) : myContacts.length === 0 ? (
           <EmptyState icon="📭" title="連絡履歴がありません" theme={theme} />
         ) : (
-          <View style={styles.historyList}>
-            {myContacts.map((contact) => (
-              <Pressable
-                key={contact.id}
-                style={[
-                  styles.historyItem,
-                  {
-                    borderColor:
-                      contact.id === selectedContactId ? theme.primary : theme.border,
-                    backgroundColor:
-                      contact.id === selectedContactId
-                        ? `${theme.primary}14`
-                        : theme.background,
-                  },
-                ]}
-                onPress={() => onSelectContact(contact.id)}
-              >
-                <Text style={[styles.historyItemTitle, { color: theme.text }]} numberOfLines={1}>
-                  {contact.title}
-                </Text>
-                <Text style={[styles.historyItemMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                  {(STATUS_LABELS[contact.ticket_status] || contact.ticket_status) +
-                    ' / ' +
-                    new Date(contact.created_at).toLocaleString('ja-JP')}
-                </Text>
-              </Pressable>
-            ))}
+          <View style={styles.groupList}>
+            {groupedContacts.map(({ typeKey, items }) => {
+              /** このグループの表示情報（未知の種別はデフォルト） */
+              const groupInfo = TICKET_TYPE_GROUP_INFO[typeKey] || { icon: '📋', label: typeKey };
+              /** このグループが折りたたみ中かどうか */
+              const isCollapsed = collapsedTypes.has(typeKey);
+
+              return (
+                <View
+                  key={typeKey}
+                  style={[styles.groupSection, { borderColor: theme.border, backgroundColor: theme.background }]}
+                >
+                  {/* グループヘッダー（タップで折りたたみトグル） */}
+                  <Pressable
+                    style={[styles.groupHeader, { borderBottomColor: isCollapsed ? 'transparent' : theme.border }]}
+                    onPress={() => toggleType(typeKey)}
+                  >
+                    <View style={styles.groupHeaderLeft}>
+                      <Text style={styles.groupIcon}>{groupInfo.icon}</Text>
+                      <Text style={[styles.groupLabel, { color: theme.text }]}>{groupInfo.label}</Text>
+                      {/* 件数バッジ */}
+                      <View style={[styles.groupBadge, { backgroundColor: `${theme.primary}22` }]}>
+                        <Text style={[styles.groupCount, { color: theme.primary }]}>{items.length}</Text>
+                      </View>
+                    </View>
+                    {/* 折りたたみ矢印 */}
+                    <Text style={[styles.collapseArrow, { color: theme.textSecondary }]}>
+                      {isCollapsed ? '▶' : '▼'}
+                    </Text>
+                  </Pressable>
+
+                  {/* 案件アイテム一覧（折りたたみ時は非表示） */}
+                  {!isCollapsed ? (
+                    <View style={styles.groupItemList}>
+                      {items.map((contact) => (
+                        <Pressable
+                          key={contact.id}
+                          style={[
+                            styles.historyItem,
+                            {
+                              borderColor:
+                                contact.id === selectedContactId ? theme.primary : theme.border,
+                              backgroundColor:
+                                contact.id === selectedContactId
+                                  ? `${theme.primary}14`
+                                  : theme.surface,
+                            },
+                          ]}
+                          onPress={() => onSelectContact(contact.id)}
+                        >
+                          <Text style={[styles.historyItemTitle, { color: theme.text }]} numberOfLines={1}>
+                            {contact.title}
+                          </Text>
+                          <Text style={[styles.historyItemMeta, { color: theme.textSecondary }]} numberOfLines={1}>
+                            {(STATUS_LABELS[contact.ticket_status] || contact.ticket_status) +
+                              ' / ' +
+                              new Date(contact.created_at).toLocaleString('ja-JP')}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
           </View>
         )}
       </View>
@@ -449,12 +571,64 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  historyList: {
+  /** グループ一覧コンテナ */
+  groupList: {
     gap: 8,
+  },
+  /** 種別グループ全体（ヘッダー + アイテム） */
+  groupSection: {
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  /** グループヘッダー行（タップで折りたたみトグル） */
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  /** グループヘッダー左側（アイコン + ラベル + バッジ） */
+  groupHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  /** 種別アイコン */
+  groupIcon: {
+    fontSize: 15,
+  },
+  /** 種別ラベル */
+  groupLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  /** 件数バッジ */
+  groupBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  /** 件数テキスト */
+  groupCount: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  /** 折りたたみ矢印 */
+  collapseArrow: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  /** グループ内アイテムコンテナ */
+  groupItemList: {
+    padding: 8,
+    gap: 6,
   },
   historyItem: {
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 9,
   },

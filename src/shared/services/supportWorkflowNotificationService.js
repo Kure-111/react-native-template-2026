@@ -153,6 +153,8 @@ export const notifySupportTicketCreated = async ({ ticket, senderUserId = null }
   const { title, body } = buildTicketNotification(ticket);
   const metadata = {
     source: 'support_ticket',
+    /** type は通知ナビゲーション（notificationNavigation.js）で遷移先解決に使用する */
+    type: ticket.ticket_type || null,
     ticket_id: ticket.id,
     ticket_no: ticket.ticket_no || null,
     ticket_type: ticket.ticket_type || null,
