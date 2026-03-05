@@ -1,13 +1,15 @@
 /**
- * 本部向け鍵管理パネル
+ * 本部向け鍵管理パネル（リデザイン版）
  * 貸出/返却は KeyLoanTerminalModal（全画面端末）で行う。
- * パネル自体は「端末を開く」ボタン、貸出中一覧、返却済一覧、予約管理を担当する。
+ * パネル自体は「端末を開く」ボタン、貸出中一覧（団体別グループ）、
+ * 施錠確認状況（フィルタ/サマリー/再貸出バッジ）、予約管理を担当する。
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -26,12 +28,25 @@ import {
 import KeyStatusBoardModal from './KeyStatusBoardModal';
 import KeyLoanTerminalModal from './KeyLoanTerminalModal';
 
-/** 施錠確認結果の表示ラベル */
-const LOCK_CHECK_STATUS_LABELS = {
-  locked: '施錠済',
-  unlocked: '未施錠',
-  cannot_confirm: '確認不可',
+/**
+ * 施錠確認結果の表示情報（ラベル・背景色・テキスト色・アイコン）
+ * 色・ラベル・アイコンはここで一元管理する
+ */
+const LOCK_CHECK_INFO = {
+  locked: { label: '施錠済', bgColor: '#22A06B20', textColor: '#22A06B', icon: '✅' },
+  unlocked: { label: '未施錠', bgColor: '#D1242F20', textColor: '#D1242F', icon: '❌' },
+  cannot_confirm: { label: '確認不可', bgColor: '#9F6E0020', textColor: '#9F6E00', icon: '⚠️' },
 };
+
+/**
+ * 施錠確認フィルタの選択肢定数
+ * key: フィルタ識別子 / label: 表示テキスト
+ */
+const LOCK_CHECK_FILTERS = [
+  { key: 'pending', label: '⏳ 未確認のみ' },
+  { key: 'all', label: '全て' },
+  { key: 'done', label: '確認済' },
+];
 
 /** 予約ステータスの表示ラベル */
 const RESERVATION_STATUS_LABELS = {
@@ -41,10 +56,36 @@ const RESERVATION_STATUS_LABELS = {
   [KEY_RESERVATION_STATUSES.CANCELED]: '取消',
 };
 
+/**
+ * 文字列の前後空白を除去するユーティリティ
+ * @param {*} value - 入力値
+ * @returns {string} トリム済み文字列
+ */
 const normalizeText = (value) => (value || '').trim();
 
 /**
- * 鍵予約の鍵ラベルを表示用へ変換（コンポーネント外で定義して安定参照を確保）
+ * 日時を短縮表示する（今日なら HH:MM、別日なら M/D HH:MM）
+ * @param {string|null} dateStr - ISO 日時文字列
+ * @returns {string} 短縮表示文字列
+ */
+const formatCompactDateTime = (dateStr) => {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  const now = new Date();
+  /** 同じ年月日かどうかを判定 */
+  const isToday =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  /** HH:MM 形式 */
+  const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  if (isToday) return hhmm;
+  return `${d.getMonth() + 1}/${d.getDate()} ${hhmm}`;
+};
+
+/**
+ * 鍵予約の表示用鍵ラベルを取得（コンポーネント外定義で安定参照を確保）
+ * リレーション→メタデータ→key_code の順で優先する
  * @param {Object} reservation - 鍵予約オブジェクト
  * @returns {string} 表示用ラベル
  */
@@ -87,6 +128,7 @@ const SearchBar = ({ value, onChange, placeholder, theme }) => (
 );
 
 /**
+ * 本部向け鍵管理パネル
  * @param {Object} props - プロパティ
  * @param {Object} props.theme - テーマ
  * @param {Object|null} props.user - ログインユーザー
@@ -103,7 +145,7 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
   const [isLoadingLoans, setIsLoadingLoans] = useState(false);
   /** 鍵予約読み込み中フラグ */
   const [isLoadingReservations, setIsLoadingReservations] = useState(false);
-  /** 処理中フラグ */
+  /** 処理中フラグ（返却・予約操作） */
   const [isSubmitting, setIsSubmitting] = useState(false);
   /** 全体表示ボードモーダルの表示フラグ */
   const [isBoardVisible, setIsBoardVisible] = useState(false);
@@ -111,8 +153,10 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
   const [isTerminalVisible, setIsTerminalVisible] = useState(false);
   /** 貸出中一覧の検索文字列 */
   const [loanSearch, setLoanSearch] = useState('');
-  /** 返却済一覧の検索文字列 */
-  const [returnedSearch, setReturnedSearch] = useState('');
+  /** 施錠確認セクションの検索文字列 */
+  const [lockSearch, setLockSearch] = useState('');
+  /** 施錠確認フィルタ: 'pending'(未確認のみ) | 'all'(全て) | 'done'(確認済) */
+  const [lockCheckFilter, setLockCheckFilter] = useState('pending');
   /** 予約一覧の検索文字列（承認待ち・対応済み共通） */
   const [reservationSearch, setReservationSearch] = useState('');
 
@@ -130,40 +174,98 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
   };
 
   /**
-   * 貸出中一覧（検索フィルタ適用済み）
-   * 鍵ラベル・借受人名・企画名で検索可能
+   * 現在貸出中の鍵ラベルセット
+   * 施錠確認行での「再貸出中」バッジ表示に使用する
+   * @type {Set<string>}
    */
-  const loanedKeyItems = useMemo(() => {
+  const loanedKeyLabelSet = useMemo(() => {
+    const loaned = keyLoans.filter((loan) => loan.status === 'loaned');
+    return new Set(loaned.map((loan) => loan.key_label).filter(Boolean));
+  }, [keyLoans]);
+
+  /**
+   * 貸出中を event_name でグループ化した配列（検索フィルタ適用済み）
+   * 各グループに orgName / earliestLoanedAt / loans を保持する
+   * @type {Array<{orgName: string, earliestLoanedAt: string, loans: Array}>}
+   */
+  const loanedByOrg = useMemo(() => {
     const loaned = keyLoans.filter((loan) => loan.status === 'loaned');
     const query = normalizeText(loanSearch).toLowerCase();
-    if (!query) return loaned;
-    return loaned.filter(
-      (loan) =>
-        (loan.key_label || '').toLowerCase().includes(query) ||
-        (loan.borrower_name || '').toLowerCase().includes(query) ||
-        (loan.event_name || '').toLowerCase().includes(query)
-    );
+    /** 鍵ラベル・借受人名・企画名で絞り込む */
+    const filtered = query
+      ? loaned.filter(
+          (loan) =>
+            (loan.key_label || '').toLowerCase().includes(query) ||
+            (loan.borrower_name || '').toLowerCase().includes(query) ||
+            (loan.event_name || '').toLowerCase().includes(query)
+        )
+      : loaned;
+    /** event_name をキーとしてグループ化 */
+    const groupMap = new Map();
+    filtered.forEach((loan) => {
+      const groupKey = normalizeText(loan.event_name) || '（企画名未設定）';
+      if (!groupMap.has(groupKey)) {
+        groupMap.set(groupKey, {
+          orgName: groupKey,
+          earliestLoanedAt: loan.loaned_at,
+          loans: [],
+        });
+      }
+      const group = groupMap.get(groupKey);
+      group.loans.push(loan);
+      /** より古い貸出時刻をグループ代表とする */
+      if (loan.loaned_at < group.earliestLoanedAt) {
+        group.earliestLoanedAt = loan.loaned_at;
+      }
+    });
+    return Array.from(groupMap.values());
   }, [keyLoans, loanSearch]);
 
   /**
-   * 返却済一覧（最新20件・検索フィルタ適用済み）
-   * 鍵ラベル・借受人名・企画名で検索可能
+   * 施錠確認状況のサマリー（返却済み全件ベース・検索/フィルタ非適用）
+   * @type {{ pending: number, locked: number, unlocked: number, cannotConfirm: number, total: number }}
    */
-  const returnedKeyItems = useMemo(() => {
-    const returned = keyLoans.filter((loan) => loan.status === 'returned').slice(0, 20);
-    const query = normalizeText(returnedSearch).toLowerCase();
-    if (!query) return returned;
-    return returned.filter(
+  const lockCheckSummary = useMemo(() => {
+    const returned = keyLoans.filter((loan) => loan.status === 'returned');
+    /** 施錠確認ステータス別に集計 */
+    const pending = returned.filter((l) => !l.lock_check_status).length;
+    const locked = returned.filter((l) => l.lock_check_status === 'locked').length;
+    const unlocked = returned.filter((l) => l.lock_check_status === 'unlocked').length;
+    const cannotConfirm = returned.filter((l) => l.lock_check_status === 'cannot_confirm').length;
+    return { pending, locked, unlocked, cannotConfirm, total: returned.length };
+  }, [keyLoans]);
+
+  /**
+   * 施錠確認対象一覧（フィルタ・検索・最新50件適用済み）
+   * デフォルトは 'pending'（未確認のみ）でアクションが必要なものを前面に出す
+   * @type {Array}
+   */
+  const lockCheckItems = useMemo(() => {
+    const returned = keyLoans.filter((loan) => loan.status === 'returned').slice(0, 50);
+    /** フィルタ適用 */
+    let filtered;
+    if (lockCheckFilter === 'pending') {
+      /** 施錠確認ステータスが未設定のもの */
+      filtered = returned.filter((l) => !l.lock_check_status);
+    } else if (lockCheckFilter === 'done') {
+      /** 施錠確認ステータスが設定済みのもの */
+      filtered = returned.filter((l) => !!l.lock_check_status);
+    } else {
+      filtered = returned;
+    }
+    /** 検索クエリ適用 */
+    const query = normalizeText(lockSearch).toLowerCase();
+    if (!query) return filtered;
+    return filtered.filter(
       (loan) =>
         (loan.key_label || '').toLowerCase().includes(query) ||
         (loan.borrower_name || '').toLowerCase().includes(query) ||
         (loan.event_name || '').toLowerCase().includes(query)
     );
-  }, [keyLoans, returnedSearch]);
+  }, [keyLoans, lockCheckFilter, lockSearch]);
 
   /**
-   * 承認待ち予約を申請者（event_name）単位でグループ化
-   * 企画名・場所・鍵名で検索可能
+   * 承認待ち予約を event_name 単位でグループ化（検索フィルタ適用済み）
    * @type {Array<{eventName: string, eventLocation: string, earliestCreatedAt: string, reservations: Array}>}
    */
   const groupedPendingReservations = useMemo(() => {
@@ -171,7 +273,7 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
       (r) => r.status === KEY_RESERVATION_STATUSES.PENDING
     );
     const query = normalizeText(reservationSearch).toLowerCase();
-    /** 検索クエリで絞り込む */
+    /** 企画名・場所・鍵名で絞り込む */
     const filtered = query
       ? pending.filter(
           (r) =>
@@ -180,7 +282,6 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
             getReservationKeyLabel(r).toLowerCase().includes(query)
         )
       : pending;
-
     /** event_name をキーとしてグループ化 */
     const groupMap = new Map();
     filtered.forEach((r) => {
@@ -195,7 +296,7 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
       }
       const group = groupMap.get(groupKey);
       group.reservations.push(r);
-      /** より古い申請日時をグループ代表日時とする */
+      /** より古い申請日時をグループ代表とする */
       if (r.created_at < group.earliestCreatedAt) {
         group.earliestCreatedAt = r.created_at;
       }
@@ -205,6 +306,7 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
 
   /**
    * 対応済み予約（最新20件・予約検索バーと同一クエリ）
+   * @type {Array}
    */
   const recentResolvedReservations = useMemo(() => {
     const resolved = keyReservations
@@ -262,7 +364,6 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
       showMessage('操作エラー', 'ログイン情報が取得できません');
       return;
     }
-
     /** 施錠確認タスクを作成するか（完全返却の場合のみ選択可能） */
     let createLockTask = false;
 
@@ -313,7 +414,6 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
       showMessage('返却エラー', error.message || '返却処理に失敗しました');
       return;
     }
-
     await loadKeyLoans();
     onLoanReturned?.();
     showMessage(
@@ -367,6 +467,13 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
     loadKeyLoans();
     loadKeyReservations();
   }, []);
+
+  /** 現在貸出中の鍵の合計件数 */
+  const totalLoanedCount = keyLoans.filter((l) => l.status === 'loaned').length;
+  /** 承認待ち予約の件数 */
+  const pendingReservationCount = keyReservations.filter(
+    (r) => r.status === KEY_RESERVATION_STATUSES.PENDING
+  ).length;
 
   return (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -429,9 +536,11 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
         <Text style={styles.terminalButtonText}>🔑 鍵貸出・返却端末を開く</Text>
       </TouchableOpacity>
 
-      {/* ── 貸出中一覧 ── */}
+      {/* ══════════════════════════════════════════
+          貸出中セクション（団体別グループ表示）
+          ══════════════════════════════════════════ */}
       <Text style={[styles.subTitle, { color: theme.text }]}>
-        貸出中（{keyLoans.filter((l) => l.status === 'loaned').length}件）
+        貸出中（{totalLoanedCount}本）
       </Text>
       <SearchBar
         value={loanSearch}
@@ -441,95 +550,225 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
       />
       {isLoadingLoans ? (
         <Text style={[styles.helpText, { color: theme.textSecondary }]}>読み込み中...</Text>
-      ) : loanedKeyItems.length === 0 ? (
+      ) : loanedByOrg.length === 0 ? (
         <Text style={[styles.helpText, { color: theme.textSecondary }]}>
           {loanSearch ? '検索結果がありません' : '貸出中の鍵はありません'}
         </Text>
       ) : (
         <View style={styles.list}>
-          {loanedKeyItems.map((loan) => (
+          {loanedByOrg.map((group) => (
             <View
-              key={loan.id}
-              style={[styles.listRow, { borderColor: theme.border, backgroundColor: theme.background }]}
+              key={group.orgName}
+              style={[styles.orgGroup, { borderColor: theme.border, backgroundColor: theme.background }]}
             >
-              <Text style={[styles.listTitle, { color: theme.text }]} numberOfLines={1}>
-                {loan.key_label}
-              </Text>
-              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                {loan.borrower_name || '-'}
-                {loan.event_name ? ` / ${loan.event_name}` : ''}
-              </Text>
-              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                貸出: {new Date(loan.loaned_at).toLocaleString('ja-JP')}
-              </Text>
-              {/* 返却ボタン：返却 / 完全返却（施錠確認は完全返却時のみ選択可） */}
-              <View style={styles.rowActions}>
-                <TouchableOpacity
-                  style={[styles.subActionButton, { borderColor: theme.border }]}
-                  onPress={() => handleReturnLoan(loan.id, 'temporary')}
-                  disabled={isSubmitting}
-                >
-                  <Text style={[styles.subActionText, { color: theme.textSecondary }]}>
-                    返却
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.subActionButton, { borderColor: theme.border }]}
-                  onPress={() => handleReturnLoan(loan.id, 'permanent')}
-                  disabled={isSubmitting}
-                >
-                  <Text style={[styles.subActionText, { color: theme.textSecondary }]}>
-                    完全返却
-                  </Text>
-                </TouchableOpacity>
+              {/* グループヘッダー：団体名 / 鍵数バッジ / 最初の貸出時刻 */}
+              <View style={[styles.orgHeader, { borderBottomColor: theme.border }]}>
+                <Text style={[styles.orgName, { color: theme.text }]} numberOfLines={1}>
+                  {group.orgName}
+                </Text>
+                <View style={[styles.countBadge, { backgroundColor: theme.primary }]}>
+                  <Text style={styles.countBadgeText}>{group.loans.length}本</Text>
+                </View>
+                <Text style={[styles.orgTime, { color: theme.textSecondary }]}>
+                  {formatCompactDateTime(group.earliestLoanedAt)}〜
+                </Text>
               </View>
+              {/* 鍵ごとの水平1行レイアウト */}
+              {group.loans.map((loan, index) => (
+                <View
+                  key={loan.id}
+                  style={[
+                    styles.keyRow,
+                    index > 0 && { borderTopWidth: 1, borderTopColor: theme.border },
+                  ]}
+                >
+                  {/* 鍵ラベル */}
+                  <Text style={[styles.keyLabel, { color: theme.primary }]} numberOfLines={1}>
+                    🔑 {loan.key_label || '-'}
+                  </Text>
+                  {/* 借受人名（可変幅） */}
+                  <Text style={[styles.keyBorrower, { color: theme.text }]} numberOfLines={1}>
+                    {loan.borrower_name || '-'}
+                  </Text>
+                  {/* 貸出時刻 */}
+                  <Text style={[styles.keyTime, { color: theme.textSecondary }]}>
+                    {formatCompactDateTime(loan.loaned_at)}
+                  </Text>
+                  {/* 操作ボタン群 */}
+                  <View style={styles.keyActions}>
+                    <TouchableOpacity
+                      style={[styles.subActionButton, { borderColor: theme.border }]}
+                      onPress={() => handleReturnLoan(loan.id, 'temporary')}
+                      disabled={isSubmitting}
+                    >
+                      <Text style={[styles.subActionText, { color: theme.textSecondary }]}>
+                        返却
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.subActionButton, { borderColor: theme.border }]}
+                      onPress={() => handleReturnLoan(loan.id, 'permanent')}
+                      disabled={isSubmitting}
+                    >
+                      <Text style={[styles.subActionText, { color: theme.textSecondary }]}>
+                        完全返却
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
             </View>
           ))}
         </View>
       )}
 
-      {/* ── 返却済（施錠確認結果）── */}
-      <Text style={[styles.subTitle, { color: theme.text }]}>
-        返却済（{keyLoans.filter((l) => l.status === 'returned').length}件）
-      </Text>
+      {/* ══════════════════════════════════════════
+          施錠確認状況セクション
+          ══════════════════════════════════════════ */}
+      <Text style={[styles.subTitle, { color: theme.text }]}>施錠確認状況</Text>
+
+      {/* サマリーバッジ行（未確認/施錠済/未施錠/確認不可を一覧表示） */}
+      <View style={styles.lockSummaryRow}>
+        <View style={styles.summaryBadgePending}>
+          <Text style={styles.summaryBadgePendingText}>
+            ⏳ 未確認 {lockCheckSummary.pending}
+          </Text>
+        </View>
+        <View style={styles.summaryBadgeLocked}>
+          <Text style={styles.summaryBadgeLockedText}>
+            ✅ 施錠済 {lockCheckSummary.locked}
+          </Text>
+        </View>
+        {/* 未施錠は件数があるときだけ強調表示 */}
+        {lockCheckSummary.unlocked > 0 && (
+          <View style={styles.summaryBadgeUnlocked}>
+            <Text style={styles.summaryBadgeUnlockedText}>
+              ❌ 未施錠 {lockCheckSummary.unlocked}
+            </Text>
+          </View>
+        )}
+        {/* 確認不可は件数があるときだけ表示 */}
+        {lockCheckSummary.cannotConfirm > 0 && (
+          <View style={styles.summaryBadgeCannotConfirm}>
+            <Text style={styles.summaryBadgeCannotConfirmText}>
+              ⚠️ 確認不可 {lockCheckSummary.cannotConfirm}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* フィルタ pill 行（未確認のみ / 全て / 確認済） */}
+      <View style={styles.filterRow}>
+        {LOCK_CHECK_FILTERS.map((filter) => {
+          /** 現在選択中のフィルタかどうか */
+          const isActive = lockCheckFilter === filter.key;
+          return (
+            <Pressable
+              key={filter.key}
+              style={[
+                styles.filterPill,
+                {
+                  backgroundColor: isActive ? theme.primary : theme.background,
+                  borderColor: isActive ? theme.primary : theme.border,
+                },
+              ]}
+              onPress={() => setLockCheckFilter(filter.key)}
+            >
+              <Text
+                style={[
+                  styles.filterPillText,
+                  { color: isActive ? '#FFFFFF' : theme.textSecondary },
+                ]}
+              >
+                {filter.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {/* 施錠確認 検索バー */}
       <SearchBar
-        value={returnedSearch}
-        onChange={setReturnedSearch}
+        value={lockSearch}
+        onChange={setLockSearch}
         placeholder="鍵・借受人・企画名で検索"
         theme={theme}
       />
-      {returnedKeyItems.length === 0 ? (
+
+      {/* 施錠確認 一覧 */}
+      {lockCheckItems.length === 0 ? (
         <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-          {returnedSearch ? '検索結果がありません' : '返却済データはまだありません'}
+          {lockSearch
+            ? '検索結果がありません'
+            : lockCheckFilter === 'pending'
+            ? '未確認の施錠確認はありません ✅'
+            : '該当データはありません'}
         </Text>
       ) : (
         <View style={styles.list}>
-          {returnedKeyItems.map((loan) => (
-            <View
-              key={loan.id}
-              style={[styles.listRow, { borderColor: theme.border, backgroundColor: theme.background }]}
-            >
-              <Text style={[styles.listTitle, { color: theme.text }]} numberOfLines={1}>
-                {loan.key_label}
-              </Text>
-              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                {loan.borrower_name || '-'}
-                {loan.event_name ? ` / ${loan.event_name}` : ''}
-              </Text>
-              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                返却: {loan.returned_at ? new Date(loan.returned_at).toLocaleString('ja-JP') : '-'}
-              </Text>
-              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                施錠確認: {LOCK_CHECK_STATUS_LABELS[loan.lock_check_status] || '未確認'}
-              </Text>
-            </View>
-          ))}
+          {lockCheckItems.map((loan) => {
+            /** 施錠確認結果の表示情報（未確認の場合は null） */
+            const checkInfo = LOCK_CHECK_INFO[loan.lock_check_status] || null;
+            /** この鍵が完全返却後に再借出されているかどうか */
+            const isReloaned = loanedKeyLabelSet.has(loan.key_label);
+            /** 未施錠の場合は赤背景で強調 */
+            const isUnlocked = loan.lock_check_status === 'unlocked';
+            return (
+              <View
+                key={loan.id}
+                style={[
+                  styles.lockCheckRow,
+                  {
+                    borderColor: isUnlocked ? '#D1242F' : theme.border,
+                    backgroundColor: isUnlocked ? '#FFF8F8' : theme.background,
+                    borderWidth: isUnlocked ? 2 : 1,
+                  },
+                ]}
+              >
+                {/* 鍵ラベル */}
+                <Text style={[styles.keyLabel, { color: theme.primary }]} numberOfLines={1}>
+                  🔑 {loan.key_label || '-'}
+                </Text>
+                {/* 団体名 / 借受人名 */}
+                <Text style={[styles.lockCheckMeta, { color: theme.text }]} numberOfLines={1}>
+                  {loan.event_name || '-'} / {loan.borrower_name || '-'}
+                </Text>
+                {/* 返却時刻 */}
+                <Text style={[styles.lockCheckMeta, { color: theme.textSecondary }]}>
+                  返却: {formatCompactDateTime(loan.returned_at)}
+                </Text>
+                {/* ステータスバッジ行 */}
+                <View style={styles.lockCheckBadgeRow}>
+                  {/* 施錠確認ステータスバッジ */}
+                  {checkInfo ? (
+                    <View style={[styles.lockBadge, { backgroundColor: checkInfo.bgColor }]}>
+                      <Text style={[styles.lockBadgeText, { color: checkInfo.textColor }]}>
+                        {checkInfo.icon} {checkInfo.label}
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.lockBadge, { backgroundColor: '#E8EEFF' }]}>
+                      <Text style={[styles.lockBadgeText, { color: '#3B5BDB' }]}>⏳ 未確認</Text>
+                    </View>
+                  )}
+                  {/* 再貸出中バッジ：完全返却後に同じ鍵が再度貸出されている場合 */}
+                  {isReloaned && (
+                    <View style={[styles.lockBadge, { backgroundColor: '#FFF3CD' }]}>
+                      <Text style={[styles.lockBadgeText, { color: '#9F6E00' }]}>🔄 再貸出中</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            );
+          })}
         </View>
       )}
 
-      {/* ── 鍵予約（承認待ち）── */}
+      {/* ══════════════════════════════════════════
+          鍵予約（承認待ち）
+          ══════════════════════════════════════════ */}
       <Text style={[styles.subTitle, { color: theme.text }]}>
-        鍵予約（承認待ち）（{keyReservations.filter((r) => r.status === KEY_RESERVATION_STATUSES.PENDING).length}件）
+        鍵予約（承認待ち）（{pendingReservationCount}件）
       </Text>
       <SearchBar
         value={reservationSearch}
@@ -548,63 +787,75 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
           {groupedPendingReservations.map((group) => (
             <View
               key={group.eventName}
-              style={[styles.groupRow, { borderColor: theme.border, backgroundColor: theme.background }]}
+              style={[styles.orgGroup, { borderColor: theme.border, backgroundColor: theme.background }]}
             >
-              {/* グループヘッダー：企画/団体名 */}
-              <Text style={[styles.listTitle, { color: theme.text }]} numberOfLines={1}>
-                {group.eventName}
-              </Text>
-              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
+              {/* グループヘッダー：企画名 / 鍵数バッジ / 申請日時 */}
+              <View style={[styles.orgHeader, { borderBottomColor: theme.border }]}>
+                <Text style={[styles.orgName, { color: theme.text }]} numberOfLines={1}>
+                  {group.eventName}
+                </Text>
+                <View style={[styles.countBadge, { backgroundColor: '#F0A500' }]}>
+                  <Text style={styles.countBadgeText}>{group.reservations.length}本</Text>
+                </View>
+                <Text style={[styles.orgTime, { color: theme.textSecondary }]}>
+                  申請: {formatCompactDateTime(group.earliestCreatedAt)}
+                </Text>
+              </View>
+              {/* 場所情報 */}
+              <Text
+                style={[styles.orgSubMeta, { color: theme.textSecondary }]}
+                numberOfLines={1}
+              >
                 場所: {group.eventLocation}
               </Text>
-              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                申請日時: {new Date(group.earliestCreatedAt).toLocaleString('ja-JP')}
-              </Text>
               {/* 鍵ごとのリスト（各鍵に承認・却下ボタン） */}
-              <View style={[styles.groupKeyList, { borderTopColor: theme.border }]}>
-                {group.reservations.map((reservation) => (
-                  <View key={reservation.id} style={styles.groupKeyRow}>
-                    <Text
-                      style={[styles.groupKeyLabel, { color: theme.primary }]}
-                      numberOfLines={1}
+              {group.reservations.map((reservation, index) => (
+                <View
+                  key={reservation.id}
+                  style={[
+                    styles.keyRow,
+                    { borderTopWidth: 1, borderTopColor: theme.border },
+                    index === 0 && { borderTopColor: theme.border },
+                  ]}
+                >
+                  {/* 鍵ラベル（flex: 1 で残スペースを占有して右にボタンを寄せる） */}
+                  <Text
+                    style={[styles.keyLabel, { color: theme.primary, flex: 1 }]}
+                    numberOfLines={1}
+                  >
+                    🔑 {getReservationKeyLabel(reservation)}
+                  </Text>
+                  {/* 承認・却下ボタン */}
+                  <View style={styles.keyActions}>
+                    <TouchableOpacity
+                      style={[styles.subActionButton, { borderColor: theme.border }]}
+                      onPress={() =>
+                        handleReservationDecision(reservation.id, KEY_RESERVATION_STATUSES.APPROVED)
+                      }
+                      disabled={isSubmitting}
                     >
-                      🔑 {getReservationKeyLabel(reservation)}
-                    </Text>
-                    <View style={styles.rowActions}>
-                      <TouchableOpacity
-                        style={[styles.subActionButton, { borderColor: theme.border }]}
-                        onPress={() =>
-                          handleReservationDecision(
-                            reservation.id,
-                            KEY_RESERVATION_STATUSES.APPROVED
-                          )
-                        }
-                        disabled={isSubmitting}
-                      >
-                        <Text style={[styles.subActionText, { color: '#22A06B' }]}>承認</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.subActionButton, { borderColor: theme.border }]}
-                        onPress={() =>
-                          handleReservationDecision(
-                            reservation.id,
-                            KEY_RESERVATION_STATUSES.REJECTED
-                          )
-                        }
-                        disabled={isSubmitting}
-                      >
-                        <Text style={[styles.subActionText, { color: '#D1242F' }]}>却下</Text>
-                      </TouchableOpacity>
-                    </View>
+                      <Text style={[styles.subActionText, { color: '#22A06B' }]}>承認</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.subActionButton, { borderColor: theme.border }]}
+                      onPress={() =>
+                        handleReservationDecision(reservation.id, KEY_RESERVATION_STATUSES.REJECTED)
+                      }
+                      disabled={isSubmitting}
+                    >
+                      <Text style={[styles.subActionText, { color: '#D1242F' }]}>却下</Text>
+                    </TouchableOpacity>
                   </View>
-                ))}
-              </View>
+                </View>
+              ))}
             </View>
           ))}
         </View>
       )}
 
-      {/* ── 鍵予約（対応済み）── */}
+      {/* ══════════════════════════════════════════
+          鍵予約（対応済み）
+          ══════════════════════════════════════════ */}
       <Text style={[styles.subTitle, { color: theme.text }]}>鍵予約（対応済み）</Text>
       {recentResolvedReservations.length === 0 ? (
         <Text style={[styles.helpText, { color: theme.textSecondary }]}>
@@ -615,23 +866,30 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
           {recentResolvedReservations.map((reservation) => (
             <View
               key={reservation.id}
-              style={[styles.listRow, { borderColor: theme.border, backgroundColor: theme.background }]}
+              style={[
+                styles.lockCheckRow,
+                { borderColor: theme.border, backgroundColor: theme.background, borderWidth: 1 },
+              ]}
             >
-              <Text style={[styles.listTitle, { color: theme.text }]} numberOfLines={1}>
+              {/* 鍵ラベル */}
+              <Text style={[styles.keyLabel, { color: theme.primary }]} numberOfLines={1}>
+                🔑 {getReservationKeyLabel(reservation)}
+              </Text>
+              {/* 企画名 */}
+              <Text style={[styles.lockCheckMeta, { color: theme.text }]} numberOfLines={1}>
                 {normalizeText(reservation.event_name) || '（企画名未設定）'}
               </Text>
-              <Text style={[styles.listMeta, { color: theme.primary }]} numberOfLines={1}>
-                申請鍵: {getReservationKeyLabel(reservation)}
-              </Text>
-              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                状態: {RESERVATION_STATUS_LABELS[reservation.status] || reservation.status}
-              </Text>
-              <Text style={[styles.listMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-                対応日時:{' '}
-                {reservation.approved_at
-                  ? new Date(reservation.approved_at).toLocaleString('ja-JP')
-                  : '-'}
-              </Text>
+              {/* ステータスバッジ + 対応日時 */}
+              <View style={styles.lockCheckBadgeRow}>
+                <View style={[styles.lockBadge, { backgroundColor: theme.border + '50' }]}>
+                  <Text style={[styles.lockBadgeText, { color: theme.textSecondary }]}>
+                    {RESERVATION_STATUS_LABELS[reservation.status] || reservation.status}
+                  </Text>
+                </View>
+                <Text style={[styles.lockCheckMeta, { color: theme.textSecondary }]}>
+                  {reservation.approved_at ? formatCompactDateTime(reservation.approved_at) : '-'}
+                </Text>
+              </View>
             </View>
           ))}
         </View>
@@ -641,11 +899,13 @@ const HQKeyManagementPanel = ({ theme, user, onLoanCreated, onLoanReturned }) =>
 };
 
 const styles = StyleSheet.create({
+  /** カード外枠 */
   card: {
     borderWidth: 1,
     borderRadius: 12,
     padding: 16,
   },
+  /** ヘッダー行：タイトル + ボタン群 */
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -657,6 +917,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  /** 全体表示ボタン */
   boardButton: {
     borderRadius: 999,
     paddingHorizontal: 12,
@@ -684,6 +945,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+  /** セクションタイトル */
   subTitle: {
     marginTop: 14,
     marginBottom: 4,
@@ -714,28 +976,81 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     paddingHorizontal: 4,
   },
+  /** リストコンテナ */
   list: {
     gap: 8,
   },
-  listRow: {
+  /** 団体グループ外枠 */
+  orgGroup: {
     borderWidth: 1,
     borderRadius: 10,
+  },
+  /** 団体グループヘッダー行（borderBottomColor は動的設定） */
+  orgHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 10,
     paddingVertical: 8,
+    borderBottomWidth: 1,
   },
-  listTitle: {
+  orgName: {
+    flex: 1,
     fontSize: 13,
     fontWeight: '700',
   },
-  listMeta: {
-    marginTop: 2,
+  /** 場所などのサブメタ情報（ヘッダー直下） */
+  orgSubMeta: {
+    fontSize: 12,
+    paddingHorizontal: 10,
+    paddingBottom: 4,
+    paddingTop: 2,
+  },
+  /** 件数バッジ */
+  countBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  countBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  orgTime: {
     fontSize: 12,
   },
-  rowActions: {
+  /** 鍵1行：水平レイアウト（グループ内） */
+  keyRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
   },
+  /** 鍵ラベル（🔑 A-101 形式） */
+  keyLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    minWidth: 72,
+  },
+  /** 借受人名（可変幅） */
+  keyBorrower: {
+    flex: 1,
+    fontSize: 12,
+  },
+  /** 時刻表示（右寄せ） */
+  keyTime: {
+    fontSize: 12,
+    minWidth: 50,
+    textAlign: 'right',
+  },
+  /** 操作ボタン群（水平配置） */
+  keyActions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  /** 返却・承認などの小さいアクションボタン */
   subActionButton: {
     borderWidth: 1,
     borderRadius: 999,
@@ -746,26 +1061,106 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  /** グループ行（予約を申請者/企画単位でまとめる） */
-  groupRow: {
+  /** 施錠確認 サマリーバッジ行 */
+  lockSummaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 8,
+  },
+  /** 未確認バッジ */
+  summaryBadgePending: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#EEF2FF',
+  },
+  summaryBadgePendingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#3B5BDB',
+  },
+  /** 施錠済バッジ */
+  summaryBadgeLocked: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#ECFDF5',
+  },
+  summaryBadgeLockedText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#22A06B',
+  },
+  /** 未施錠バッジ（件数がある場合のみ表示） */
+  summaryBadgeUnlocked: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#FEF2F2',
+  },
+  summaryBadgeUnlockedText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#D1242F',
+  },
+  /** 確認不可バッジ（件数がある場合のみ表示） */
+  summaryBadgeCannotConfirm: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#FFFBEA',
+  },
+  summaryBadgeCannotConfirmText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9F6E00',
+  },
+  /** フィルタ pill 行 */
+  filterRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 8,
+  },
+  filterPill: {
     borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  filterPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  /** 施錠確認行（borderWidth/borderColor/backgroundColor は動的設定） */
+  lockCheckRow: {
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
+    gap: 3,
   },
-  groupKeyList: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    gap: 10,
+  lockCheckMeta: {
+    fontSize: 12,
   },
-  groupKeyRow: {
-    gap: 4,
+  /** 施錠確認バッジ行（横並び・ラップあり） */
+  lockCheckBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
   },
-  groupKeyLabel: {
-    fontSize: 13,
+  /** 施錠確認ステータスバッジ / 再貸出バッジ共通 */
+  lockBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  lockBadgeText: {
+    fontSize: 11,
     fontWeight: '600',
   },
+  /** 更新ボタン */
   refreshButton: {
     borderWidth: 1,
     borderRadius: 999,
@@ -776,6 +1171,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  /** 空状態・読み込み中テキスト */
   helpText: {
     fontSize: 13,
     lineHeight: 20,
