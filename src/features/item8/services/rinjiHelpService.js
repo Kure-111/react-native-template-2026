@@ -9,6 +9,19 @@ import { RINJI_STATUS, RINJI_CLOSE_REASON, OPTIONAL_FIELD_DEFAULTS } from '../co
 const supabase = getSupabaseClient();
 const IMMEDIATE_TIME_LABEL = '現在時刻';
 const LEGACY_IMMEDIATE_TIME_LABEL = 'いますぐ';
+const RECRUIT_MUTABLE_FIELDS = [
+  'head_user_id',
+  'department_id',
+  'headcount',
+  'work_date',
+  'work_time',
+  'location',
+  'meet_place',
+  'meet_time',
+  'description',
+  'reward',
+  'belongings',
+];
 
 /**
  * `close_reason` 列が未反映の環境かどうかを判定する。
@@ -76,6 +89,21 @@ const withOptionalDefaults = (payload = {}) => {
 
   return normalized;
 };
+
+/**
+ * 募集作成/更新に利用する項目だけを抽出する。
+ * 一覧表示用の派生項目（applicant_count など）は除外する。
+ *
+ * @param {Record<string, any>} payload
+ * @returns {Record<string, any>}
+ */
+const pickRecruitMutableFields = (payload = {}) =>
+  RECRUIT_MUTABLE_FIELDS.reduce((acc, key) => {
+    if (Object.prototype.hasOwnProperty.call(payload, key)) {
+      acc[key] = payload[key];
+    }
+    return acc;
+  }, {});
 
 /**
  * 募集配列に応募人数（applicant_count）を付与する。
@@ -280,26 +308,78 @@ const autoReopenRecruitWhenBelowCapacity = async (recruitId) => {
 };
 
 /**
+ * 募集検索共通フィルタをクエリに適用する。
+ *
+ * @param {any} query
+ * @param {{ location?: string, department_id?: string }} filters
+ * @returns {any}
+ */
+const applyRecruitFilters = (query, filters = {}) => {
+  let next = query;
+  if (filters.location) {
+    next = next.ilike('location', `%${filters.location}%`);
+  }
+  if (filters.department_id) {
+    next = next.eq('department_id', filters.department_id);
+  }
+  return next;
+};
+
+/**
  * 募集一覧を取得する。
  *
- * @param {{ includeClosed?: boolean, filters?: { location?: string, department_id?: string } }} params
+ * @param {{ includeClosed?: boolean, includeAutoFullClosed?: boolean, filters?: { location?: string, department_id?: string } }} params
  * @returns {Promise<{ data: any, error: any }>}
  */
-export const fetchRecruits = async ({ includeClosed = false, filters = {} } = {}) => {
+export const fetchRecruits = async ({ includeClosed = false, includeAutoFullClosed = false, filters = {} } = {}) => {
   let query = supabase.from('rinji_help_recruits').select('*').order('updated_at', { ascending: false });
 
   if (!includeClosed) {
+    if (includeAutoFullClosed) {
+      const openQuery = applyRecruitFilters(
+        supabase
+          .from('rinji_help_recruits')
+          .select('*')
+          .eq('status', RINJI_STATUS.OPEN)
+          .order('updated_at', { ascending: false }),
+        filters
+      );
+      const autoFullClosedQuery = applyRecruitFilters(
+        supabase
+          .from('rinji_help_recruits')
+          .select('*')
+          .eq('status', RINJI_STATUS.CLOSED)
+          .eq('close_reason', RINJI_CLOSE_REASON.AUTO_FULL)
+          .order('updated_at', { ascending: false }),
+        filters
+      );
+
+      const [{ data: openRows, error: openError }, { data: autoClosedRows, error: autoClosedError }] =
+        await Promise.all([openQuery, autoFullClosedQuery]);
+
+      if (openError) {
+        return { data: null, error: openError };
+      }
+
+      if (autoClosedError) {
+        if (!isMissingCloseReasonColumnError(autoClosedError)) {
+          return { data: null, error: autoClosedError };
+        }
+        return withApplicantCounts(openRows || []);
+      }
+
+      const merged = [...(openRows || []), ...(autoClosedRows || [])].sort((a, b) => {
+        const at = new Date(a.updated_at || 0).getTime();
+        const bt = new Date(b.updated_at || 0).getTime();
+        return bt - at;
+      });
+      return withApplicantCounts(merged);
+    }
+
     query = query.eq('status', RINJI_STATUS.OPEN);
   }
 
-  if (filters.location) {
-    query = query.ilike('location', `%${filters.location}%`);
-  }
-
-  if (filters.department_id) {
-    query = query.eq('department_id', filters.department_id);
-  }
-
+  query = applyRecruitFilters(query, filters);
   const { data, error } = await query;
   if (error) {
     return { data, error };
@@ -314,7 +394,7 @@ export const fetchRecruits = async ({ includeClosed = false, filters = {} } = {}
  * @returns {Promise<{ data: any, error: any }>}
  */
 export const createRecruit = async (payload) => {
-  const body = withOptionalDefaults(payload);
+  const body = withOptionalDefaults(pickRecruitMutableFields(payload));
   const { data, error } = await supabase
     .from('rinji_help_recruits')
     .insert(body)
@@ -331,12 +411,22 @@ export const createRecruit = async (payload) => {
  * @returns {Promise<{ data: any, error: any }>}
  */
 export const updateRecruit = async (id, payload) => {
-  const body = withOptionalDefaults(payload);
+  const body = withOptionalDefaults(pickRecruitMutableFields(payload));
   const { data, error } = await supabase
     .from('rinji_help_recruits')
     .update({ ...body, updated_at: new Date().toISOString() })
     .eq('id', id);
-  return { data, error };
+  if (error) {
+    return { data, error };
+  }
+
+  // 編集で募集人数を下げた場合も、定員到達なら自動クローズを適用する。
+  const { error: autoCloseError } = await autoCloseRecruitWhenFull(id);
+  if (autoCloseError) {
+    console.warn('[item8] auto close after update skipped:', autoCloseError.message || autoCloseError);
+  }
+
+  return { data, error: null };
 };
 
 /**
@@ -375,6 +465,28 @@ export const closeRecruit = async (id) => {
  * @returns {Promise<{ data: any, error: any }>}
  */
 export const reopenRecruit = async (id) => {
+  const { data: recruit, error: recruitError } = await fetchRecruitForAutoControl(id);
+  if (recruitError) {
+    return { data: null, error: recruitError };
+  }
+
+  const headcount = Number(recruit?.headcount);
+  if (Number.isFinite(headcount) && headcount > 0) {
+    const { count, error: countError } = await fetchApplicantCount(id);
+    if (countError) {
+      return { data: null, error: countError };
+    }
+    if ((count || 0) >= headcount) {
+      return {
+        data: null,
+        error: {
+          code: 'RINJI_REOPEN_BLOCKED_FULL',
+          message: '応募人数が募集人数に達しているため再開できません。',
+        },
+      };
+    }
+  }
+
   const payload = {
     status: RINJI_STATUS.OPEN,
     close_reason: null,

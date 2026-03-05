@@ -34,7 +34,7 @@ import { isManager, RINJI_STATUS } from '../constants.js';
  *   handleCreate: (payload: Record<string, any>) => Promise<boolean>,
  *   handleUpdate: (id: string, payload: Record<string, any>) => Promise<boolean>,
  *   handleClose: (id: string) => Promise<boolean>,
- *   handleReopen: (id: string) => Promise<boolean>,
+ *   handleReopen: (id: string) => Promise<{ok: boolean, message?: string}>,
  *   handleApply: (id: string) => Promise<boolean>,
  *   handleCancelApply: (id: string) => Promise<boolean>,
  *   loadApplications: (recruitId: string) => Promise<void>,
@@ -71,10 +71,10 @@ export const useRinjiHelp = () => {
    * @returns {Promise<void>}
    */
   const loadRecruits = useCallback(
-    async ({ includeClosed = false } = {}) => {
+    async ({ includeClosed = false, includeAutoFullClosed = false } = {}) => {
       setLoading(true);
       setError(null);
-      const { data, error } = await fetchRecruits({ includeClosed });
+      const { data, error } = await fetchRecruits({ includeClosed, includeAutoFullClosed });
       if (error) {
         setError(error.message);
       } else {
@@ -92,7 +92,7 @@ export const useRinjiHelp = () => {
    */
   const refresh = useCallback(async () => {
     setApplications({});
-    await loadRecruits({ includeClosed: false });
+    await loadRecruits({ includeClosed: false, includeAutoFullClosed: manager });
     if (manager) {
       await loadRecruits({ includeClosed: true });
       setAppliedRecruits([]);
@@ -175,17 +175,18 @@ export const useRinjiHelp = () => {
    * 募集を再開して一覧を更新する。
    *
    * @param {string} id
-   * @returns {Promise<boolean>}
+   * @returns {Promise<{ok: boolean, message?: string}>}
    */
   const handleReopen = useCallback(
     async (id) => {
       const { error } = await reopenRecruit(id);
       if (error) {
-        setError(error.message);
-        return false;
+        const message = error?.message || '募集の再開に失敗しました。';
+        setError(message);
+        return { ok: false, message };
       }
       await refresh();
-      return true;
+      return { ok: true };
     },
     [refresh]
   );

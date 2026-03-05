@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, Button } from 'react-native';
-import { OPTIONAL_FIELD_DEFAULTS, RINJI_STATUS } from '../constants.js';
+import { OPTIONAL_FIELD_DEFAULTS, RINJI_STATUS, RINJI_CLOSE_REASON } from '../constants.js';
 import { useTheme } from '../../../shared/hooks/useTheme';
 
 const TITLE_SEPARATOR = '\n\n---\n\n';
@@ -214,6 +214,7 @@ const RecruitCard = ({
   onEdit,
   onClose,
   onReopen,
+  onFinalizeAutoClose,
   onToggleApplicants,
   theme,
   showStatus = false,
@@ -225,11 +226,14 @@ const RecruitCard = ({
   isApplicantsOpen = false,
   applicantsLoading = false,
   showApplicantsToggle = false,
+  showAutoClosedBadge = false,
 }) => {
   const optional = formatOptional(recruit);
   const text = parseTitleAndDescription(recruit.description);
   const shouldShowActions = isManager || showApplyButton || showCancelButton;
   const shouldShowApplicants = isManager && showApplicantsToggle && isApplicantsOpen;
+  const isAutoClosedByCapacity =
+    recruit.status === RINJI_STATUS.CLOSED && recruit.close_reason === RINJI_CLOSE_REASON.AUTO_FULL;
 
   return (
     <View
@@ -270,6 +274,20 @@ const RecruitCard = ({
             ]}
           >
             <Text style={[styles.lateJoinBadgeDenyText, { color: theme.primary }]}>途中参加不可</Text>
+          </View>
+        ) : null}
+        {showAutoClosedBadge && isAutoClosedByCapacity ? (
+          <View
+            style={[
+              styles.autoCloseBadge,
+              {
+                backgroundColor: withAlpha(theme.error, '22'),
+                borderColor: theme.error,
+                borderRadius: theme.borderRadius,
+              },
+            ]}
+          >
+            <Text style={[styles.autoCloseBadgeText, { color: theme.error }]}>募集人数到達済み</Text>
           </View>
         ) : null}
       </View>
@@ -324,6 +342,8 @@ const RecruitCard = ({
               <Button title="編集" color={theme.primary} onPress={() => onEdit?.(recruit)} />
               {recruit.status === RINJI_STATUS.OPEN ? (
                 <Button title="終了" color={theme.error} onPress={() => onClose?.(recruit.id)} />
+              ) : isAutoClosedByCapacity && onFinalizeAutoClose ? (
+                <Button title="募集を終了" color={theme.error} onPress={() => onFinalizeAutoClose?.(recruit.id)} />
               ) : (
                 <Button title="再開" color={theme.success} onPress={() => onReopen?.(recruit.id)} />
               )}
@@ -405,6 +425,7 @@ export const RecruitList = ({
   onEdit,
   onClose,
   onReopen,
+  onFinalizeAutoClose,
   onToggleApplicants,
   refreshing = false,
   onRefresh,
@@ -417,6 +438,7 @@ export const RecruitList = ({
   openApplicantsByRecruitId = {},
   loadingApplicantsByRecruitId = {},
   showApplicantsToggle = false,
+  showAutoClosedBadge = false,
 }) => {
   const { theme, themeMode } = useTheme();
 
@@ -436,6 +458,7 @@ export const RecruitList = ({
           onEdit={onEdit}
           onClose={onClose}
           onReopen={onReopen}
+          onFinalizeAutoClose={onFinalizeAutoClose}
           onToggleApplicants={onToggleApplicants}
           theme={theme}
           showStatus={showStatus}
@@ -447,6 +470,7 @@ export const RecruitList = ({
           isApplicantsOpen={Boolean(openApplicantsByRecruitId[item.id])}
           applicantsLoading={Boolean(loadingApplicantsByRecruitId[item.id])}
           showApplicantsToggle={showApplicantsToggle}
+          showAutoClosedBadge={showAutoClosedBadge}
         />
       )}
     />
@@ -485,6 +509,15 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   lateJoinBadgeDenyText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  autoCloseBadge: {
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  autoCloseBadgeText: {
     fontSize: 12,
     fontWeight: '700',
   },

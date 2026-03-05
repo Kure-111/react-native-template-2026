@@ -232,17 +232,32 @@ const Item8Screen = ({ navigation }) => {
   };
 
   /**
+   * 募集人数到達で自動クローズ中の案件を、本クローズ（手動終了）へ確定する。
+   *
+   * @param {string} recruitId
+   * @returns {Promise<void>}
+   */
+  const onFinalizeAutoClosedRecruit = async (recruitId) => {
+    const ok = await handleClose(recruitId);
+    if (ok) {
+      showSuccessToast('募集を終了しました');
+    } else {
+      showErrorToast('募集の終了に失敗しました。通信状況を確認して再度お試しください。');
+    }
+  };
+
+  /**
    * 募集を再開し、成功時はトーストを表示する。
    *
    * @param {string} recruitId
    * @returns {Promise<void>}
    */
   const onReopenRecruit = async (recruitId) => {
-    const ok = await handleReopen(recruitId);
-    if (ok) {
+    const result = await handleReopen(recruitId);
+    if (result.ok) {
       showSuccessToast('募集を再開しました');
     } else {
-      showErrorToast('募集の再開に失敗しました。通信状況を確認して再度お試しください。');
+      showErrorToast(result.message || '募集の再開に失敗しました。通信状況を確認して再度お試しください。');
     }
   };
 
@@ -377,6 +392,7 @@ const Item8Screen = ({ navigation }) => {
         onEdit={manager ? handleStartEdit : undefined}
         onClose={manager ? onCloseRecruit : undefined}
         onReopen={manager ? onReopenRecruit : undefined}
+        onFinalizeAutoClose={manager ? onFinalizeAutoClosedRecruit : undefined}
         refreshing={loading}
         onRefresh={handleRefresh}
         appliedRecruitIds={appliedRecruits.map((recruit) => recruit.id)}
@@ -385,6 +401,7 @@ const Item8Screen = ({ navigation }) => {
         openApplicantsByRecruitId={openApplicantsByRecruitId}
         loadingApplicantsByRecruitId={loadingApplicantsByRecruitId}
         showApplicantsToggle={manager}
+        showAutoClosedBadge={manager}
       />
     </View>
   );
@@ -416,10 +433,15 @@ const Item8Screen = ({ navigation }) => {
         onEdit={handleStartEdit}
         onClose={onCloseRecruit}
         onReopen={onReopenRecruit}
+        onToggleApplicants={onToggleApplicants}
         refreshing={loading}
         onRefresh={handleRefresh}
         emptyText="履歴はありません"
         showStatus
+        applicationsByRecruitId={applications}
+        openApplicantsByRecruitId={openApplicantsByRecruitId}
+        loadingApplicantsByRecruitId={loadingApplicantsByRecruitId}
+        showApplicantsToggle
       />
     </View>
   );
