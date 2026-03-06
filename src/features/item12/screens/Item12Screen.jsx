@@ -13,6 +13,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useTheme } from '../../../shared/hooks/useTheme';
@@ -40,6 +41,7 @@ import {
   createEvaluationCheck,
   listEvaluationChecks,
 } from '../../../services/supabase/evaluationService';
+import { selectEventOrganizations } from '../../../services/supabase/eventOrganizationService';
 import PatrolTaskList from '../components/PatrolTaskList';
 import PatrolTaskDetail from '../components/PatrolTaskDetail';
 import PatrolCheckForm from '../components/PatrolCheckForm';
@@ -187,6 +189,14 @@ const Item12Screen = ({ navigation }) => {
   const [myHistory, setMyHistory] = useState([]);
   /** 履歴読み込み中フラグ */
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  /* ---- 企画一覧関連 ---- */
+  /** 企画組織一覧（event_organizations） */
+  const [eventOrganizations, setEventOrganizations] = useState([]);
+  /** 企画一覧読み込み中フラグ */
+  const [isLoadingEventOrgs, setIsLoadingEventOrgs] = useState(false);
+  /** 企画一覧検索テキスト */
+  const [eventOrgSearch, setEventOrgSearch] = useState('');
 
   /* ---- トースト通知 ---- */
   /** トースト表示フラグ・メッセージ・種別 */
@@ -448,6 +458,23 @@ const Item12Screen = ({ navigation }) => {
     }
 
     setMyHistory(data || []);
+  };
+
+  /**
+   * 企画組織一覧を取得
+   * @returns {Promise<void>} 取得処理
+   */
+  const loadEventOrganizations = async () => {
+    setIsLoadingEventOrgs(true);
+    const { data, error } = await selectEventOrganizations({ limit: 200 });
+    setIsLoadingEventOrgs(false);
+
+    if (error) {
+      console.error('企画組織一覧の取得に失敗:', error);
+      return;
+    }
+
+    setEventOrganizations(data || []);
   };
 
   /**
@@ -761,6 +788,7 @@ const Item12Screen = ({ navigation }) => {
     refreshPatrolCheckData();
     loadRanking();
     loadMyHistory();
+    loadEventOrganizations();
   }, [user?.id]);
 
   useEffect(() => {
@@ -973,6 +1001,79 @@ const Item12Screen = ({ navigation }) => {
             </View>
           )}
 
+          {/* 企画一覧タブ */}
+          {activeTab === PATROL_TAB_TYPES.EVENT_ORGS && (
+            <View style={[eventOrgStyles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={eventOrgStyles.header}>
+                <Text style={[eventOrgStyles.title, { color: theme.text }]}>企画一覧</Text>
+                <Pressable
+                  style={[eventOrgStyles.refreshButton, { borderColor: theme.border }]}
+                  onPress={loadEventOrganizations}
+                >
+                  <Text style={[eventOrgStyles.refreshButtonText, { color: theme.textSecondary }]}>
+                    {isLoadingEventOrgs ? '読込中...' : '更新'}
+                  </Text>
+                </Pressable>
+              </View>
+              <Text style={[eventOrgStyles.helpText, { color: theme.textSecondary }]}>
+                企画の運営チーム一覧です。名前で検索できます。
+              </Text>
+
+              {/* 検索バー */}
+              <TextInput
+                value={eventOrgSearch}
+                onChangeText={setEventOrgSearch}
+                placeholder="企画名・チーム名で検索..."
+                placeholderTextColor={theme.textSecondary}
+                style={[
+                  eventOrgStyles.searchInput,
+                  { borderColor: theme.border, backgroundColor: theme.background, color: theme.text },
+                ]}
+              />
+
+              {isLoadingEventOrgs ? (
+                <Text style={[eventOrgStyles.emptyText, { color: theme.textSecondary }]}>読み込み中...</Text>
+              ) : eventOrganizations.length === 0 ? (
+                <Text style={[eventOrgStyles.emptyText, { color: theme.textSecondary }]}>
+                  企画組織データがありません
+                </Text>
+              ) : (
+                (() => {
+                  /** 検索キーワードで絞り込んだ企画一覧 */
+                  const keyword = eventOrgSearch.trim().toLowerCase();
+                  const filtered = keyword
+                    ? eventOrganizations.filter((org) =>
+                        (org.name || '').toLowerCase().includes(keyword)
+                      )
+                    : eventOrganizations;
+
+                  if (filtered.length === 0) {
+                    return (
+                      <Text style={[eventOrgStyles.emptyText, { color: theme.textSecondary }]}>
+                        該当する企画がありません
+                      </Text>
+                    );
+                  }
+
+                  return (
+                    <View style={eventOrgStyles.list}>
+                      {filtered.map((org) => (
+                        <View
+                          key={org.id}
+                          style={[eventOrgStyles.item, { borderColor: theme.border, backgroundColor: theme.background }]}
+                        >
+                          <Text style={[eventOrgStyles.itemName, { color: theme.text }]}>
+                            {org.name}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  );
+                })()
+              )}
+            </View>
+          )}
+
         </ScrollView>
 
         {/* ── トースト通知（タブバーの上に浮かせる） ── */}
@@ -1083,6 +1184,64 @@ const historyStyles = StyleSheet.create({
   },
   itemDate: {
     fontSize: 11,
+  },
+});
+
+/** 企画一覧タブ専用スタイル */
+const eventOrgStyles = StyleSheet.create({
+  card: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+    gap: 10,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  title: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  refreshButton: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  refreshButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  helpText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+  },
+  emptyText: {
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  list: {
+    gap: 8,
+  },
+  item: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  itemName: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

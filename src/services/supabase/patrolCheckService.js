@@ -6,27 +6,27 @@
 import { getSupabaseClient } from './client.js';
 
 const PATROL_CHECKS_TABLE = 'patrol_checks';
-// locations テーブルは GPS 座標記録用のため、巡回場所候補は keys テーブルから取得する
-const LOCATIONS_TABLE = 'keys';
+// event_organizations テーブルを巡回場所候補として使用する
+const LOCATIONS_TABLE = 'event_organizations';
 
 const normalizeText = (value) => (value || '').trim();
 
-// keys テーブルの巡回場所候補に使うカラム
-const LOCATION_COLUMNS = 'id,display_name,location_text,is_active';
+// event_organizations テーブルの巡回場所候補に使うカラム
+const LOCATION_COLUMNS = 'id,name';
 const PATROL_CHECK_COLUMNS =
   'id,patrol_user_id,location_id,location_text,check_items,memo,checked_at,created_at';
 
 /**
  * 場所レコードから表示用ラベルを生成する
- * @param {Object} location - keys テーブルのレコード
+ * @param {Object} location - event_organizations テーブルのレコード
  * @returns {string} 表示ラベル
  */
 const toLocationLabel = (location) => {
   if (!location) {
     return '';
   }
-  // display_name を優先し、なければ location_text を使う
-  return normalizeText(location.display_name) || normalizeText(location.location_text) || '場所未設定';
+  // name カラムを使用する
+  return normalizeText(location.name) || '場所未設定';
 };
 
 /**
@@ -40,8 +40,7 @@ export const listPatrolLocations = async ({ limit = 200 } = {}) => {
     const { data, error } = await getSupabaseClient()
       .from(LOCATIONS_TABLE)
       .select(LOCATION_COLUMNS)
-      .eq('is_active', true)
-      .order('display_name', { ascending: true })
+      .order('name', { ascending: true })
       .limit(limit);
 
     if (error) {

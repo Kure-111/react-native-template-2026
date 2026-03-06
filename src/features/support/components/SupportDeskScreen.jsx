@@ -58,6 +58,8 @@ import {
   createAttachmentSignedUrl,
   listTicketAttachments,
 } from '../../../services/supabase/ticketAttachmentService';
+import { selectEventOrganizations } from '../../../services/supabase/eventOrganizationService';
+import { selectPrizeDistributions } from '../../../services/supabase/prizeDistributionService';
 
 /** ステータス表示名 */
 const STATUS_LABELS = {
@@ -196,6 +198,7 @@ const HQ_TABS = [
   { key: 'tickets', label: '📋 連絡案件' },
   { key: 'patrol', label: '🚶 巡回・評価' },
   { key: 'radio', label: '📡 無線' },
+  { key: 'event_orgs', label: '🏢 企画一覧' },
   { key: 'master', label: '⚙️ 鍵マスタ' },
 ];
 
@@ -345,6 +348,20 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   const [overviewReportTypeFilter, setOverviewReportTypeFilter] = useState('all');
   /** 概況ダッシュボード: ステータスフィルター（'active' | 'all' | 'done'） */
   const [overviewStatusFilter, setOverviewStatusFilter] = useState('active');
+
+  /** 企画一覧（event_organizations）- HQ向け */
+  const [hqEventOrganizations, setHqEventOrganizations] = useState([]);
+  /** 企画一覧読み込み中フラグ */
+  const [isLoadingHqEventOrgs, setIsLoadingHqEventOrgs] = useState(false);
+  /** 企画一覧検索テキスト */
+  const [hqEventOrgSearch, setHqEventOrgSearch] = useState('');
+
+  /** 景品配布基準一覧（prize_distribution）- 会計向け */
+  const [prizeDistributions, setPrizeDistributions] = useState([]);
+  /** 景品配布基準読み込み中フラグ */
+  const [isLoadingPrizeDist, setIsLoadingPrizeDist] = useState(false);
+  /** 景品配布基準検索テキスト */
+  const [prizeSearch, setPrizeSearch] = useState('');
 
   /** HQロール向けアクティブタブ（初期値: 外部指定がある場合はそれ、なければ鍵管理） */
   const [activeTab, setActiveTab] = useState(initialTab || HQ_TAB_DEFAULT);
@@ -1119,6 +1136,48 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     showMessage('再通知完了', countText);
   };
 
+  /**
+   * HQ向け企画一覧を取得
+   * @returns {Promise<void>} 取得処理
+   */
+  const loadHqEventOrganizations = async () => {
+    if (!isHQRole) {
+      return;
+    }
+
+    setIsLoadingHqEventOrgs(true);
+    const { data, error } = await selectEventOrganizations({ limit: 200 });
+    setIsLoadingHqEventOrgs(false);
+
+    if (error) {
+      console.error('企画一覧取得に失敗:', error);
+      return;
+    }
+
+    setHqEventOrganizations(data || []);
+  };
+
+  /**
+   * 会計向け景品配布基準を取得
+   * @returns {Promise<void>} 取得処理
+   */
+  const loadPrizeDistributions = async () => {
+    if (roleType !== SUPPORT_DESK_ROLE_TYPES.ACCOUNTING) {
+      return;
+    }
+
+    setIsLoadingPrizeDist(true);
+    const { data, error } = await selectPrizeDistributions({ limit: 300 });
+    setIsLoadingPrizeDist(false);
+
+    if (error) {
+      console.error('景品配布基準取得に失敗:', error);
+      return;
+    }
+
+    setPrizeDistributions(data || []);
+  };
+
   useEffect(() => {
     loadLastViewedAt();
     loadTickets();
@@ -1127,6 +1186,8 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     loadPatrolAssignees();
     loadPendingEvaluations();
     loadPatrolHistory();
+    loadHqEventOrganizations();
+    loadPrizeDistributions();
   }, [roleType, user?.id]);
 
   useEffect(() => {
@@ -1848,6 +1909,81 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
         {/* ─── 鍵マスタタブ ─── */}
         {isHQRole && activeTab === 'master' ? (
           <KeyMasterEditPanel theme={theme} />
+        ) : null}
+
+        {/* ─── 企画一覧タブ（HQ） ─── */}
+        {isHQRole && activeTab === 'event_orgs' ? (
+          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>企画一覧</Text>
+              <TouchableOpacity
+                style={[styles.refreshButton, { borderColor: theme.border }]}
+                onPress={loadHqEventOrganizations}
+              >
+                <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+              企画の運営チーム一覧です。名前で検索できます。
+            </Text>
+
+            {/* 検索バー */}
+            <TextInput
+              value={hqEventOrgSearch}
+              onChangeText={setHqEventOrgSearch}
+              placeholder="企画名・チーム名で検索..."
+              placeholderTextColor={theme.textSecondary}
+              style={[
+                styles.compactInput,
+                { borderColor: theme.border, backgroundColor: theme.background, color: theme.text, marginBottom: 10 },
+              ]}
+            />
+
+            {isLoadingHqEventOrgs ? (
+              <SkeletonLoader lines={4} baseColor={theme.border} />
+            ) : hqEventOrganizations.length === 0 ? (
+              <EmptyState
+                icon={'\u{1F3E2}'}
+                title="企画組織データがありません"
+                description="更新ボタンで再取得してください。"
+                theme={theme}
+              />
+            ) : (
+              (() => {
+                /** 検索キーワードで絞り込んだ企画一覧 */
+                const keyword = hqEventOrgSearch.trim().toLowerCase();
+                const filtered = keyword
+                  ? hqEventOrganizations.filter((org) =>
+                      (org.name || '').toLowerCase().includes(keyword)
+                    )
+                  : hqEventOrganizations;
+
+                if (filtered.length === 0) {
+                  return (
+                    <Text style={[styles.helpText, { color: theme.textSecondary, textAlign: 'center', paddingVertical: 16 }]}>
+                      該当する企画がありません
+                    </Text>
+                  );
+                }
+
+                return (
+                  <View style={styles.ticketList}>
+                    {filtered.map((org) => (
+                      <View
+                        key={org.id}
+                        style={[
+                          styles.ticketItem,
+                          { borderColor: theme.border, backgroundColor: theme.background },
+                        ]}
+                      >
+                        <Text style={[styles.ticketTitle, { color: theme.text }]}>{org.name}</Text>
+                      </View>
+                    ))}
+                  </View>
+                );
+              })()
+            )}
+          </View>
         ) : null}
 
         {/* ─── 無線タブ: ダッシュボード + 無線ログ ─── */}
@@ -2721,6 +2857,97 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
         ) : null}
           </>
         ) : null}
+
+        {/* ─── 景品配布基準カード（会計ロールのみ） ─── */}
+        {roleType === SUPPORT_DESK_ROLE_TYPES.ACCOUNTING ? (
+          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>景品配布基準</Text>
+              <TouchableOpacity
+                style={[styles.refreshButton, { borderColor: theme.border }]}
+                onPress={loadPrizeDistributions}
+              >
+                <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+              企画別の景品配布基準一覧です。団体名・企画名・景品名で検索できます。
+            </Text>
+
+            {/* 検索バー */}
+            <TextInput
+              value={prizeSearch}
+              onChangeText={setPrizeSearch}
+              placeholder="団体名・企画名・景品名で検索..."
+              placeholderTextColor={theme.textSecondary}
+              style={[
+                styles.compactInput,
+                { borderColor: theme.border, backgroundColor: theme.background, color: theme.text, marginBottom: 10 },
+              ]}
+            />
+
+            {isLoadingPrizeDist ? (
+              <SkeletonLoader lines={4} baseColor={theme.border} />
+            ) : prizeDistributions.length === 0 ? (
+              <EmptyState
+                icon={'\u{1F381}'}
+                title="景品配布基準データがありません"
+                description="更新ボタンで再取得してください。"
+                theme={theme}
+              />
+            ) : (
+              (() => {
+                /** 検索キーワードで絞り込んだ景品一覧 */
+                const keyword = prizeSearch.trim().toLowerCase();
+                const filtered = keyword
+                  ? prizeDistributions.filter((item) => {
+                      /** 団体名・企画名・景品名で部分一致検索 */
+                      const inOrg = (item.organization_name || '').toLowerCase().includes(keyword);
+                      const inEvent = (item.event_name || '').toLowerCase().includes(keyword);
+                      const inPrize = (item.prize_name || '').toLowerCase().includes(keyword);
+                      return inOrg || inEvent || inPrize;
+                    })
+                  : prizeDistributions;
+
+                if (filtered.length === 0) {
+                  return (
+                    <Text style={[styles.helpText, { color: theme.textSecondary, textAlign: 'center', paddingVertical: 16 }]}>
+                      該当する景品がありません
+                    </Text>
+                  );
+                }
+
+                return (
+                  <View style={styles.messageList}>
+                    {filtered.map((item) => (
+                      <View
+                        key={item.id}
+                        style={[styles.messageItem, { borderColor: theme.border, backgroundColor: theme.background }]}
+                      >
+                        {/* 団体名・企画名 */}
+                        <Text style={[styles.messageAuthor, { color: theme.textSecondary }]} numberOfLines={1}>
+                          {item.organization_name || '-'} / {item.event_name || '-'}
+                        </Text>
+                        {/* 景品番号・景品名・数量 */}
+                        <Text style={[styles.messageBody, { color: theme.text, fontWeight: '700' }]}>
+                          {item.prize_number ? `[${item.prize_number}] ` : ''}{item.prize_name || '-'}
+                          {item.prize_count ? `  （${item.prize_count}）` : ''}
+                        </Text>
+                        {/* 配布基準 */}
+                        {item.distribution_criteria ? (
+                          <Text style={[styles.messageBody, { color: theme.text, marginTop: 4 }]}>
+                            {item.distribution_criteria}
+                          </Text>
+                        ) : null}
+                      </View>
+                    ))}
+                  </View>
+                );
+              })()
+            )}
+          </View>
+        ) : null}
+
       </ScrollView>
       ) : null}
     </SafeAreaView>

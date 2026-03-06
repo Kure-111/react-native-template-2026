@@ -27,6 +27,8 @@ export const PATROL_TAB_TYPES = {
   RANKING: 'ranking',
   /** 自分の対応履歴 */
   HISTORY: 'history',
+  /** 企画一覧（event_organizations） */
+  EVENT_ORGS: 'event_orgs',
 };
 
 /** 下部タブ一覧 */
@@ -50,6 +52,11 @@ export const PATROL_TABS = [
     key: PATROL_TAB_TYPES.HISTORY,
     label: '履歴',
     icon: '📜',
+  },
+  {
+    key: PATROL_TAB_TYPES.EVENT_ORGS,
+    label: '企画一覧',
+    icon: '🏢',
   },
 ];
 
