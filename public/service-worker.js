@@ -101,9 +101,10 @@ const getNotificationData = (event) => {
   if (!event.data) {
     return {
       title: 'Ikoma Festival ERP 2026',
-      body: 'You have a new notification.',
-      url: '/',
+      body: '新しい通知があります。',
+      url: '/notifications',
       navigateTo: null,
+      notificationId: null,
     };
   }
 
@@ -111,23 +112,27 @@ const getNotificationData = (event) => {
     const parsedData = event.data.json();
     return {
       title: parsedData.title || 'Ikoma Festival ERP 2026',
-      body: parsedData.body || 'You have a new notification.',
-      url: parsedData.url || '/',
+      body: parsedData.body || '新しい通知があります。',
+      url: parsedData.url || '/notifications',
       /** 遷移先情報（{ screen: string, tab: string } または null） */
       navigateTo: parsedData.navigateTo || null,
+      /** 通知ID（重複排除タグとして使用） */
+      notificationId: parsedData.notificationId || null,
     };
   } catch (error) {
     return {
       title: 'Ikoma Festival ERP 2026',
       body: event.data.text(),
-      url: '/',
+      url: '/notifications',
       navigateTo: null,
+      notificationId: null,
     };
   }
 };
 
 /**
  * 通知のオプションを生成する
+ * requireInteraction: true でユーザーが閉じるまでポップアップを維持する（Discord 方式）
  * @param {Object} data - 通知データ
  * @returns {NotificationOptions} 通知オプション
  */
@@ -136,6 +141,11 @@ const buildNotificationOptions = (data) => {
     body: data.body,
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
+    /** ユーザーが操作するまでポップアップを閉じない */
+    requireInteraction: true,
+    /** 同じ notificationId の重複通知を排除し、新着時は再通知する */
+    tag: data.notificationId || 'ikoma-erp-notification',
+    renotify: true,
     data: {
       url: data.url,
       /** 遷移先情報（postMessage で使用） */
