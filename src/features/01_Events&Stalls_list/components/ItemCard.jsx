@@ -55,11 +55,11 @@ const ItemCard = ({ item, onPress }) => {
                             </Text>
                         </View>
                     )}
-                    {item.locationName ? (
+                    {item.listLocationName ? (
                         <View style={[styles.infoTag, { backgroundColor: theme.border, borderRadius: theme.borderRadius }]}>
                             <Ionicons name="location-outline" size={11} color={theme.textSecondary} />
                             <Text style={[styles.infoTagText, { color: theme.text }]}>
-                                {item.locationName}
+                                {item.listLocationName}
                             </Text>
                         </View>
                     ) : null}
@@ -118,7 +118,7 @@ const ItemCard = ({ item, onPress }) => {
                     <View style={styles.iconCell}>
                         <Ionicons name="location-outline" size={13} color={theme.textSecondary} />
                         <Text style={[styles.cellText, { color: theme.textSecondary }]} numberOfLines={1}>
-                            {item.locationName || '-'}
+                            {item.listLocationName || '-'}
                         </Text>
                     </View>
                 </View>
