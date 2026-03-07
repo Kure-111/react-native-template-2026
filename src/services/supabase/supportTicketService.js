@@ -4,6 +4,10 @@
  */
 
 import { getSupabaseClient } from './client.js';
+import {
+  notifySupportTicketMessageCreated,
+  notifySupportTicketStatusChanged,
+} from './supportNotificationService.js';
 
 /** テーブル名 */
 const SUPPORT_TICKETS_TABLE = 'support_tickets';
@@ -50,6 +54,37 @@ const MESSAGE_COLUMNS = 'id,ticket_id,author_id,body,created_at';
  * @returns {string} trim済み文字列
  */
 const normalizeText = (value) => (value || '').trim();
+
+/**
+ * 連絡案件詳細を1件取得する
+ * @param {string} ticketId - 連絡案件ID
+ * @returns {Promise<{data: Object|null, error: Error|null}>} 取得結果
+ */
+const selectTicketById = async (ticketId) => {
+  try {
+    /** 正規化済みID */
+    const normalizedTicketId = normalizeText(ticketId);
+    if (!normalizedTicketId) {
+      return { data: null, error: null };
+    }
+
+    const { data, error } = await getSupabaseClient()
+      .from(SUPPORT_TICKETS_TABLE)
+      .select(TICKET_COLUMNS)
+      .eq('id', normalizedTicketId)
+      .single();
+
+    if (error) {
+      console.warn('連絡案件通知用の詳細取得に失敗:', error);
+      return { data: null, error };
+    }
+
+    return { data: data || null, error: null };
+  } catch (error) {
+    console.warn('連絡案件通知用の詳細取得処理でエラー:', error);
+    return { data: null, error };
+  }
+};
 
 /**
  * 役割ごとのフィルタを適用
@@ -263,6 +298,20 @@ export const createTicketMessage = async (input) => {
       return { data: null, error };
     }
 
+    /** 通知用の連絡案件詳細 */
+    const { data: ticket } = await selectTicketById(ticketId);
+    if (ticket) {
+      /** 通知送信結果 */
+      const { error: notifyError } = await notifySupportTicketMessageCreated({
+        ticket,
+        authorId,
+        body,
+      });
+      if (notifyError) {
+        console.warn('返信投稿通知の送信に失敗:', notifyError);
+      }
+    }
+
     return { data, error: null };
   } catch (error) {
     return { data: null, error };
@@ -274,12 +323,14 @@ export const createTicketMessage = async (input) => {
  * @param {Object} input - 更新データ
  * @param {string} input.ticketId - 連絡案件ID
  * @param {string} input.status - 更新後ステータス
+ * @param {string} [input.notifyActorUserId] - 通知上の更新者ユーザーID
  * @returns {Promise<{data: Object|null, error: Error|null}>} 更新結果
  */
 export const updateTicketStatus = async (input) => {
   try {
     const ticketId = normalizeText(input.ticketId);
     const status = normalizeText(input.status);
+    const notifyActorUserId = normalizeText(input.notifyActorUserId);
 
     if (!ticketId) {
       throw new Error('連絡案件IDが未指定です');
@@ -298,6 +349,18 @@ export const updateTicketStatus = async (input) => {
     if (error) {
       console.error('連絡案件ステータス更新エラー:', error);
       return { data: null, error };
+    }
+
+    if (notifyActorUserId) {
+      /** 状態更新通知結果 */
+      const { error: notifyError } = await notifySupportTicketStatusChanged({
+        ticket: data,
+        nextStatus: status,
+        actorUserId: notifyActorUserId,
+      });
+      if (notifyError) {
+        console.warn('連絡案件状態更新通知の送信に失敗:', notifyError);
+      }
     }
 
     return { data, error: null };

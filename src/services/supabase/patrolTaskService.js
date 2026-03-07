@@ -9,6 +9,7 @@ import {
   notifyPatrolTaskAccepted,
   notifyPatrolTaskCompleted,
 } from '../../shared/services/supportWorkflowNotificationService.js';
+import { notifyPatrolTaskAssigned } from './supportNotificationService.js';
 
 const PATROL_TASKS_TABLE = 'patrol_tasks';
 const PATROL_TASK_RESULTS_TABLE = 'patrol_task_results';
@@ -133,12 +134,14 @@ export const listPatrolTasks = async ({
  * @param {Object} input - 入力
  * @param {string} input.taskId - タスクID
  * @param {string|null} [input.assignedTo] - 担当者ユーザーID（未割当に戻す場合はnull）
+ * @param {string|null} [input.actorUserId] - 割当実行者ユーザーID
  * @returns {Promise<{data: Object|null, error: Error|null}>} 更新結果
  */
-export const assignPatrolTask = async ({ taskId, assignedTo = null }) => {
+export const assignPatrolTask = async ({ taskId, assignedTo = null, actorUserId = null }) => {
   try {
     const normalizedTaskId = normalizeText(taskId);
     const normalizedAssignedTo = normalizeText(assignedTo) || null;
+    const normalizedActorUserId = normalizeText(actorUserId) || null;
 
     if (!normalizedTaskId) {
       throw new Error('taskId が未指定です');
@@ -156,6 +159,15 @@ export const assignPatrolTask = async ({ taskId, assignedTo = null }) => {
     if (error) {
       console.error('巡回タスク担当更新エラー:', error);
       return { data: null, error };
+    }
+
+    if (normalizedAssignedTo && normalizedActorUserId) {
+      /** 巡回割当通知結果 */
+      const { error: notifyError } = await notifyPatrolTaskAssigned({
+        task: data,
+        senderUserId: normalizedActorUserId,
+      });
+      logNotificationError('巡回割当', notifyError);
     }
 
     return { data, error: null };

@@ -23,6 +23,7 @@ import { Picker } from '@react-native-picker/picker';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { useAuth } from '../../../shared/contexts/AuthContext';
+import { getSupabaseClient } from '../../../services/supabase/client';
 import {
   createTicketMessage,
   listTicketMessages,
@@ -60,6 +61,8 @@ import {
 } from '../../../services/supabase/ticketAttachmentService';
 import { selectEventOrganizations } from '../../../services/supabase/eventOrganizationService';
 import { selectPrizeDistributions } from '../../../services/supabase/prizeDistributionService';
+import { useManagedPushSubscription } from '../../notifications/hooks/useManagedPushSubscription';
+import WebPushStatusCard from '../../notifications/components/WebPushStatusCard';
 
 /** ステータス表示名 */
 const STATUS_LABELS = {
@@ -187,6 +190,12 @@ const RADIO_LOG_CATEGORIES = [
   { key: 'other', label: 'その他' },
 ];
 
+/** 景品配布基準: 全団体を表す選択値 */
+const ALL_PRIZE_ORGANIZATIONS = '__all__';
+
+/** 景品配布基準: 団体候補の最大表示件数 */
+const PRIZE_ORGANIZATION_OPTION_LIMIT = 24;
+
 /** 経過時間アラート閾値（分） */
 const ELAPSED_WARNING_MINUTES = 15;
 const ELAPSED_DANGER_MINUTES = 30;
@@ -280,6 +289,72 @@ const formatFileSize = (fileSizeBytes) => {
 };
 
 /**
+ * Realtimeイベントから連絡案件IDを抽出する
+ * support_tickets は id、ticket_messages / ticket_attachments は ticket_id を参照する
+ * @param {Object} payload - Realtimeイベントペイロード
+ * @returns {string} 連絡案件ID
+ */
+const extractTicketIdFromRealtimePayload = (payload) => {
+  return normalizeText(
+    payload?.new?.ticket_id ||
+      payload?.new?.id ||
+      payload?.old?.ticket_id ||
+      payload?.old?.id
+  );
+};
+
+/**
+ * 景品配布基準向けの検索文字列を正規化
+ * @param {string|null|undefined} value - 入力値
+ * @returns {string} 正規化済み文字列
+ */
+const normalizePrizeSearchValue = (value) => {
+  return normalizeText(value).replace(/[\s\u3000]+/g, '').toLowerCase();
+};
+
+/**
+ * 景品配布基準の検索キーワードに一致するかを判定
+ * 部分一致に加えて、略称入力向けに文字の順序一致も許可する
+ * @param {string|null|undefined} source - 候補文字列
+ * @param {string|null|undefined} keyword - 検索キーワード
+ * @returns {boolean} 一致する場合はtrue
+ */
+const matchesPrizeSearchKeyword = (source, keyword) => {
+  /** 正規化済み候補文字列 */
+  const normalizedSource = normalizePrizeSearchValue(source);
+  /** 正規化済み検索キーワード */
+  const normalizedKeyword = normalizePrizeSearchValue(keyword);
+
+  if (!normalizedKeyword) {
+    return true;
+  }
+
+  if (!normalizedSource) {
+    return false;
+  }
+
+  if (normalizedSource.includes(normalizedKeyword)) {
+    return true;
+  }
+
+  /** 候補文字列の探索開始位置 */
+  let sourceIndex = 0;
+
+  for (const keywordCharacter of normalizedKeyword) {
+    /** 次に一致する文字位置 */
+    const nextIndex = normalizedSource.indexOf(keywordCharacter, sourceIndex);
+
+    if (nextIndex === -1) {
+      return false;
+    }
+
+    sourceIndex = nextIndex + 1;
+  }
+
+  return true;
+};
+
+/**
  * 対応者向け共通画面コンポーネント
  * @param {Object} props - プロパティ
  * @param {Object} props.navigation - React Navigation navigation
@@ -292,6 +367,12 @@ const formatFileSize = (fileSizeBytes) => {
 const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType, initialTab }) => {
   const { theme } = useTheme();
   const { user } = useAuth();
+  /** 画面単位のPush購読状態 */
+  const pushNotice = useManagedPushSubscription({
+    navigation,
+    userId: user?.id,
+    enabled: Boolean(user?.id),
+  });
 
   const [tickets, setTickets] = useState([]);
   const [isLoadingTickets, setIsLoadingTickets] = useState(false);
@@ -360,8 +441,14 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   const [prizeDistributions, setPrizeDistributions] = useState([]);
   /** 景品配布基準読み込み中フラグ */
   const [isLoadingPrizeDist, setIsLoadingPrizeDist] = useState(false);
-  /** 景品配布基準検索テキスト */
+  /** 景品配布基準の詳細検索テキスト */
   const [prizeSearch, setPrizeSearch] = useState('');
+  /** 景品配布基準の団体候補検索テキスト */
+  const [prizeOrganizationSearch, setPrizeOrganizationSearch] = useState('');
+  /** 景品配布基準で選択中の団体名 */
+  const [selectedPrizeOrganization, setSelectedPrizeOrganization] = useState(ALL_PRIZE_ORGANIZATIONS);
+  /** 景品配布基準の団体候補表示フラグ */
+  const [isPrizeOrganizationDropdownOpen, setIsPrizeOrganizationDropdownOpen] = useState(false);
 
   /** HQロール向けアクティブタブ（初期値: 外部指定がある場合はそれ、なければ鍵管理） */
   const [activeTab, setActiveTab] = useState(initialTab || HQ_TAB_DEFAULT);
@@ -465,6 +552,99 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     });
     return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
   }, [tickets]);
+
+  /**
+   * 景品配布基準で選択できる団体一覧
+   * 同名団体をまとめ、団体ごとの景品件数も表示する
+   */
+  const prizeOrganizationOptions = useMemo(() => {
+    /** 団体名ごとの集計マップ */
+    const optionMap = new Map();
+
+    prizeDistributions.forEach((item) => {
+      /** 団体名 */
+      const organizationName = normalizeText(item.organization_name);
+      if (!organizationName) {
+        return;
+      }
+
+      const current = optionMap.get(organizationName) || {
+        value: organizationName,
+        label: organizationName,
+        count: 0,
+      };
+
+      optionMap.set(organizationName, {
+        ...current,
+        count: current.count + 1,
+      });
+    });
+
+    return Array.from(optionMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'ja'));
+  }, [prizeDistributions]);
+
+  /**
+   * 団体候補検索テキストで絞り込んだ団体一覧
+   */
+  const filteredPrizeOrganizationOptions = useMemo(() => {
+    /** 団体候補の検索キーワード */
+    const keyword = normalizePrizeSearchValue(prizeOrganizationSearch);
+    if (!keyword) {
+      return prizeOrganizationOptions;
+    }
+
+    return prizeOrganizationOptions.filter((option) =>
+      matchesPrizeSearchKeyword(option.label, keyword)
+    );
+  }, [prizeOrganizationOptions, prizeOrganizationSearch]);
+
+  /**
+   * ドロップダウンに表示する団体候補一覧
+   */
+  const visiblePrizeOrganizationOptions = useMemo(() => {
+    return filteredPrizeOrganizationOptions.slice(0, PRIZE_ORGANIZATION_OPTION_LIMIT);
+  }, [filteredPrizeOrganizationOptions]);
+
+  /**
+   * 団体選択と詳細検索を反映した景品配布基準一覧
+   */
+  const filteredPrizeDistributions = useMemo(() => {
+    /** 詳細検索キーワード */
+    const keyword = normalizePrizeSearchValue(prizeSearch);
+
+    return prizeDistributions.filter((item) => {
+      /** 団体選択との一致判定 */
+      const matchesOrganization =
+        selectedPrizeOrganization === ALL_PRIZE_ORGANIZATIONS ||
+        normalizeText(item.organization_name) === selectedPrizeOrganization;
+
+      if (!matchesOrganization) {
+        return false;
+      }
+
+      if (!keyword) {
+        return true;
+      }
+
+      /** 企画名・景品番号・景品名・配布基準で部分一致検索 */
+      return [
+        item.event_name,
+        item.prize_number,
+        item.prize_name,
+        item.distribution_criteria,
+      ].some((value) => normalizePrizeSearchValue(value).includes(keyword));
+    });
+  }, [prizeDistributions, prizeSearch, selectedPrizeOrganization]);
+
+  /**
+   * 画面表示用の選択中団体ラベル
+   */
+  const selectedPrizeOrganizationLabel = useMemo(() => {
+    if (selectedPrizeOrganization === ALL_PRIZE_ORGANIZATIONS) {
+      return 'すべての団体';
+    }
+    return selectedPrizeOrganization;
+  }, [selectedPrizeOrganization]);
 
   const selectedTicket = useMemo(() => {
     return filteredTickets.find((ticket) => ticket.id === selectedTicketId) || null;
@@ -817,6 +997,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     const result = await updateTicketStatus({
       ticketId: selectedTicket.id,
       status: nextStatus,
+      notifyActorUserId: user?.id || '',
     });
     setIsUpdatingStatus(false);
 
@@ -981,6 +1162,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     const { error } = await assignPatrolTask({
       taskId: selectedPatrolTask.id,
       assignedTo: selectedPatrolAssigneeId || null,
+      actorUserId: user?.id || null,
     });
     setIsAssigningPatrolTask(false);
 
@@ -1190,6 +1372,120 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     loadPrizeDistributions();
   }, [roleType, user?.id]);
 
+  /**
+   * 会計/物品画面では手動更新に頼らず連絡案件を自動同期する
+   * 案件本体・返信・添付の変更を監視し、一覧と選択中詳細を再取得する
+   */
+  useEffect(() => {
+    if (!isDepartmentRole || !user?.id) {
+      return () => {};
+    }
+
+    /** Realtime購読用クライアント */
+    const supabase = getSupabaseClient();
+    /** 画面単位の購読チャネル */
+    const channel = supabase.channel(`support_desk_${roleType}_${user.id}`);
+
+    /**
+     * 案件一覧を最新化し、選択中案件の維持を試みる
+     * @param {Object} payload - Realtimeイベントペイロード
+     * @returns {void}
+     */
+    const refreshTicketsFromRealtime = (payload) => {
+      /** 変更があった案件ID */
+      const changedTicketId = extractTicketIdFromRealtimePayload(payload);
+      /** 選択維持を優先し、未選択時は変更案件を優先表示する */
+      const preferredTicketId = normalizeText(selectedTicketId) || changedTicketId || null;
+      loadTickets(preferredTicketId);
+    };
+
+    /**
+     * 選択中案件の返信を最新化する
+     * @param {Object} payload - Realtimeイベントペイロード
+     * @returns {void}
+     */
+    const refreshSelectedMessagesFromRealtime = (payload) => {
+      /** 変更があった案件ID */
+      const changedTicketId = extractTicketIdFromRealtimePayload(payload);
+      if (!selectedTicketId || changedTicketId !== selectedTicketId) {
+        return;
+      }
+      loadMessages(selectedTicketId);
+    };
+
+    /**
+     * 選択中案件の添付を最新化する
+     * @param {Object} payload - Realtimeイベントペイロード
+     * @returns {void}
+     */
+    const refreshSelectedAttachmentsFromRealtime = (payload) => {
+      /** 変更があった案件ID */
+      const changedTicketId = extractTicketIdFromRealtimePayload(payload);
+      if (!selectedTicketId || changedTicketId !== selectedTicketId) {
+        return;
+      }
+      loadTicketAttachedFiles(selectedTicketId);
+    };
+
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'support_tickets',
+      },
+      refreshTicketsFromRealtime
+    );
+
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'ticket_messages',
+      },
+      (payload) => {
+        refreshTicketsFromRealtime(payload);
+        refreshSelectedMessagesFromRealtime(payload);
+      }
+    );
+
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'ticket_attachments',
+      },
+      (payload) => {
+        refreshTicketsFromRealtime(payload);
+        refreshSelectedAttachmentsFromRealtime(payload);
+      }
+    );
+
+    channel.subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isDepartmentRole, roleType, selectedTicketId, user?.id]);
+
+  useEffect(() => {
+    if (selectedPrizeOrganization === ALL_PRIZE_ORGANIZATIONS) {
+      return;
+    }
+
+    /** 再取得後も選択中団体が存在するか確認 */
+    const hasSelectedOrganization = prizeOrganizationOptions.some(
+      (option) => option.value === selectedPrizeOrganization
+    );
+
+    if (!hasSelectedOrganization) {
+      setSelectedPrizeOrganization(ALL_PRIZE_ORGANIZATIONS);
+      setPrizeOrganizationSearch('');
+    }
+  }, [prizeOrganizationOptions, selectedPrizeOrganization]);
+
   useEffect(() => {
     if (filteredTickets.length === 0) {
       setSelectedTicketId(null);
@@ -1200,6 +1496,39 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
       setSelectedTicketId(filteredTickets[0].id);
     }
   }, [filteredTickets, selectedTicketId]);
+
+  /**
+   * 景品配布基準の団体候補検索を更新
+   * @param {string} value - 入力値
+   * @returns {void}
+   */
+  const handlePrizeOrganizationSearchChange = (value) => {
+    setPrizeOrganizationSearch(value);
+    setIsPrizeOrganizationDropdownOpen(true);
+  };
+
+  /**
+   * 景品配布基準の団体を選択
+   * @param {string} organizationName - 団体名
+   * @returns {void}
+   */
+  const handlePrizeOrganizationSelect = (organizationName) => {
+    setSelectedPrizeOrganization(organizationName);
+    setPrizeOrganizationSearch('');
+    setPrizeSearch('');
+    setIsPrizeOrganizationDropdownOpen(false);
+  };
+
+  /**
+   * 景品配布基準の団体選択を解除して全件表示へ戻す
+   * @returns {void}
+   */
+  const handlePrizeOrganizationReset = () => {
+    setSelectedPrizeOrganization(ALL_PRIZE_ORGANIZATIONS);
+    setPrizeOrganizationSearch('');
+    setPrizeSearch('');
+    setIsPrizeOrganizationDropdownOpen(false);
+  };
 
   useEffect(() => {
     loadMessages(selectedTicketId);
@@ -1258,6 +1587,18 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <ThemedHeader title={screenName} navigation={navigation} />
       <OfflineBanner />
+      {pushNotice.isVisible ? (
+        <View style={styles.topNoticeContainer}>
+          <WebPushStatusCard
+            theme={theme}
+            title={pushNotice.title}
+            description={pushNotice.description}
+            actionLabel={pushNotice.actionLabel}
+            isLoading={pushNotice.isSyncingPush}
+            onPress={pushNotice.onPress}
+          />
+        </View>
+      ) : null}
 
       {/* HQロール向けタブバー: ScrollView の外側上部に固定 */}
       {isHQRole ? (
@@ -2871,14 +3212,108 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
               </TouchableOpacity>
             </View>
             <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-              企画別の景品配布基準一覧です。団体名・企画名・景品名で検索できます。
+              まず団体を選ぶと、その団体の景品配布基準だけを確認できます。
             </Text>
 
-            {/* 検索バー */}
+            <Text style={[styles.label, { color: theme.text }]}>団体を選択</Text>
+            <TextInput
+              value={prizeOrganizationSearch}
+              onChangeText={handlePrizeOrganizationSearchChange}
+              onFocus={() => setIsPrizeOrganizationDropdownOpen(true)}
+              placeholder="団体名を入力して候補を絞り込み..."
+              placeholderTextColor={theme.textSecondary}
+              style={[
+                styles.compactInput,
+                { borderColor: theme.border, backgroundColor: theme.background, color: theme.text },
+              ]}
+            />
+
+            <View
+              style={[
+                styles.selectedSummaryCard,
+                { borderColor: theme.border, backgroundColor: theme.background },
+              ]}
+            >
+              <View style={styles.selectedSummaryContent}>
+                <Text style={[styles.selectedSummaryLabel, { color: theme.textSecondary }]}>
+                  選択中の団体
+                </Text>
+                <Text style={[styles.selectedSummaryValue, { color: theme.text }]}>
+                  {selectedPrizeOrganizationLabel}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.inlineActionButton, { borderColor: theme.border }]}
+                onPress={handlePrizeOrganizationReset}
+              >
+                <Text style={[styles.inlineActionButtonText, { color: theme.textSecondary }]}>すべて表示</Text>
+              </TouchableOpacity>
+            </View>
+
+            {isPrizeOrganizationDropdownOpen ? (
+              <View
+                style={[
+                  styles.dropdownOptionList,
+                  { borderColor: theme.border, backgroundColor: theme.background },
+                ]}
+              >
+                {filteredPrizeOrganizationOptions.length === 0 ? (
+                  <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+                    該当する団体候補がありません
+                  </Text>
+                ) : (
+                  <>
+                    {visiblePrizeOrganizationOptions.map((option) => {
+                      /** 選択中団体かどうか */
+                      const isSelected = option.value === selectedPrizeOrganization;
+
+                      return (
+                        <Pressable
+                          key={option.value}
+                          onPress={() => handlePrizeOrganizationSelect(option.value)}
+                          style={[
+                            styles.dropdownOptionItem,
+                            {
+                              borderColor: theme.border,
+                              backgroundColor: isSelected ? theme.primary : theme.surface,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.dropdownOptionTitle,
+                              { color: isSelected ? '#FFFFFF' : theme.text },
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.dropdownOptionMeta,
+                              { color: isSelected ? 'rgba(255,255,255,0.86)' : theme.textSecondary },
+                            ]}
+                          >
+                            景品 {option.count} 件
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+
+                    {filteredPrizeOrganizationOptions.length > visiblePrizeOrganizationOptions.length ? (
+                      <Text style={[styles.dropdownOverflowText, { color: theme.textSecondary }]}>
+                        ほか {filteredPrizeOrganizationOptions.length - visiblePrizeOrganizationOptions.length} 件あります。さらに入力すると絞り込めます。
+                      </Text>
+                    ) : null}
+                  </>
+                )}
+              </View>
+            ) : null}
+
+            <Text style={[styles.label, { color: theme.text }]}>選択中団体内を検索</Text>
             <TextInput
               value={prizeSearch}
               onChangeText={setPrizeSearch}
-              placeholder="団体名・企画名・景品名で検索..."
+              placeholder="企画名・景品名・景品番号・配布基準で検索..."
               placeholderTextColor={theme.textSecondary}
               style={[
                 styles.compactInput,
@@ -2897,29 +3332,17 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
               />
             ) : (
               (() => {
-                /** 検索キーワードで絞り込んだ景品一覧 */
-                const keyword = prizeSearch.trim().toLowerCase();
-                const filtered = keyword
-                  ? prizeDistributions.filter((item) => {
-                      /** 団体名・企画名・景品名で部分一致検索 */
-                      const inOrg = (item.organization_name || '').toLowerCase().includes(keyword);
-                      const inEvent = (item.event_name || '').toLowerCase().includes(keyword);
-                      const inPrize = (item.prize_name || '').toLowerCase().includes(keyword);
-                      return inOrg || inEvent || inPrize;
-                    })
-                  : prizeDistributions;
-
-                if (filtered.length === 0) {
+                if (filteredPrizeDistributions.length === 0) {
                   return (
                     <Text style={[styles.helpText, { color: theme.textSecondary, textAlign: 'center', paddingVertical: 16 }]}>
-                      該当する景品がありません
+                      該当する景品配布基準がありません
                     </Text>
                   );
                 }
 
                 return (
                   <View style={styles.messageList}>
-                    {filtered.map((item) => (
+                    {filteredPrizeDistributions.map((item) => (
                       <View
                         key={item.id}
                         style={[styles.messageItem, { borderColor: theme.border, backgroundColor: theme.background }]}
@@ -2957,6 +3380,10 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  topNoticeContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
   },
   /** HQロール向けタブバー: ThemedHeader 直下に固定 */
   iosTabBar: {
@@ -3060,6 +3487,66 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 13,
+  },
+  selectedSummaryCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginTop: 8,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  selectedSummaryContent: {
+    flex: 1,
+  },
+  selectedSummaryLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  selectedSummaryValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  inlineActionButton: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  inlineActionButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  dropdownOptionList: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 8,
+    gap: 8,
+    marginBottom: 10,
+  },
+  dropdownOptionItem: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  dropdownOptionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  dropdownOptionMeta: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  dropdownOverflowText: {
+    fontSize: 12,
+    lineHeight: 18,
+    paddingHorizontal: 4,
   },
   filterChip: {
     borderWidth: 1,

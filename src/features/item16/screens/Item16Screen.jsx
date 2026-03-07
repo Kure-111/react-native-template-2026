@@ -52,6 +52,8 @@ import KeyPreApplyForm from '../components/KeyPreApplyForm';
 import EventStatusForm from '../components/EventStatusForm';
 import ContactHistory from '../components/ContactHistory';
 import OfflineBanner from '../../../shared/components/OfflineBanner';
+import { useManagedPushSubscription } from '../../notifications/hooks/useManagedPushSubscription';
+import WebPushStatusCard from '../../notifications/components/WebPushStatusCard';
 
 /** 全棟選択値 */
 const ALL_BUILDINGS_VALUE = 'all';
@@ -64,6 +66,15 @@ const REQUESTED_AT_TIME_PATTERN = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
 /** 希望時刻パターン（YYYY-MM-DD HH:mm） */
 const REQUESTED_AT_DATE_TIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})\s+([01]\d|2[0-3]):([0-5]\d)$/;
+
+/**
+ * 企画者サポートのタブキーが有効か判定
+ * @param {string|null|undefined} value - 判定対象タブキー
+ * @returns {boolean} 有効な場合はtrue
+ */
+const isValidSupportTab = (value) => {
+  return SUPPORT_TABS.some((tab) => tab.key === value);
+};
 
 /**
  * テキストを正規化（トリム）
@@ -191,14 +202,25 @@ const buildUserScopedStorageKey = (baseKey, userId) => {
  * 項目16画面コンポーネント
  * @param {Object} props - コンポーネントプロパティ
  * @param {Object} props.navigation - React Navigationのnavigationオブジェクト
+ * @param {Object} props.route - React Navigationのrouteオブジェクト
  * @returns {JSX.Element} 項目16画面
  */
-const Item16Screen = ({ navigation }) => {
+const Item16Screen = ({ navigation, route }) => {
   const { theme } = useTheme();
   const { user, userInfo } = useAuth();
+  /** 通知タップなどで指定された初期タブ */
+  const initialTab = route?.params?.initialTab || null;
+  /** 画面単位のPush購読状態 */
+  const pushNotice = useManagedPushSubscription({
+    navigation,
+    userId: user?.id,
+    enabled: Boolean(user?.id),
+  });
 
   // 画面切替
-  const [activeTab, setActiveTab] = useState(SUPPORT_TAB_TYPES.QUESTION);
+  const [activeTab, setActiveTab] = useState(
+    isValidSupportTab(initialTab) ? initialTab : SUPPORT_TAB_TYPES.QUESTION
+  );
 
   // 共通入力（ローカル保存対象）
   const [eventName, setEventName] = useState('');
@@ -1113,6 +1135,12 @@ const Item16Screen = ({ navigation }) => {
     );
   };
 
+  useEffect(() => {
+    if (isValidSupportTab(initialTab)) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
   /**
    * 現在タブのフォームを描画
    * @returns {JSX.Element} フォーム
@@ -1182,6 +1210,16 @@ const Item16Screen = ({ navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+          {pushNotice.isVisible ? (
+            <WebPushStatusCard
+              theme={theme}
+              title={pushNotice.title}
+              description={pushNotice.description}
+              actionLabel={pushNotice.actionLabel}
+              isLoading={pushNotice.isSyncingPush}
+              onPress={pushNotice.onPress}
+            />
+          ) : null}
           {/* よくある質問セクション（常時表示） */}
           <View style={[styles.card, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}>
             <Text style={[styles.sectionTitle, { color: '#0369A1' }]}>

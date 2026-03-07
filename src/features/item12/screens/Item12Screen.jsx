@@ -50,6 +50,8 @@ import PatrolEvaluationForm from '../components/PatrolEvaluationForm';
 import PatrolRankingCard from '../components/PatrolRankingCard';
 import ToastMessage from '../../../shared/components/ToastMessage';
 import OfflineBanner from '../../../shared/components/OfflineBanner';
+import { useManagedPushSubscription } from '../../notifications/hooks/useManagedPushSubscription';
+import WebPushStatusCard from '../../notifications/components/WebPushStatusCard';
 
 /** 種別ごとの完了結果候補 */
 const RESULT_OPTIONS_BY_TASK_TYPE = {
@@ -111,6 +113,15 @@ const TASK_TYPE_LABELS = {
 const DEFAULT_UNVISITED_ALERT_MINUTES = 90;
 
 /**
+ * 巡回サポートのタブキーが有効か判定
+ * @param {string|null|undefined} value - 判定対象タブキー
+ * @returns {boolean} 有効な場合はtrue
+ */
+const isValidPatrolTab = (value) => {
+  return PATROL_TABS.some((tab) => tab.key === value);
+};
+
+/**
  * タスク種別に応じた結果候補を取得
  * @param {string} taskType - タスク種別
  * @returns {Array} 結果候補配列
@@ -132,15 +143,26 @@ const getGoMessageByTaskType = (taskType) => {
  * 項目12画面コンポーネント
  * @param {Object} props - コンポーネントプロパティ
  * @param {Object} props.navigation - React Navigationのnavigationオブジェクト
+ * @param {Object} props.route - React Navigationのrouteオブジェクト
  * @returns {JSX.Element} 項目12画面
  */
-const Item12Screen = ({ navigation }) => {
+const Item12Screen = ({ navigation, route }) => {
   const { theme } = useTheme();
   const { user } = useAuth();
+  /** 通知タップなどで指定された初期タブ */
+  const initialTab = route?.params?.initialTab || null;
+  /** 画面単位のPush購読状態 */
+  const pushNotice = useManagedPushSubscription({
+    navigation,
+    userId: user?.id,
+    enabled: Boolean(user?.id),
+  });
 
   /* ---- タブ切替 ---- */
   /** 現在表示中のタブ（デフォルト: タスク一覧） */
-  const [activeTab, setActiveTab] = useState(PATROL_TAB_TYPES.TASKS);
+  const [activeTab, setActiveTab] = useState(
+    isValidPatrolTab(initialTab) ? initialTab : PATROL_TAB_TYPES.TASKS
+  );
 
   /* ---- タスク一覧関連 ---- */
   const [tasks, setTasks] = useState([]);
@@ -822,6 +844,12 @@ const Item12Screen = ({ navigation }) => {
     }
   }, [resultOptions, resultCode]);
 
+  useEffect(() => {
+    if (isValidPatrolTab(initialTab)) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <ThemedHeader title={SCREEN_NAME} navigation={navigation} />
@@ -833,6 +861,16 @@ const Item12Screen = ({ navigation }) => {
       >
         {/* ── タブコンテンツ ── */}
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+          {pushNotice.isVisible ? (
+            <WebPushStatusCard
+              theme={theme}
+              title={pushNotice.title}
+              description={pushNotice.description}
+              actionLabel={pushNotice.actionLabel}
+              isLoading={pushNotice.isSyncingPush}
+              onPress={pushNotice.onPress}
+            />
+          ) : null}
 
           {/* タスクタブ */}
           {activeTab === PATROL_TAB_TYPES.TASKS && (
