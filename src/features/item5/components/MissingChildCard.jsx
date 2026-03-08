@@ -59,10 +59,34 @@ const MissingChildCard = ({ child, showReporterName = false, showActionButton = 
   /** 移動不可の案件かどうか */
   const isUrgent = child.shelter_tent === UNABLE_TO_MOVE;
 
+  /**
+   * 移動不可カードは背景が常に淡いピンク（URGENCY_CARD_BACKGROUND_COLOR）なので
+   * テーマに関係なく暗色で固定し、ダークモードでも読みやすくする
+   */
+  /** 通常テキスト色（移動不可時は固定暗色） */
+  const textColor = isUrgent ? '#212121' : theme.text;
+  /** サブテキスト色（移動不可時は固定暗色） */
+  const subTextColor = isUrgent ? '#555555' : theme.textSecondary;
+
   /** カードのスタイル（移動不可の場合は赤系で強調） */
   const cardStyle = isUrgent
     ? [styles.card, styles.urgentCard]
     : [styles.card, { backgroundColor: theme.surface, borderColor: theme.border }];
+
+  /**
+   * 登録者の表示ラベルを生成する
+   * ロールが存在する場合は「(ロール1,ロール2)氏名」形式、存在しない場合は「氏名」
+   * @returns {string} 表示用ラベル
+   */
+  const getReporterLabel = () => {
+    if (!child.reporter) return '';
+    /** ロール名の配列 */
+    const roles = child.reporter.roles ?? [];
+    if (roles.length === 0) {
+      return child.reporter.name;
+    }
+    return `(${roles.join(',')})${child.reporter.name}`;
+  };
 
   return (
     <View style={cardStyle}>
@@ -71,9 +95,9 @@ const MissingChildCard = ({ child, showReporterName = false, showActionButton = 
         <View style={styles.nameContainer}>
           {/* 名前は管理ロールが登録するため showReporterName のタブでのみ表示 */}
           {showReporterName && child.name && (
-            <Text style={[styles.name, { color: theme.text }]}>{child.name}</Text>
+            <Text style={[styles.name, { color: textColor }]}>{child.name}</Text>
           )}
-          <Text style={[styles.ageGender, { color: theme.textSecondary }]}>
+          <Text style={[styles.ageGender, { color: subTextColor }]}>
             {child.age} / {GENDER_LABELS[child.gender] || child.gender}
           </Text>
         </View>
@@ -85,19 +109,19 @@ const MissingChildCard = ({ child, showReporterName = false, showActionButton = 
 
       {/* 特徴 */}
       <View style={styles.infoRow}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>特徴:</Text>
-        <Text style={[styles.value, { color: theme.text }]}>{child.characteristics}</Text>
+        <Text style={[styles.label, { color: subTextColor }]}>特徴:</Text>
+        <Text style={[styles.value, { color: textColor }]}>{child.characteristics}</Text>
       </View>
 
       {/* 発見場所 */}
       <View style={styles.infoRow}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>発見場所:</Text>
-        <Text style={[styles.value, { color: theme.text }]}>{child.discovery_location}</Text>
+        <Text style={[styles.label, { color: subTextColor }]}>発見場所:</Text>
+        <Text style={[styles.value, { color: textColor }]}>{child.discovery_location}</Text>
       </View>
 
       {/* 保護テント */}
       <View style={styles.infoRow}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>保護テント:</Text>
+        <Text style={[styles.label, { color: subTextColor }]}>保護テント:</Text>
         <Text style={[styles.value, { color: isUrgent ? URGENCY_CARD_BORDER_COLOR : theme.text }]}>
           {SHELTER_TENT_LABELS[child.shelter_tent] || child.shelter_tent}
         </Text>
@@ -113,23 +137,23 @@ const MissingChildCard = ({ child, showReporterName = false, showActionButton = 
 
       {/* 発見時刻 */}
       <View style={styles.infoRow}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>発見時刻:</Text>
-        <Text style={[styles.value, { color: theme.text }]}>{formatDateTime(child.discovered_at)}</Text>
+        <Text style={[styles.label, { color: subTextColor }]}>発見時刻:</Text>
+        <Text style={[styles.value, { color: textColor }]}>{formatDateTime(child.discovered_at)}</Text>
       </View>
 
-      {/* 登録者名（管理タブ用） */}
+      {/* 登録者名（管理タブ用）: (ロール)氏名 形式 */}
       {showReporterName && child.reporter && (
         <View style={styles.infoRow}>
-          <Text style={[styles.label, { color: theme.textSecondary }]}>登録者:</Text>
-          <Text style={[styles.value, { color: theme.text }]}>{child.reporter.name}</Text>
+          <Text style={[styles.label, { color: subTextColor }]}>登録者:</Text>
+          <Text style={[styles.value, { color: textColor }]}>{getReporterLabel()}</Text>
         </View>
       )}
 
       {/* 管理ロールコメント */}
       {child.admin_comment && (
         <View style={[styles.commentBox, { backgroundColor: theme.background, borderColor: theme.border }]}>
-          <Text style={[styles.commentLabel, { color: theme.textSecondary }]}>コメント:</Text>
-          <Text style={[styles.commentText, { color: theme.text }]}>{child.admin_comment}</Text>
+          <Text style={[styles.commentLabel, { color: subTextColor }]}>コメント:</Text>
+          <Text style={[styles.commentText, { color: textColor }]}>{child.admin_comment}</Text>
         </View>
       )}
 
