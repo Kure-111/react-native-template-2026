@@ -103,8 +103,8 @@ const Item5Screen = ({ navigation }) => {
    * タブ切り替え時にデータを取得する
    */
   useEffect(() => {
-    if (activeTab === TAB_HISTORY && userInfo?.id) {
-      fetchMyChildren(userInfo.id);
+    if (activeTab === TAB_HISTORY && userInfo?.user_id) {
+      fetchMyChildren(userInfo.user_id);
     } else if (activeTab === TAB_MANAGE && isAdmin) {
       fetchAllChildren(statusFilter);
       fetchStatusCounts();
@@ -135,17 +135,17 @@ const Item5Screen = ({ navigation }) => {
    * 確認モーダルで「申請する」を押した時のハンドラ
    */
   const handleConfirm = useCallback(async () => {
-    if (!pendingChildData || !userInfo?.id) return;
+    if (!pendingChildData || !userInfo?.user_id) return;
 
     setIsSubmitting(true);
 
-    /** 登録データに登録者IDを追加 */
+    /** 登録データに登録者IDを追加（auth.uid() と一致する user_id を使用） */
     const dataWithUser = {
       ...pendingChildData,
-      reported_by: userInfo.id,
+      reported_by: userInfo.user_id,
     };
 
-    const { success, notificationError } = await registerChild(dataWithUser, userInfo.id);
+    const { success, notificationError } = await registerChild(dataWithUser, userInfo.user_id);
 
     setIsSubmitting(false);
     setIsConfirmModalVisible(false);
