@@ -157,6 +157,74 @@ const withApplicantCounts = async (recruits) => {
 };
 
 /**
+ * 募集配列に作成者の所属組織（head_organization）を付与する。
+ *
+ * @param {Array<Record<string, any>> | null | undefined} recruits
+ * @returns {Promise<{ data: Array<Record<string, any>> | null, error: any }>}
+ */
+const withCreatorOrganizations = async (recruits) => {
+  const list = recruits || [];
+  if (list.length === 0) {
+    return { data: [], error: null };
+  }
+
+  const headUserIds = [...new Set(list.map((item) => item?.head_user_id).filter(Boolean))];
+  if (headUserIds.length === 0) {
+    return {
+      data: list.map((recruit) => ({
+        ...recruit,
+        head_organization: null,
+      })),
+      error: null,
+    };
+  }
+
+  const { data: profiles, error } = await supabase
+    .from('user_profiles')
+    .select('user_id, organization')
+    .in('user_id', headUserIds);
+
+  if (error) {
+    // 組織名取得が失敗しても募集一覧本体は表示する。
+    return {
+      data: list.map((recruit) => ({
+        ...recruit,
+        head_organization: null,
+      })),
+      error: null,
+    };
+  }
+
+  const organizationByUserId = (profiles || []).reduce((acc, row) => {
+    if (!row?.user_id) return acc;
+    acc[row.user_id] = row.organization || null;
+    return acc;
+  }, {});
+
+  return {
+    data: list.map((recruit) => ({
+      ...recruit,
+      head_organization: organizationByUserId[recruit.head_user_id] || null,
+    })),
+    error: null,
+  };
+};
+
+/**
+ * 募集配列へ応募人数と作成者組織情報を付与する。
+ *
+ * @param {Array<Record<string, any>> | null | undefined} recruits
+ * @returns {Promise<{ data: Array<Record<string, any>> | null, error: any }>}
+ */
+const enrichRecruits = async (recruits) => {
+  const { data: withCounts, error: countError } = await withApplicantCounts(recruits || []);
+  if (countError) {
+    return { data: null, error: countError };
+  }
+  return withCreatorOrganizations(withCounts || []);
+};
+
+/**
  * 対象募集の応募件数を取得する。
  *
  * @param {string} recruitId
@@ -393,7 +461,7 @@ export const fetchRecruits = async ({ includeClosed = false, includeAutoFullClos
         if (!isMissingCloseReasonColumnError(autoClosedError)) {
           return { data: null, error: autoClosedError };
         }
-        return withApplicantCounts(openRows || []);
+        return enrichRecruits(openRows || []);
       }
 
       const merged = [...(openRows || []), ...(autoClosedRows || [])].sort((a, b) => {
@@ -401,7 +469,7 @@ export const fetchRecruits = async ({ includeClosed = false, includeAutoFullClos
         const bt = new Date(b.updated_at || 0).getTime();
         return bt - at;
       });
-      return withApplicantCounts(merged);
+      return enrichRecruits(merged);
     }
 
     query = query.eq('status', RINJI_STATUS.OPEN);
@@ -412,7 +480,7 @@ export const fetchRecruits = async ({ includeClosed = false, includeAutoFullClos
   if (error) {
     return { data, error };
   }
-  return withApplicantCounts(data || []);
+  return enrichRecruits(data || []);
 };
 
 /**
@@ -690,12 +758,12 @@ export const fetchAppliedRecruits = async (applicantUserId) => {
   if (error) {
     return { data: null, error };
   }
-  const { data: recruitsWithCounts, error: countError } = await withApplicantCounts(recruits || []);
-  if (countError) {
-    return { data: null, error: countError };
+  const { data: enrichedRecruits, error: enrichError } = await enrichRecruits(recruits || []);
+  if (enrichError) {
+    return { data: null, error: enrichError };
   }
 
-  const sorted = (recruitsWithCounts || []).sort((a, b) => {
+  const sorted = (enrichedRecruits || []).sort((a, b) => {
     const ai = orderByAppliedAt.get(a.id) ?? Number.MAX_SAFE_INTEGER;
     const bi = orderByAppliedAt.get(b.id) ?? Number.MAX_SAFE_INTEGER;
     return ai - bi;

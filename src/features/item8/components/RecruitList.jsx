@@ -265,6 +265,20 @@ const RecruitCard = ({
             <Text style={[styles.lateJoinBadgeText, { color: theme.success }]}>途中参加可</Text>
           </View>
         ) : null}
+        {recruit.head_organization ? (
+          <View
+            style={[
+              styles.organizationBadge,
+              {
+                backgroundColor: '#FFFFFF',
+                borderColor: withAlpha(theme.text, '33'),
+                borderRadius: theme.borderRadius,
+              },
+            ]}
+          >
+            <Text style={[styles.organizationBadgeText, { color: '#1F2937' }]}>{recruit.head_organization}</Text>
+          </View>
+        ) : null}
         {text.lateJoin === LATE_JOIN_DENY ? (
           <View
             style={[
@@ -544,6 +558,15 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   autoDateBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  organizationBadge: {
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  organizationBadgeText: {
     fontSize: 12,
     fontWeight: '700',
   },
