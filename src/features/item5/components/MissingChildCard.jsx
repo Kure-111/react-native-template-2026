@@ -66,10 +66,13 @@ const MissingChildCard = ({ child, showReporterName = false, showActionButton = 
 
   return (
     <View style={cardStyle}>
-      {/* ヘッダー行: 名前 + バッジ */}
+      {/* ヘッダー行: 名前（管理タブのみ）+ 年齢・性別 + バッジ */}
       <View style={styles.headerRow}>
         <View style={styles.nameContainer}>
-          <Text style={[styles.name, { color: theme.text }]}>{child.name}</Text>
+          {/* 名前は管理ロールが登録するため showReporterName のタブでのみ表示 */}
+          {showReporterName && child.name && (
+            <Text style={[styles.name, { color: theme.text }]}>{child.name}</Text>
+          )}
           <Text style={[styles.ageGender, { color: theme.textSecondary }]}>
             {child.age} / {GENDER_LABELS[child.gender] || child.gender}
           </Text>

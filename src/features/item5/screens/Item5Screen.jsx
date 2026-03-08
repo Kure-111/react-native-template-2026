@@ -184,11 +184,12 @@ const Item5Screen = ({ navigation }) => {
    * @param {string|null} comment - コメント
    * @param {string|null} shelterTent - 保護テント
    * @param {string|null} pickupLocation - 迎え場所
+   * @param {string|null} name - 迷子の名前
    */
-  const handleStatusUpdate = useCallback(async (id, status, comment, shelterTent, pickupLocation) => {
+  const handleStatusUpdate = useCallback(async (id, status, comment, shelterTent, pickupLocation, name) => {
     setIsSubmitting(true);
 
-    const success = await updateStatus(id, status, comment, shelterTent, pickupLocation);
+    const success = await updateStatus(id, status, comment, shelterTent, pickupLocation, name);
 
     setIsSubmitting(false);
     setIsStatusModalVisible(false);
@@ -304,6 +305,16 @@ const Item5Screen = ({ navigation }) => {
       {STATUS_FILTER_OPTIONS.map((option) => {
         /** 選択中かどうか */
         const isActive = statusFilter === option.value;
+        /** バッジを表示するステータス（未対応・対応中・保留中） */
+        const BADGE_STATUSES = [
+          MISSING_CHILD_STATUS.PENDING,
+          MISSING_CHILD_STATUS.IN_PROGRESS,
+          MISSING_CHILD_STATUS.ON_HOLD,
+        ];
+        /** このフィルタに対応するバッジ件数（0件の場合は非表示） */
+        const badgeCount = option.value && BADGE_STATUSES.includes(option.value)
+          ? (statusCounts[option.value] || 0)
+          : 0;
         return (
           <TouchableOpacity
             key={option.label}
@@ -322,6 +333,12 @@ const Item5Screen = ({ navigation }) => {
             ]}>
               {option.label}
             </Text>
+            {/* 件数バッジ（未対応・対応中・保留中のみ、0件は非表示） */}
+            {badgeCount > 0 && (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>{badgeCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         );
       })}
@@ -513,10 +530,29 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   /** フィルタテキスト */
   filterText: {
     fontSize: 12,
+  },
+  /** フィルタバッジ（件数表示の赤丸） */
+  filterBadge: {
+    backgroundColor: '#F44336',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  /** フィルタバッジのテキスト */
+  filterBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   /** 成功メッセージバー */
   successBar: {

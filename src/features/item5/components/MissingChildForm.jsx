@@ -1,6 +1,7 @@
 /**
  * 迷子登録フォームコンポーネント
  * 迷子発見時の新規登録フォーム
+ * 名前は管理ロール（実長・渉外部）が対応・編集モーダルから登録する
  * 保護テントで「移動不可」を選択すると迎え場所入力が表示される
  */
 
@@ -61,8 +62,6 @@ const OptionSelector = ({ options, selectedValue, onSelect, theme }) => (
 const MissingChildForm = ({ onSubmit }) => {
   const { theme } = useTheme();
 
-  /** 名前 */
-  const [name, setName] = useState('');
   /** 年齢 */
   const [age, setAge] = useState('');
   /** 性別 */
@@ -119,10 +118,6 @@ const MissingChildForm = ({ onSubmit }) => {
    * @returns {boolean} バリデーション成功かどうか
    */
   const validate = () => {
-    if (!name.trim()) {
-      setValidationError('名前を入力してください。');
-      return false;
-    }
     if (!age.trim()) {
       setValidationError('年齢を入力してください。');
       return false;
@@ -158,9 +153,8 @@ const MissingChildForm = ({ onSubmit }) => {
   const handleSubmit = () => {
     if (!validate()) return;
 
-    /** 確認モーダルに渡す迷子情報 */
+    /** 確認モーダルに渡す迷子情報（名前は管理ロールが後から登録するため含めない） */
     const childData = {
-      name: name.trim(),
       age: age.trim(),
       gender,
       characteristics: characteristics.trim(),
@@ -173,41 +167,12 @@ const MissingChildForm = ({ onSubmit }) => {
     onSubmit(childData);
   };
 
-  /**
-   * フォームをリセットする（外部から呼べるようにするため、onSubmit成功後に呼ぶ）
-   */
-  const resetForm = () => {
-    setName('');
-    setAge('');
-    setGender('');
-    setCharacteristics('');
-    setDiscoveryLocation('');
-    setShelterTent('');
-    setPickupLocation('');
-    setValidationError('');
-  };
-
-  /* resetFormをonSubmitのコールバックで使えるように、propsのonSubmitに渡す */
-  /* 実際のリセットはItem5Screen側で制御する */
-
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
     >
-      {/* 名前 */}
-      <View style={styles.fieldContainer}>
-        <Text style={[styles.fieldLabel, { color: theme.text }]}>名前 <Text style={styles.required}>*</Text></Text>
-        <TextInput
-          style={[styles.textInput, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]}
-          value={name}
-          onChangeText={setName}
-          placeholder="迷子の名前"
-          placeholderTextColor={theme.textSecondary}
-        />
-      </View>
-
       {/* 年齢 */}
       <View style={styles.fieldContainer}>
         <Text style={[styles.fieldLabel, { color: theme.text }]}>年齢 <Text style={styles.required}>*</Text></Text>

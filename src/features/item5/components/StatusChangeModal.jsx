@@ -1,6 +1,6 @@
 /**
  * ステータス変更モーダルコンポーネント
- * 管理ロールが迷子情報のステータス変更・コメント記入・保護場所編集を行うモーダル
+ * 管理ロールが迷子情報のステータス変更・コメント記入・保護場所編集・名前登録を行うモーダル
  * 移動不可案件の場合は保護テントと迎え場所の編集フィールドも表示する
  */
 
@@ -16,6 +16,7 @@ import {
   SHELTER_TENT_LABELS,
   UNABLE_TO_MOVE,
   URGENCY_CARD_BORDER_COLOR,
+  GENDER_LABELS,
 } from '../constants';
 
 /**
@@ -23,7 +24,7 @@ import {
  * @param {Object} props - コンポーネントプロパティ
  * @param {boolean} props.isVisible - モーダル表示状態
  * @param {Object|null} props.child - 対象の迷子情報
- * @param {Function} props.onSubmit - 更新確定時のコールバック(id, status, comment, shelterTent, pickupLocation)
+ * @param {Function} props.onSubmit - 更新確定時のコールバック(id, status, comment, shelterTent, pickupLocation, name)
  * @param {Function} props.onClose - モーダルを閉じる時のコールバック
  * @param {boolean} [props.isSubmitting] - 送信中かどうか
  * @returns {JSX.Element|null} ステータス変更モーダル
@@ -39,6 +40,8 @@ const StatusChangeModal = ({ isVisible, child, onSubmit, onClose, isSubmitting =
   const [shelterTent, setShelterTent] = useState('');
   /** 迎え場所（移動不可案件の編集用） */
   const [pickupLocation, setPickupLocation] = useState('');
+  /** 迷子の名前（管理ロールが登録） */
+  const [name, setName] = useState('');
   /** バリデーションエラー */
   const [validationError, setValidationError] = useState('');
 
@@ -49,6 +52,7 @@ const StatusChangeModal = ({ isVisible, child, onSubmit, onClose, isSubmitting =
       setComment(child.admin_comment || '');
       setShelterTent(child.shelter_tent);
       setPickupLocation(child.pickup_location || '');
+      setName(child.name || '');
       setValidationError('');
     }
   }, [child, isVisible]);
@@ -60,6 +64,21 @@ const StatusChangeModal = ({ isVisible, child, onSubmit, onClose, isSubmitting =
 
   /** 現在の選択が移動不可かどうか */
   const isCurrentlyUrgent = shelterTent === UNABLE_TO_MOVE;
+
+  /**
+   * 登録者の表示文字列を生成する（(ロール1,ロール2)氏名 形式）
+   * @returns {string} 登録者表示文字列
+   */
+  const getReporterLabel = () => {
+    if (!child.reporter) return '不明';
+    /** ロール名をカンマ区切りで結合 */
+    const roleStr = child.reporter.roles?.length > 0
+      ? `(${child.reporter.roles.join(',')})`
+      : '';
+    /** 氏名 */
+    const nameStr = child.reporter.name ?? '不明';
+    return roleStr ? `${roleStr}${nameStr}` : nameStr;
+  };
 
   /**
    * 保護テント変更時のハンドラ
@@ -88,6 +107,8 @@ const StatusChangeModal = ({ isVisible, child, onSubmit, onClose, isSubmitting =
     const hasShelterChange = shelterTent !== child.shelter_tent;
     /** 迎え場所の変更有無 */
     const hasPickupChange = pickupLocation !== (child.pickup_location || '');
+    /** 名前の変更有無 */
+    const hasNameChange = name !== (child.name || '');
 
     onSubmit(
       child.id,
@@ -95,6 +116,7 @@ const StatusChangeModal = ({ isVisible, child, onSubmit, onClose, isSubmitting =
       comment.trim() || null,
       (hasShelterChange || hasPickupChange) ? shelterTent : null,
       (hasShelterChange || hasPickupChange) ? (isCurrentlyUrgent ? pickupLocation.trim() : null) : null,
+      hasNameChange ? name : null,
     );
   };
 
@@ -113,14 +135,36 @@ const StatusChangeModal = ({ isVisible, child, onSubmit, onClose, isSubmitting =
 
             {/* 迷子情報サマリ */}
             <View style={[styles.summaryBox, { backgroundColor: theme.background, borderColor: theme.border }]}>
-              <Text style={[styles.summaryName, { color: theme.text }]}>{child.name}</Text>
+              {/* 名前（登録済みの場合のみ表示） */}
+              {child.name && (
+                <Text style={[styles.summaryName, { color: theme.text }]}>{child.name}</Text>
+              )}
               <Text style={[styles.summaryDetail, { color: theme.textSecondary }]}>
-                {child.age} / {child.characteristics}
+                {child.age} / {GENDER_LABELS[child.gender] || child.gender} / {child.characteristics}
               </Text>
               <Text style={[styles.summaryDetail, { color: theme.textSecondary }]}>
                 発見場所: {child.discovery_location}
               </Text>
+              <Text style={[styles.summaryDetail, { color: theme.textSecondary }]}>
+                保護テント: {SHELTER_TENT_LABELS[child.shelter_tent] || child.shelter_tent}
+              </Text>
+              {/* 登録者（(ロール)氏名 形式） */}
+              {child.reporter && (
+                <Text style={[styles.summaryDetail, { color: theme.textSecondary }]}>
+                  登録者: {getReporterLabel()}
+                </Text>
+              )}
             </View>
+
+            {/* 名前登録（管理ロールが入力） */}
+            <Text style={[styles.sectionLabel, { color: theme.text }]}>名前（任意）</Text>
+            <TextInput
+              style={[styles.nameInput, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]}
+              value={name}
+              onChangeText={setName}
+              placeholder="迷子の名前（判明次第入力）"
+              placeholderTextColor={theme.textSecondary}
+            />
 
             {/* ステータス選択 */}
             <Text style={[styles.sectionLabel, { color: theme.text }]}>ステータス</Text>
@@ -264,6 +308,7 @@ const styles = StyleSheet.create({
   summaryName: { fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
   summaryDetail: { fontSize: 13, marginBottom: 2 },
   sectionLabel: { fontSize: 14, fontWeight: '600', marginBottom: 8 },
+  nameInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 20 },
   statusContainer: { flexDirection: 'row', gap: 8, marginBottom: 20, flexWrap: 'wrap' },
   statusButton: { borderWidth: 2, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 10 },
   statusButtonText: { fontSize: 14, fontWeight: '500' },

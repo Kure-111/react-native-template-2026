@@ -105,27 +105,47 @@ export const selectAllMissingChildren = async (statusFilter = null) => {
     /** 登録者 UUID の重複排除リスト */
     const reporterIds = [...new Set(childrenData.map((c) => c.reported_by))];
 
-    /** 登録者プロフィールを user_profiles から取得 */
-    const { data: profiles, error: profilesError } = await getSupabaseClient()
-      .from('user_profiles')
-      .select('user_id, name')
-      .in('user_id', reporterIds);
+    /** 登録者プロフィールとロール情報を並行取得 */
+    const [profilesResult, userRolesResult] = await Promise.all([
+      getSupabaseClient()
+        .from('user_profiles')
+        .select('user_id, name')
+        .in('user_id', reporterIds),
+      getSupabaseClient()
+        .from('user_roles')
+        .select('user_id, roles(name)')
+        .in('user_id', reporterIds),
+    ]);
 
-    if (profilesError) {
+    if (profilesResult.error) {
       /* プロフィール取得失敗時は reporter なしで返す（致命的エラーにしない） */
       return { data: childrenData, error: null };
     }
 
     /** user_id をキーにした名前マップ */
-    const profileMap = (profiles ?? []).reduce((acc, profile) => {
+    const profileMap = (profilesResult.data ?? []).reduce((acc, profile) => {
       acc[profile.user_id] = profile.name;
       return acc;
     }, {});
 
-    /** 迷子情報に reporter オブジェクトをマージして返す */
+    /** user_id をキーにしたロール名リストマップ（RLS OFFのため取得失敗しても続行） */
+    const roleMap = (userRolesResult.data ?? []).reduce((acc, ur) => {
+      const roleName = ur.roles?.name;
+      if (!roleName) return acc;
+      if (!acc[ur.user_id]) {
+        acc[ur.user_id] = [];
+      }
+      acc[ur.user_id].push(roleName);
+      return acc;
+    }, {});
+
+    /** 迷子情報に reporter オブジェクト（名前・ロール）をマージして返す */
     const merged = childrenData.map((child) => ({
       ...child,
-      reporter: { name: profileMap[child.reported_by] ?? null },
+      reporter: {
+        name: profileMap[child.reported_by] ?? null,
+        roles: roleMap[child.reported_by] ?? [],
+      },
     }));
 
     return { data: merged, error: null };
@@ -135,15 +155,16 @@ export const selectAllMissingChildren = async (statusFilter = null) => {
 };
 
 /**
- * 迷子情報のステータス・コメント・保護場所を更新する（管理ロール用）
+ * 迷子情報のステータス・コメント・保護場所・名前を更新する（管理ロール用）
  * @param {string} id - 迷子情報ID
  * @param {string} status - 新しいステータス（変更なしの場合は現在値を渡す）
  * @param {string|null} adminComment - コメント（任意）
- * @param {string|null} shelterTent - 保護テント（移動不可案件で変更する場合のみ）
- * @param {string|null} pickupLocation - 迎え場所（移動不可案件で変更する場合のみ）
+ * @param {string|null} shelterTent - 保護テント（変更する場合のみ）
+ * @param {string|null} pickupLocation - 迎え場所（変更する場合のみ）
+ * @param {string|null} name - 迷子の名前（管理ロールが登録する）
  * @returns {Promise<{data: Object|null, error: Error|null}>} 更新結果
  */
-export const updateMissingChildStatus = async (id, status, adminComment = null, shelterTent = null, pickupLocation = null) => {
+export const updateMissingChildStatus = async (id, status, adminComment = null, shelterTent = null, pickupLocation = null, name = null) => {
   try {
     /** 更新対象のフィールド */
     const updates = {
@@ -151,6 +172,11 @@ export const updateMissingChildStatus = async (id, status, adminComment = null, 
       admin_comment: adminComment,
       updated_at: new Date().toISOString(),
     };
+
+    /* 名前の変更がある場合のみフィールドを追加 */
+    if (name !== null) {
+      updates.name = name.trim() || null;
+    }
 
     /* 保護テントの変更がある場合のみフィールドを追加 */
     if (shelterTent !== null) {

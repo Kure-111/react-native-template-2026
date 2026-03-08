@@ -165,19 +165,20 @@ export const useMissingChildren = () => {
   }, []);
 
   /**
-   * 迷子情報のステータス・コメント・保護場所を更新する（管理ロール用）
+   * 迷子情報のステータス・コメント・保護場所・名前を更新する（管理ロール用）
    * @param {string} id - 迷子情報ID
    * @param {string} status - 新しいステータス
    * @param {string|null} adminComment - コメント
    * @param {string|null} shelterTent - 保護テント（変更する場合のみ）
    * @param {string|null} pickupLocation - 迎え場所（変更する場合のみ）
+   * @param {string|null} name - 迷子の名前（管理ロールが登録する場合のみ）
    * @returns {Promise<boolean>} 更新成功したかどうか
    */
-  const updateStatus = useCallback(async (id, status, adminComment = null, shelterTent = null, pickupLocation = null) => {
+  const updateStatus = useCallback(async (id, status, adminComment = null, shelterTent = null, pickupLocation = null, name = null) => {
     setIsLoading(true);
     setErrorMessage(null);
 
-    const { error } = await updateMissingChildStatus(id, status, adminComment, shelterTent, pickupLocation);
+    const { error } = await updateMissingChildStatus(id, status, adminComment, shelterTent, pickupLocation, name);
 
     if (error) {
       setErrorMessage('ステータスの更新に失敗しました。');

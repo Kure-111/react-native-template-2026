@@ -80,7 +80,6 @@ const MissingChildConfirmModal = ({ isVisible, childData, onConfirm, onCancel, i
               { backgroundColor: theme.background, borderColor: isUrgent ? URGENCY_CARD_BORDER_COLOR : theme.border },
               isUrgent && { backgroundColor: URGENCY_CARD_BACKGROUND_COLOR },
             ]}>
-              <ConfirmRow label="名前" value={childData.name} theme={theme} />
               <ConfirmRow label="年齢" value={childData.age} theme={theme} />
               <ConfirmRow label="性別" value={GENDER_LABELS[childData.gender]} theme={theme} />
               <ConfirmRow label="特徴" value={childData.characteristics} theme={theme} />
