@@ -101,6 +101,7 @@ const CustomDrawerContent = (props) => {
   const ITEM_LABELS = {
     1: '企画・屋台一覧',
     4: '落とし物検索',
+    5: '迷子検索',
     9: '実長機能',
     10: '本部',
     11: '当日部員',
