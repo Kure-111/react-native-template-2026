@@ -6,6 +6,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  AppState,
   Alert,
   Image,
   Linking,
@@ -59,10 +60,20 @@ import {
   createAttachmentSignedUrl,
   listTicketAttachments,
 } from '../../../services/supabase/ticketAttachmentService';
-import { selectEventOrganizations } from '../../../services/supabase/eventOrganizationService';
-import { selectPrizeDistributions } from '../../../services/supabase/prizeDistributionService';
+import { selectOrganizationEvents } from '../../../services/supabase/organizationEventService';
+import {
+  selectPrizeDistributions,
+  updatePrizeDistributionCriteria,
+} from '../../../services/supabase/prizeDistributionService';
 import { useManagedPushSubscription } from '../../notifications/hooks/useManagedPushSubscription';
 import WebPushStatusCard from '../../notifications/components/WebPushStatusCard';
+import {
+  ALL_ORGANIZATION_EVENT_FILTER,
+  buildOrganizationEventOptions,
+  matchesOrganizationEventSearchKeyword,
+  normalizeOrganizationEventSearchValue,
+  ORGANIZATION_EVENT_OPTION_LIMIT,
+} from '../../../shared/utils/organizationEventList';
 
 /** ステータス表示名 */
 const STATUS_LABELS = {
@@ -86,24 +97,119 @@ const TICKET_TYPE_LABELS = {
   end_report: '企画終了報告',
 };
 
-/** 会計/物品向け状態フィルタ */
-const TICKET_STATUS_FILTERS = [
-  { key: 'all', label: 'すべて' },
+/** 会計対応向けステータス表示 */
+const ACCOUNTING_STATUS_LABELS = {
+  todo: '未対応',
+  working: '対応中',
+  done: '完了',
+};
+
+/** 会計対応向け状態フィルタ */
+const ACCOUNTING_TICKET_STATUS_FILTERS = [
   { key: 'todo', label: '未対応' },
   { key: 'working', label: '対応中' },
   { key: 'done', label: '完了' },
 ];
 
-/** 会計/物品向け緊急度フィルタ */
-const TICKET_URGENCY_FILTERS = [
-  { key: 'all', label: '全て' },
-  { key: 'urgent', label: '緊急のみ' },
-  { key: 'normal', label: '通常のみ' },
+/** 会計対応向けステータス更新候補 */
+const ACCOUNTING_STATUS_OPTIONS = [
+  { key: 'todo', label: ACCOUNTING_STATUS_LABELS.todo, status: SUPPORT_TICKET_STATUSES.ACKNOWLEDGED },
+  { key: 'working', label: ACCOUNTING_STATUS_LABELS.working, status: SUPPORT_TICKET_STATUSES.IN_PROGRESS },
+  { key: 'done', label: ACCOUNTING_STATUS_LABELS.done, status: SUPPORT_TICKET_STATUSES.RESOLVED },
 ];
 
-/** 緊急チケット種別: ticket_typeがemergencyまたはpriorityがhighを緊急と判定 */
-const isUrgentTicket = (ticket) => {
-  return ticket.ticket_type === 'emergency' || ticket.priority === 'high';
+/** 物品対応向け状態フィルタ */
+const PROPERTY_TICKET_STATUS_FILTERS = [
+  { key: 'all', label: 'すべて' },
+  { key: 'todo', label: '未対応' },
+  { key: 'working', label: '対応中' },
+  { key: 'done', label: '対応済み' },
+];
+
+/** 物品対応向けステータス表示 */
+const PROPERTY_STATUS_LABELS = {
+  todo: '未対応',
+  working: '対応中',
+  done: '対応済み',
+};
+
+/** 物品対応向けステータス更新候補 */
+const PROPERTY_STATUS_OPTIONS = [
+  { key: 'todo', label: PROPERTY_STATUS_LABELS.todo, status: SUPPORT_TICKET_STATUSES.ACKNOWLEDGED },
+  { key: 'working', label: PROPERTY_STATUS_LABELS.working, status: SUPPORT_TICKET_STATUSES.IN_PROGRESS },
+  { key: 'done', label: PROPERTY_STATUS_LABELS.done, status: SUPPORT_TICKET_STATUSES.RESOLVED },
+];
+
+/**
+ * 部署画面向けのステータス区分を返す
+ * @param {string|null|undefined} status - 元ステータス
+ * @returns {'todo'|'working'|'done'} 表示用ステータス
+ */
+const getDepartmentStatusBucket = (status) => {
+  if (status === 'todo' || status === 'working' || status === 'done') {
+    return status;
+  }
+  if ([SUPPORT_TICKET_STATUSES.RESOLVED, SUPPORT_TICKET_STATUSES.CLOSED].includes(status)) {
+    return 'done';
+  }
+  if (
+    [
+      SUPPORT_TICKET_STATUSES.IN_PROGRESS,
+      SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL,
+    ].includes(status)
+  ) {
+    return 'working';
+  }
+  return 'todo';
+};
+
+/**
+ * 画面用のステータス表示名を返す
+ * @param {Object} ticket - 連絡案件
+ * @param {string} roleType - 役割種別
+ * @returns {string} 表示ラベル
+ */
+const getTicketStatusLabelForRole = (ticket, roleType) => {
+  if (roleType === SUPPORT_DESK_ROLE_TYPES.ACCOUNTING) {
+    return ACCOUNTING_STATUS_LABELS[getDepartmentStatusBucket(ticket?.ticket_status)] || ACCOUNTING_STATUS_LABELS.todo;
+  }
+  if (roleType === SUPPORT_DESK_ROLE_TYPES.PROPERTY) {
+    return PROPERTY_STATUS_LABELS[getDepartmentStatusBucket(ticket?.ticket_status)] || PROPERTY_STATUS_LABELS.todo;
+  }
+  return STATUS_LABELS[ticket?.ticket_status] || ticket?.ticket_status || '-';
+};
+
+/**
+ * 画面上の選択値を実際に保存するステータスへ変換する
+ * @param {string} roleType - 役割種別
+ * @param {string} nextValue - 画面上の選択値
+ * @returns {string} 保存用ステータス
+ */
+const resolveNextTicketStatus = (roleType, nextValue) => {
+  if (roleType === SUPPORT_DESK_ROLE_TYPES.ACCOUNTING) {
+    const matched = ACCOUNTING_STATUS_OPTIONS.find((option) => option.key === nextValue);
+    return matched?.status || nextValue;
+  }
+  if (roleType !== SUPPORT_DESK_ROLE_TYPES.PROPERTY) {
+    return nextValue;
+  }
+  const matched = PROPERTY_STATUS_OPTIONS.find((option) => option.key === nextValue);
+  return matched?.status || nextValue;
+};
+
+/**
+ * 部署画面の初期ステータスフィルタを返す
+ * @param {string} roleType - 役割種別
+ * @returns {string} 初期フィルタキー
+ */
+const getDefaultDepartmentStatusFilter = (roleType) => {
+  if (roleType === SUPPORT_DESK_ROLE_TYPES.ACCOUNTING) {
+    return ACCOUNTING_TICKET_STATUS_FILTERS[0].key;
+  }
+  if (roleType === SUPPORT_DESK_ROLE_TYPES.PROPERTY) {
+    return PROPERTY_TICKET_STATUS_FILTERS[0].key;
+  }
+  return 'all';
 };
 
 /** AsyncStorageキープレフィックス: 最終閲覧時刻の保存に使用 */
@@ -384,9 +490,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   const [replyBody, setReplyBody] = useState('');
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-  const [ticketStatusFilter, setTicketStatusFilter] = useState(TICKET_STATUS_FILTERS[0].key);
-  /** 緊急度フィルター状態: 'all' | 'urgent' | 'normal' */
-  const [ticketUrgencyFilter, setTicketUrgencyFilter] = useState(TICKET_URGENCY_FILTERS[0].key);
+  const [ticketStatusFilter, setTicketStatusFilter] = useState(() => getDefaultDepartmentStatusFilter(roleType));
   /**
    * 最終閲覧時刻（ミリ秒）
    * nullの場合は初回ロード前（未読判定しない）
@@ -430,12 +534,16 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   /** 概況ダッシュボード: ステータスフィルター（'active' | 'all' | 'done'） */
   const [overviewStatusFilter, setOverviewStatusFilter] = useState('active');
 
-  /** 企画一覧（event_organizations）- HQ向け */
-  const [hqEventOrganizations, setHqEventOrganizations] = useState([]);
-  /** 企画一覧読み込み中フラグ */
-  const [isLoadingHqEventOrgs, setIsLoadingHqEventOrgs] = useState(false);
-  /** 企画一覧検索テキスト */
-  const [hqEventOrgSearch, setHqEventOrgSearch] = useState('');
+  /** 団体別企画一覧（organizations_events）- HQ向け */
+  const [hqOrganizationEvents, setHqOrganizationEvents] = useState([]);
+  /** 団体別企画一覧読み込み中フラグ */
+  const [isLoadingHqOrganizationEvents, setIsLoadingHqOrganizationEvents] = useState(false);
+  /** HQ企画一覧の団体候補検索テキスト */
+  const [hqOrganizationEventSearch, setHqOrganizationEventSearch] = useState('');
+  /** HQ企画一覧で選択中の団体名 */
+  const [selectedHqOrganizationEvent, setSelectedHqOrganizationEvent] = useState(ALL_ORGANIZATION_EVENT_FILTER);
+  /** HQ企画一覧の団体候補表示フラグ */
+  const [isHqOrganizationEventDropdownOpen, setIsHqOrganizationEventDropdownOpen] = useState(false);
 
   /** 景品配布基準一覧（prize_distribution）- 会計向け */
   const [prizeDistributions, setPrizeDistributions] = useState([]);
@@ -449,6 +557,12 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   const [selectedPrizeOrganization, setSelectedPrizeOrganization] = useState(ALL_PRIZE_ORGANIZATIONS);
   /** 景品配布基準の団体候補表示フラグ */
   const [isPrizeOrganizationDropdownOpen, setIsPrizeOrganizationDropdownOpen] = useState(false);
+  /** 編集対象として選択中の景品配布基準ID */
+  const [selectedPrizeDistributionId, setSelectedPrizeDistributionId] = useState('');
+  /** 景品配布基準の編集内容 */
+  const [prizeCriteriaDraft, setPrizeCriteriaDraft] = useState('');
+  /** 景品配布基準保存中フラグ */
+  const [isSavingPrizeDistribution, setIsSavingPrizeDistribution] = useState(false);
 
   /** HQロール向けアクティブタブ（初期値: 外部指定がある場合はそれ、なければ鍵管理） */
   const [activeTab, setActiveTab] = useState(initialTab || HQ_TAB_DEFAULT);
@@ -483,13 +597,20 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   };
 
   const isHQRole = roleType === SUPPORT_DESK_ROLE_TYPES.HQ;
+  const isAccountingRole = roleType === SUPPORT_DESK_ROLE_TYPES.ACCOUNTING;
   const isDepartmentRole =
-    roleType === SUPPORT_DESK_ROLE_TYPES.ACCOUNTING || roleType === SUPPORT_DESK_ROLE_TYPES.PROPERTY;
+    isAccountingRole || roleType === SUPPORT_DESK_ROLE_TYPES.PROPERTY;
+  const isPropertyRole = roleType === SUPPORT_DESK_ROLE_TYPES.PROPERTY;
+  const departmentTicketStatusFilters = isAccountingRole
+    ? ACCOUNTING_TICKET_STATUS_FILTERS
+    : isPropertyRole
+      ? PROPERTY_TICKET_STATUS_FILTERS
+      : [];
 
   /**
    * フィルター後のチケット一覧
    * HQロール: 種別・団体フィルターを適用
-   * 部署ロール: ステータス・緊急度フィルターを適用
+   * 部署ロール: ステータスフィルターを適用
    */
   const filteredTickets = useMemo(() => {
     /** HQロール向けフィルター */
@@ -514,29 +635,35 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     let result = tickets;
     if (ticketStatusFilter === 'todo') {
       result = result.filter((ticket) =>
-        [SUPPORT_TICKET_STATUSES.NEW, SUPPORT_TICKET_STATUSES.ACKNOWLEDGED].includes(ticket.ticket_status)
+        isDepartmentRole
+          ? getDepartmentStatusBucket(ticket.ticket_status) === 'todo'
+          : [SUPPORT_TICKET_STATUSES.NEW, SUPPORT_TICKET_STATUSES.ACKNOWLEDGED].includes(ticket.ticket_status)
       );
     } else if (ticketStatusFilter === 'working') {
       result = result.filter((ticket) =>
-        [SUPPORT_TICKET_STATUSES.IN_PROGRESS, SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL].includes(
-          ticket.ticket_status
-        )
+        isDepartmentRole
+          ? getDepartmentStatusBucket(ticket.ticket_status) === 'working'
+          : [SUPPORT_TICKET_STATUSES.IN_PROGRESS, SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL].includes(
+              ticket.ticket_status
+            )
       );
     } else if (ticketStatusFilter === 'done') {
       result = result.filter((ticket) =>
-        [SUPPORT_TICKET_STATUSES.RESOLVED, SUPPORT_TICKET_STATUSES.CLOSED].includes(ticket.ticket_status)
+        isDepartmentRole
+          ? getDepartmentStatusBucket(ticket.ticket_status) === 'done'
+          : [SUPPORT_TICKET_STATUSES.RESOLVED, SUPPORT_TICKET_STATUSES.CLOSED].includes(ticket.ticket_status)
       );
     }
 
-    /** 緊急度フィルターを適用 */
-    if (ticketUrgencyFilter === 'urgent') {
-      result = result.filter((ticket) => isUrgentTicket(ticket));
-    } else if (ticketUrgencyFilter === 'normal') {
-      result = result.filter((ticket) => !isUrgentTicket(ticket));
-    }
-
     return result;
-  }, [isHQRole, isDepartmentRole, hqTicketTypeFilter, hqOrgFilter, ticketStatusFilter, ticketUrgencyFilter, tickets]);
+  }, [
+    isHQRole,
+    isDepartmentRole,
+    hqTicketTypeFilter,
+    hqOrgFilter,
+    ticketStatusFilter,
+    tickets,
+  ]);
 
   /**
    * HQフィルター用の団体一覧（ticketsのorganizationsリレーションから動的生成）
@@ -552,6 +679,61 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     });
     return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
   }, [tickets]);
+
+  /**
+   * HQ企画一覧で選択できる団体一覧
+   * 同名団体をまとめ、団体ごとの企画件数も表示する
+   */
+  const hqOrganizationEventOptions = useMemo(() => {
+    return buildOrganizationEventOptions(hqOrganizationEvents);
+  }, [hqOrganizationEvents]);
+
+  /**
+   * HQ企画一覧の団体候補検索テキストで絞り込んだ団体一覧
+   */
+  const filteredHqOrganizationEventOptions = useMemo(() => {
+    /** 団体候補の検索キーワード */
+    const keyword = normalizeOrganizationEventSearchValue(hqOrganizationEventSearch);
+    if (!keyword) {
+      return hqOrganizationEventOptions;
+    }
+
+    return hqOrganizationEventOptions.filter((option) =>
+      matchesOrganizationEventSearchKeyword(option.label, keyword)
+    );
+  }, [hqOrganizationEventOptions, hqOrganizationEventSearch]);
+
+  /**
+   * HQ企画一覧ドロップダウンに表示する団体候補一覧
+   */
+  const visibleHqOrganizationEventOptions = useMemo(() => {
+    return filteredHqOrganizationEventOptions.slice(0, ORGANIZATION_EVENT_OPTION_LIMIT);
+  }, [filteredHqOrganizationEventOptions]);
+
+  /**
+   * HQ企画一覧で選択中の団体ラベル
+   */
+  const selectedHqOrganizationEventLabel = useMemo(() => {
+    if (selectedHqOrganizationEvent === ALL_ORGANIZATION_EVENT_FILTER) {
+      return 'すべての団体';
+    }
+
+    return selectedHqOrganizationEvent;
+  }, [selectedHqOrganizationEvent]);
+
+  /**
+   * HQ企画一覧で選択中団体を反映した企画一覧
+   */
+  const filteredHqOrganizationEvents = useMemo(() => {
+    return hqOrganizationEvents.filter((item) => {
+      /** 団体選択との一致判定 */
+      const matchesOrganization =
+        selectedHqOrganizationEvent === ALL_ORGANIZATION_EVENT_FILTER ||
+        normalizeText(item.organization_name) === selectedHqOrganizationEvent;
+
+      return matchesOrganization;
+    });
+  }, [hqOrganizationEvents, selectedHqOrganizationEvent]);
 
   /**
    * 景品配布基準で選択できる団体一覧
@@ -645,6 +827,13 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     }
     return selectedPrizeOrganization;
   }, [selectedPrizeOrganization]);
+
+  /**
+   * 編集対象として選択中の景品配布基準
+   */
+  const selectedPrizeDistribution = useMemo(() => {
+    return filteredPrizeDistributions.find((item) => item.id === selectedPrizeDistributionId) || null;
+  }, [filteredPrizeDistributions, selectedPrizeDistributionId]);
 
   const selectedTicket = useMemo(() => {
     return filteredTickets.find((ticket) => ticket.id === selectedTicketId) || null;
@@ -975,7 +1164,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     }
 
     /** 確認ダイアログを表示 */
-    const statusLabel = STATUS_LABELS[nextStatus] || nextStatus;
+    const statusLabel = getTicketStatusLabelForRole({ ticket_status: nextStatus }, roleType);
     const confirmMessage = `ステータスを「${statusLabel}」に更新しますか？`;
     if (Platform.OS === 'web') {
       if (!window.confirm(confirmMessage)) {
@@ -996,7 +1185,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     setIsUpdatingStatus(true);
     const result = await updateTicketStatus({
       ticketId: selectedTicket.id,
-      status: nextStatus,
+      status: resolveNextTicketStatus(roleType, nextStatus),
       notifyActorUserId: user?.id || '',
     });
     setIsUpdatingStatus(false);
@@ -1322,21 +1511,21 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
    * HQ向け企画一覧を取得
    * @returns {Promise<void>} 取得処理
    */
-  const loadHqEventOrganizations = async () => {
+  const loadHqOrganizationEvents = async () => {
     if (!isHQRole) {
       return;
     }
 
-    setIsLoadingHqEventOrgs(true);
-    const { data, error } = await selectEventOrganizations({ limit: 200 });
-    setIsLoadingHqEventOrgs(false);
+    setIsLoadingHqOrganizationEvents(true);
+    const { data, error } = await selectOrganizationEvents({ limit: 200 });
+    setIsLoadingHqOrganizationEvents(false);
 
     if (error) {
-      console.error('企画一覧取得に失敗:', error);
+      console.error('団体別企画一覧取得に失敗:', error);
       return;
     }
 
-    setHqEventOrganizations(data || []);
+    setHqOrganizationEvents(data || []);
   };
 
   /**
@@ -1368,9 +1557,62 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     loadPatrolAssignees();
     loadPendingEvaluations();
     loadPatrolHistory();
-    loadHqEventOrganizations();
+    loadHqOrganizationEvents();
     loadPrizeDistributions();
   }, [roleType, user?.id]);
+
+  useEffect(() => {
+    setTicketStatusFilter(getDefaultDepartmentStatusFilter(roleType));
+  }, [roleType]);
+
+  /**
+   * 物品対応画面は通知タップやアプリ復帰時に自動で最新状態を取り直す
+   */
+  useEffect(() => {
+    if (!isPropertyRole) {
+      return () => {};
+    }
+
+    const refreshPropertyTickets = () => {
+      const preferredTicketId = normalizeText(selectedTicketId) || null;
+      loadTickets(preferredTicketId);
+      if (preferredTicketId) {
+        loadMessages(preferredTicketId);
+        loadTicketAttachedFiles(preferredTicketId);
+      }
+    };
+
+    const unsubscribeFocus = navigation?.addListener?.('focus', refreshPropertyTickets) || (() => {});
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !== 'undefined') {
+      const handleWindowFocus = () => refreshPropertyTickets();
+      const handleVisibilityChange = () => {
+        if (!document.hidden) {
+          refreshPropertyTickets();
+        }
+      };
+
+      window.addEventListener('focus', handleWindowFocus);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+
+      return () => {
+        unsubscribeFocus();
+        window.removeEventListener('focus', handleWindowFocus);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
+
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        refreshPropertyTickets();
+      }
+    });
+
+    return () => {
+      unsubscribeFocus();
+      appStateSubscription.remove();
+    };
+  }, [isPropertyRole, navigation, selectedTicketId, roleType, user?.id]);
 
   /**
    * 会計/物品画面では手動更新に頼らず連絡案件を自動同期する
@@ -1471,6 +1713,23 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   }, [isDepartmentRole, roleType, selectedTicketId, user?.id]);
 
   useEffect(() => {
+    if (selectedHqOrganizationEvent === ALL_ORGANIZATION_EVENT_FILTER) {
+      return;
+    }
+
+    /** 再取得後も選択中団体が存在するか確認 */
+    const hasSelectedOrganization = hqOrganizationEventOptions.some(
+      (option) => option.value === selectedHqOrganizationEvent
+    );
+
+    if (!hasSelectedOrganization) {
+      setSelectedHqOrganizationEvent(ALL_ORGANIZATION_EVENT_FILTER);
+      setHqOrganizationEventSearch('');
+      setIsHqOrganizationEventDropdownOpen(false);
+    }
+  }, [hqOrganizationEventOptions, selectedHqOrganizationEvent]);
+
+  useEffect(() => {
     if (selectedPrizeOrganization === ALL_PRIZE_ORGANIZATIONS) {
       return;
     }
@@ -1487,6 +1746,26 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   }, [prizeOrganizationOptions, selectedPrizeOrganization]);
 
   useEffect(() => {
+    if (!selectedPrizeDistributionId) {
+      return;
+    }
+
+    /** 選択中景品が現在の絞り込み結果に残っているか */
+    const hasSelectedPrizeDistribution = filteredPrizeDistributions.some(
+      (item) => item.id === selectedPrizeDistributionId
+    );
+
+    if (!hasSelectedPrizeDistribution) {
+      setSelectedPrizeDistributionId('');
+      setPrizeCriteriaDraft('');
+    }
+  }, [filteredPrizeDistributions, selectedPrizeDistributionId]);
+
+  useEffect(() => {
+    setPrizeCriteriaDraft(selectedPrizeDistribution?.distribution_criteria || '');
+  }, [selectedPrizeDistribution?.distribution_criteria, selectedPrizeDistribution?.id]);
+
+  useEffect(() => {
     if (filteredTickets.length === 0) {
       setSelectedTicketId(null);
       return;
@@ -1496,6 +1775,37 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
       setSelectedTicketId(filteredTickets[0].id);
     }
   }, [filteredTickets, selectedTicketId]);
+
+  /**
+   * HQ企画一覧の団体候補検索を更新
+   * @param {string} value - 入力値
+   * @returns {void}
+   */
+  const handleHqOrganizationEventSearchChange = (value) => {
+    setHqOrganizationEventSearch(value);
+    setIsHqOrganizationEventDropdownOpen(true);
+  };
+
+  /**
+   * HQ企画一覧の団体を選択する
+   * @param {string} organizationName - 団体名
+   * @returns {void}
+   */
+  const handleHqOrganizationEventSelect = (organizationName) => {
+    setSelectedHqOrganizationEvent(organizationName);
+    setHqOrganizationEventSearch('');
+    setIsHqOrganizationEventDropdownOpen(false);
+  };
+
+  /**
+   * HQ企画一覧の団体選択を解除して全件表示へ戻す
+   * @returns {void}
+   */
+  const handleHqOrganizationEventReset = () => {
+    setSelectedHqOrganizationEvent(ALL_ORGANIZATION_EVENT_FILTER);
+    setHqOrganizationEventSearch('');
+    setIsHqOrganizationEventDropdownOpen(false);
+  };
 
   /**
    * 景品配布基準の団体候補検索を更新
@@ -1528,6 +1838,85 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     setPrizeOrganizationSearch('');
     setPrizeSearch('');
     setIsPrizeOrganizationDropdownOpen(false);
+  };
+
+  /**
+   * 景品配布基準の編集対象を選択する
+   * @param {Object} prizeDistribution - 景品配布基準
+   * @returns {void}
+   */
+  const handlePrizeDistributionSelect = (prizeDistribution) => {
+    /** 選択対象ID */
+    const nextSelectedId = prizeDistribution?.id;
+    if (nextSelectedId === null || nextSelectedId === undefined || nextSelectedId === '') {
+      return;
+    }
+
+    setSelectedPrizeDistributionId((currentSelectedId) =>
+      currentSelectedId === nextSelectedId ? '' : nextSelectedId
+    );
+  };
+
+  /**
+   * 景品配布基準の変更内容を保存する
+   * @returns {Promise<void>} 保存処理
+   */
+  const handlePrizeDistributionSave = async () => {
+    if (!selectedPrizeDistribution) {
+      showMessage('更新エラー', '編集する景品配布基準を選択してください');
+      return;
+    }
+
+    /** 入力済み配布基準 */
+    const normalizedCriteria = normalizeText(prizeCriteriaDraft);
+    if (!normalizedCriteria) {
+      showMessage('入力不足', '景品配布基準の内容を入力してください');
+      return;
+    }
+
+    /** 現在の配布基準 */
+    const currentCriteria = normalizeText(selectedPrizeDistribution.distribution_criteria);
+    if (normalizedCriteria === currentCriteria) {
+      showMessage('変更なし', '景品配布基準の変更内容がありません');
+      return;
+    }
+
+    /** 確認ダイアログ文言 */
+    const confirmMessage = '選択した景品配布基準を更新しますか？';
+    if (Platform.OS === 'web') {
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    } else {
+      const confirmed = await new Promise((resolve) => {
+        Alert.alert('確認', confirmMessage, [
+          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
+          { text: '更新', onPress: () => resolve(true) },
+        ]);
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setIsSavingPrizeDistribution(true);
+    /** 更新結果 */
+    const { data, error } = await updatePrizeDistributionCriteria({
+      prizeDistributionId: selectedPrizeDistribution.id,
+      distributionCriteria: normalizedCriteria,
+    });
+    setIsSavingPrizeDistribution(false);
+
+    if (error) {
+      showMessage('更新エラー', error.message || '景品配布基準の更新に失敗しました');
+      return;
+    }
+
+    setPrizeDistributions((currentPrizeDistributions) =>
+      currentPrizeDistributions.map((item) => (item.id === data?.id ? { ...item, ...data } : item))
+    );
+    setPrizeCriteriaDraft(data?.distribution_criteria || normalizedCriteria);
+    showMessage('更新完了', '景品配布基準を更新しました');
   };
 
   useEffect(() => {
@@ -1838,7 +2227,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
                 <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>受付番号: {selectedTicket.ticket_no || '-'}</Text>
                 <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
                   種別: {TICKET_TYPE_LABELS[selectedTicket.ticket_type] || selectedTicket.ticket_type} / 状態:{' '}
-                  {STATUS_LABELS[selectedTicket.ticket_status] || selectedTicket.ticket_status}
+                  {getTicketStatusLabelForRole(selectedTicket, roleType)}
                 </Text>
                 <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
                   企画: {selectedTicket.event_name}（{selectedTicket.event_location}）
@@ -2259,20 +2648,21 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
               <Text style={[styles.sectionTitle, { color: theme.text }]}>企画一覧</Text>
               <TouchableOpacity
                 style={[styles.refreshButton, { borderColor: theme.border }]}
-                onPress={loadHqEventOrganizations}
+                onPress={loadHqOrganizationEvents}
               >
                 <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
               </TouchableOpacity>
             </View>
             <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-              企画の運営チーム一覧です。名前で検索できます。
+              organizations_events の団体別企画一覧です。団体を選ぶと対象企画だけ確認できます。
             </Text>
 
-            {/* 検索バー */}
+            {/* 団体候補検索バー */}
             <TextInput
-              value={hqEventOrgSearch}
-              onChangeText={setHqEventOrgSearch}
-              placeholder="企画名・チーム名で検索..."
+              value={hqOrganizationEventSearch}
+              onChangeText={handleHqOrganizationEventSearchChange}
+              onFocus={() => setIsHqOrganizationEventDropdownOpen(true)}
+              placeholder="団体名を入力して候補を絞り込み..."
               placeholderTextColor={theme.textSecondary}
               style={[
                 styles.compactInput,
@@ -2280,49 +2670,124 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
               ]}
             />
 
-            {isLoadingHqEventOrgs ? (
+            <View
+              style={[
+                styles.selectedSummaryCard,
+                { borderColor: theme.border, backgroundColor: theme.background },
+              ]}
+            >
+              <View style={styles.selectedSummaryContent}>
+                <Text style={[styles.selectedSummaryLabel, { color: theme.textSecondary }]}>
+                  選択中の団体
+                </Text>
+                <Text style={[styles.selectedSummaryValue, { color: theme.text }]}>
+                  {selectedHqOrganizationEventLabel}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.inlineActionButton, { borderColor: theme.border }]}
+                onPress={handleHqOrganizationEventReset}
+              >
+                <Text style={[styles.inlineActionButtonText, { color: theme.textSecondary }]}>すべて表示</Text>
+              </TouchableOpacity>
+            </View>
+
+            {isHqOrganizationEventDropdownOpen ? (
+              <View
+                style={[
+                  styles.dropdownOptionList,
+                  { borderColor: theme.border, backgroundColor: theme.background },
+                ]}
+              >
+                {filteredHqOrganizationEventOptions.length === 0 ? (
+                  <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+                    該当する団体候補がありません
+                  </Text>
+                ) : (
+                  <>
+                    {visibleHqOrganizationEventOptions.map((option) => {
+                      /** 選択中団体かどうか */
+                      const isSelected = option.value === selectedHqOrganizationEvent;
+
+                      return (
+                        <Pressable
+                          key={option.value}
+                          onPress={() => handleHqOrganizationEventSelect(option.value)}
+                          style={[
+                            styles.dropdownOptionItem,
+                            {
+                              borderColor: theme.border,
+                              backgroundColor: isSelected ? theme.primary : theme.surface,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.dropdownOptionTitle,
+                              { color: isSelected ? '#FFFFFF' : theme.text },
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.dropdownOptionMeta,
+                              { color: isSelected ? 'rgba(255,255,255,0.86)' : theme.textSecondary },
+                            ]}
+                          >
+                            企画 {option.count} 件
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+
+                    {filteredHqOrganizationEventOptions.length > visibleHqOrganizationEventOptions.length ? (
+                      <Text style={[styles.dropdownOverflowText, { color: theme.textSecondary }]}>
+                        ほか {filteredHqOrganizationEventOptions.length - visibleHqOrganizationEventOptions.length} 件あります。さらに入力すると絞り込めます。
+                      </Text>
+                    ) : null}
+                  </>
+                )}
+              </View>
+            ) : null}
+
+            {isLoadingHqOrganizationEvents ? (
               <SkeletonLoader lines={4} baseColor={theme.border} />
-            ) : hqEventOrganizations.length === 0 ? (
+            ) : hqOrganizationEvents.length === 0 ? (
               <EmptyState
                 icon={'\u{1F3E2}'}
-                title="企画組織データがありません"
+                title="団体別企画データがありません"
                 description="更新ボタンで再取得してください。"
                 theme={theme}
               />
+            ) : filteredHqOrganizationEvents.length === 0 ? (
+              <Text style={[styles.helpText, { color: theme.textSecondary, textAlign: 'center', paddingVertical: 16 }]}>
+                該当する企画がありません
+              </Text>
             ) : (
-              (() => {
-                /** 検索キーワードで絞り込んだ企画一覧 */
-                const keyword = hqEventOrgSearch.trim().toLowerCase();
-                const filtered = keyword
-                  ? hqEventOrganizations.filter((org) =>
-                      (org.name || '').toLowerCase().includes(keyword)
-                    )
-                  : hqEventOrganizations;
-
-                if (filtered.length === 0) {
-                  return (
-                    <Text style={[styles.helpText, { color: theme.textSecondary, textAlign: 'center', paddingVertical: 16 }]}>
-                      該当する企画がありません
+              <View style={styles.ticketList}>
+                {filteredHqOrganizationEvents.map((item) => (
+                  <View
+                    key={`${item.id}-${item.organization_name}-${item.event_name}`}
+                    style={[
+                      styles.ticketItem,
+                      { borderColor: theme.border, backgroundColor: theme.background },
+                    ]}
+                  >
+                    <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
+                      {item.organization_name || '団体名未設定'}
                     </Text>
-                  );
-                }
-
-                return (
-                  <View style={styles.ticketList}>
-                    {filtered.map((org) => (
-                      <View
-                        key={org.id}
-                        style={[
-                          styles.ticketItem,
-                          { borderColor: theme.border, backgroundColor: theme.background },
-                        ]}
-                      >
-                        <Text style={[styles.ticketTitle, { color: theme.text }]}>{org.name}</Text>
-                      </View>
-                    ))}
+                    <Text style={[styles.ticketTitle, { color: theme.text }]}>
+                      {item.event_name || '企画名未設定'}
+                    </Text>
+                    {item.sheet_name ? (
+                      <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
+                        シート: {item.sheet_name}
+                      </Text>
+                    ) : null}
                   </View>
-                );
-              })()
+                ))}
+              </View>
             )}
           </View>
         ) : null}
@@ -2856,7 +3321,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
             <>
               {/* 対応状況フィルター */}
               <View style={styles.filterRow}>
-                {TICKET_STATUS_FILTERS.map((filter) => {
+                {departmentTicketStatusFilters.map((filter) => {
                   const isActive = filter.key === ticketStatusFilter;
                   return (
                     <Pressable
@@ -2874,34 +3339,6 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
                         style={[
                           styles.filterChipText,
                           { color: isActive ? theme.primary : theme.textSecondary },
-                        ]}
-                      >
-                        {filter.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              {/* 緊急度フィルター */}
-              <View style={styles.filterRow}>
-                {TICKET_URGENCY_FILTERS.map((filter) => {
-                  const isActive = filter.key === ticketUrgencyFilter;
-                  return (
-                    <Pressable
-                      key={filter.key}
-                      style={[
-                        styles.filterChip,
-                        {
-                          borderColor: isActive ? '#D1242F' : theme.border,
-                          backgroundColor: isActive ? '#D1242F1A' : theme.background,
-                        },
-                      ]}
-                      onPress={() => setTicketUrgencyFilter(filter.key)}
-                    >
-                      <Text
-                        style={[
-                          styles.filterChipText,
-                          { color: isActive ? '#D1242F' : theme.textSecondary },
                         ]}
                       >
                         {filter.label}
@@ -2969,7 +3406,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
                     </Text>
                     <Text style={[styles.ticketMeta, { color: theme.textSecondary }]} numberOfLines={1}>
                       {TICKET_TYPE_LABELS[ticket.ticket_type] || ticket.ticket_type} /{' '}
-                      {STATUS_LABELS[ticket.ticket_status] || ticket.ticket_status} /{' '}
+                      {getTicketStatusLabelForRole(ticket, roleType)} /{' '}
                       {new Date(ticket.created_at).toLocaleString('ja-JP')}
                     </Text>
                     {alertInfo.color ? (
@@ -2991,7 +3428,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
             <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>受付番号: {selectedTicket.ticket_no || '-'}</Text>
             <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}> 
               種別: {TICKET_TYPE_LABELS[selectedTicket.ticket_type] || selectedTicket.ticket_type} / 状態:{' '}
-              {STATUS_LABELS[selectedTicket.ticket_status] || selectedTicket.ticket_status}
+              {getTicketStatusLabelForRole(selectedTicket, roleType)}
             </Text>
             <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}> 
               企画: {selectedTicket.event_name}（{selectedTicket.event_location}）
@@ -3001,6 +3438,71 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
                 巡回の「確認に向かう/確認完了」はこの案件のメッセージに反映されます
               </Text>
             ) : null}
+
+            <Text style={[styles.label, { color: theme.text }]}>ステータス</Text>
+            <View
+              style={[
+                styles.statusPickerContainer,
+                { borderColor: theme.border, backgroundColor: theme.background },
+              ]}
+            >
+              <Text style={[styles.statusPickerLabel, { color: theme.textSecondary }]}>
+                {isUpdatingStatus ? 'ステータス更新中...' : 'ステータスを変更'}
+              </Text>
+              <Picker
+                selectedValue={
+                  isDepartmentRole
+                    ? getDepartmentStatusBucket(selectedTicket.ticket_status)
+                    : selectedTicket.ticket_status
+                }
+                onValueChange={(value) => {
+                  const currentValue = isDepartmentRole
+                    ? getDepartmentStatusBucket(selectedTicket.ticket_status)
+                    : selectedTicket.ticket_status;
+                  if (value === currentValue) {
+                    return;
+                  }
+                  handleStatusUpdate(value);
+                }}
+                enabled={!isUpdatingStatus}
+                style={[styles.picker, { color: theme.text, backgroundColor: theme.background }]}
+              >
+                {isAccountingRole ? (
+                  ACCOUNTING_STATUS_OPTIONS.map((option) => (
+                    <Picker.Item key={option.key} label={option.label} value={option.key} />
+                  ))
+                ) : isPropertyRole ? (
+                  PROPERTY_STATUS_OPTIONS.map((option) => (
+                    <Picker.Item key={option.key} label={option.label} value={option.key} />
+                  ))
+                ) : (
+                  <>
+                    <Picker.Item
+                      label={`受領 (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.ACKNOWLEDGED]})`}
+                      value={SUPPORT_TICKET_STATUSES.ACKNOWLEDGED}
+                    />
+                    <Picker.Item
+                      label={`対応中 (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.IN_PROGRESS]})`}
+                      value={SUPPORT_TICKET_STATUSES.IN_PROGRESS}
+                    />
+                    {isEventStatusTicket ? (
+                      <Picker.Item
+                        label={`巡回確認待ち (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL]})`}
+                        value={SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL}
+                      />
+                    ) : null}
+                    <Picker.Item
+                      label={`解決済み (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.RESOLVED]})`}
+                      value={SUPPORT_TICKET_STATUSES.RESOLVED}
+                    />
+                    <Picker.Item
+                      label={`クローズ (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.CLOSED]})`}
+                      value={SUPPORT_TICKET_STATUSES.CLOSED}
+                    />
+                  </>
+                )}
+              </Picker>
+            </View>
 
             <Text style={[styles.label, { color: theme.text }]}>依頼内容</Text>
             <Text
@@ -3162,38 +3664,6 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
             >
               <Text style={styles.sendButtonText}>{isSendingReply ? '送信中...' : '回答を送信'}</Text>
             </TouchableOpacity>
-
-            {/* ステータス変更Picker */}
-            <View
-              style={[
-                styles.statusPickerContainer,
-                { borderColor: theme.border, backgroundColor: theme.background },
-              ]}
-            >
-              <Text style={[styles.statusPickerLabel, { color: theme.textSecondary }]}>
-                {isUpdatingStatus ? 'ステータス更新中...' : 'ステータスを変更'}
-              </Text>
-              <Picker
-                selectedValue={selectedTicket.ticket_status}
-                onValueChange={(value) => {
-                  /** 現在のステータスと同じ値が選択された場合は何もしない */
-                  if (value === selectedTicket.ticket_status) {
-                    return;
-                  }
-                  handleStatusUpdate(value);
-                }}
-                enabled={!isUpdatingStatus}
-                style={[styles.picker, { color: theme.text, backgroundColor: theme.background }]}
-              >
-                <Picker.Item label={`受領 (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.ACKNOWLEDGED]})`} value={SUPPORT_TICKET_STATUSES.ACKNOWLEDGED} />
-                <Picker.Item label={`対応中 (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.IN_PROGRESS]})`} value={SUPPORT_TICKET_STATUSES.IN_PROGRESS} />
-                {isEventStatusTicket ? (
-                  <Picker.Item label={`巡回確認待ち (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL]})`} value={SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL} />
-                ) : null}
-                <Picker.Item label={`解決済み (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.RESOLVED]})`} value={SUPPORT_TICKET_STATUSES.RESOLVED} />
-                <Picker.Item label={`クローズ (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.CLOSED]})`} value={SUPPORT_TICKET_STATUSES.CLOSED} />
-              </Picker>
-            </View>
           </View>
         ) : null}
           </>
@@ -3212,7 +3682,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
               </TouchableOpacity>
             </View>
             <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-              まず団体を選ぶと、その団体の景品配布基準だけを確認できます。
+              団体を選び、変更したい景品配布基準をタップすると内容を編集できます。
             </Text>
 
             <Text style={[styles.label, { color: theme.text }]}>団体を選択</Text>
@@ -3342,31 +3812,102 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
 
                 return (
                   <View style={styles.messageList}>
-                    {filteredPrizeDistributions.map((item) => (
-                      <View
-                        key={item.id}
-                        style={[styles.messageItem, { borderColor: theme.border, backgroundColor: theme.background }]}
-                      >
-                        {/* 団体名・企画名 */}
-                        <Text style={[styles.messageAuthor, { color: theme.textSecondary }]} numberOfLines={1}>
-                          {item.organization_name || '-'} / {item.event_name || '-'}
-                        </Text>
-                        {/* 景品番号・景品名・数量 */}
-                        <Text style={[styles.messageBody, { color: theme.text, fontWeight: '700' }]}>
-                          {item.prize_number ? `[${item.prize_number}] ` : ''}{item.prize_name || '-'}
-                          {item.prize_count ? `  （${item.prize_count}）` : ''}
-                        </Text>
-                        {/* 配布基準 */}
-                        {item.distribution_criteria ? (
-                          <Text style={[styles.messageBody, { color: theme.text, marginTop: 4 }]}>
-                            {item.distribution_criteria}
+                    {filteredPrizeDistributions.map((item) => {
+                      /** 選択中の景品配布基準かどうか */
+                      const isSelected = item.id === selectedPrizeDistributionId;
+                      return (
+                        <Pressable
+                          key={item.id}
+                          style={[
+                            styles.messageItem,
+                            {
+                              borderColor: isSelected ? theme.primary : theme.border,
+                              backgroundColor: isSelected ? `${theme.primary}12` : theme.background,
+                              borderLeftWidth: isSelected ? 4 : 1,
+                              borderLeftColor: isSelected ? theme.primary : theme.border,
+                            },
+                          ]}
+                          onPress={() => handlePrizeDistributionSelect(item)}
+                        >
+                          {/* 団体名・企画名 */}
+                          <Text style={[styles.messageAuthor, { color: theme.textSecondary }]} numberOfLines={1}>
+                            {item.organization_name || '-'} / {item.event_name || '-'}
                           </Text>
-                        ) : null}
-                      </View>
-                    ))}
+                          {/* 景品番号・景品名・数量 */}
+                          <Text style={[styles.messageBody, { color: theme.text, fontWeight: '700' }]}>
+                            {item.prize_number ? `[${item.prize_number}] ` : ''}
+                            {item.prize_name || '-'}
+                            {item.prize_count ? `  （${item.prize_count}）` : ''}
+                          </Text>
+                          {/* 配布基準 */}
+                          {item.distribution_criteria ? (
+                            <Text style={[styles.messageBody, { color: theme.text, marginTop: 4 }]}>
+                              {item.distribution_criteria}
+                            </Text>
+                          ) : null}
+                          <Text
+                            style={[styles.messageDate, { color: isSelected ? theme.primary : theme.textSecondary }]}
+                          >
+                            {isSelected ? '選択中' : 'タップして編集'}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
                   </View>
                 );
               })()
+            )}
+
+            <Text style={[styles.label, { color: theme.text, marginTop: 12 }]}>選択した景品配布基準を編集</Text>
+            {selectedPrizeDistribution ? (
+              <>
+                <View
+                  style={[
+                    styles.selectedSummaryCard,
+                    { borderColor: theme.border, backgroundColor: theme.background, marginBottom: 12 },
+                  ]}
+                >
+                  <View style={styles.selectedSummaryContent}>
+                    <Text style={[styles.selectedSummaryLabel, { color: theme.textSecondary }]}>
+                      編集対象
+                    </Text>
+                    <Text style={[styles.selectedSummaryValue, { color: theme.text }]}>
+                      {selectedPrizeDistribution.organization_name || '-'} / {selectedPrizeDistribution.event_name || '-'}
+                    </Text>
+                    <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+                      {selectedPrizeDistribution.prize_number ? `[${selectedPrizeDistribution.prize_number}] ` : ''}
+                      {selectedPrizeDistribution.prize_name || '-'}
+                      {selectedPrizeDistribution.prize_count ? ` （${selectedPrizeDistribution.prize_count}）` : ''}
+                    </Text>
+                  </View>
+                </View>
+
+                <TextInput
+                  value={prizeCriteriaDraft}
+                  onChangeText={setPrizeCriteriaDraft}
+                  multiline
+                  placeholder="景品配布基準の内容を入力してください"
+                  placeholderTextColor={theme.textSecondary}
+                  style={[
+                    styles.replyInput,
+                    { borderColor: theme.border, backgroundColor: theme.background, color: theme.text },
+                  ]}
+                />
+
+                <TouchableOpacity
+                  style={[styles.sendButton, { backgroundColor: theme.primary }]}
+                  onPress={handlePrizeDistributionSave}
+                  disabled={isSavingPrizeDistribution}
+                >
+                  <Text style={styles.sendButtonText}>
+                    {isSavingPrizeDistribution ? '更新中...' : '景品配布基準を更新'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+                一覧から変更したい景品配布基準を選択してください。
+              </Text>
             )}
           </View>
         ) : null}

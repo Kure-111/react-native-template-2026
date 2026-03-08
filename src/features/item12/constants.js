@@ -27,7 +27,7 @@ export const PATROL_TAB_TYPES = {
   RANKING: 'ranking',
   /** 自分の対応履歴 */
   HISTORY: 'history',
-  /** 企画一覧（event_organizations） */
+  /** 企画一覧（organizations_events） */
   EVENT_ORGS: 'event_orgs',
 };
 

@@ -33,7 +33,6 @@ import {
 import { exhibitorSupportService } from '../services/exhibitorSupportService';
 import { useAuth } from '../../../shared/contexts/AuthContext';
 import {
-  createTicketMessage,
   listTicketMessages,
 } from '../../../services/supabase/supportTicketService';
 import { KEY_BUILDINGS, KEY_CATALOG } from '../data/keyCatalog';
@@ -41,10 +40,8 @@ import { ensureKeysSeededFromCatalog } from '../../../services/supabase/keyMaste
 import { updateExhibitorEventProfile } from '../../../services/supabase/userService';
 import {
   createAttachmentSignedUrl,
-  createTicketAttachment,
   listTicketAttachments,
   MAX_ATTACHMENT_FILE_BYTES,
-  uploadTicketAttachmentFile,
 } from '../../../services/supabase/ticketAttachmentService';
 import QuestionForm from '../components/QuestionForm';
 import EmergencyForm from '../components/EmergencyForm';
@@ -257,11 +254,6 @@ const Item16Screen = ({ navigation, route }) => {
   const [isLoadingContactMessages, setIsLoadingContactMessages] = useState(false);
   const [contactAttachments, setContactAttachments] = useState([]);
   const [isLoadingContactAttachments, setIsLoadingContactAttachments] = useState(false);
-  const [contactReplyBody, setContactReplyBody] = useState('');
-  const [isSubmittingContactReply, setIsSubmittingContactReply] = useState(false);
-  const [followupAttachmentFile, setFollowupAttachmentFile] = useState(null);
-  const [followupAttachmentCaption, setFollowupAttachmentCaption] = useState('');
-  const [isSubmittingFollowupAttachment, setIsSubmittingFollowupAttachment] = useState(false);
 
   /**
    * メッセージ表示
@@ -404,132 +396,6 @@ const Item16Screen = ({ navigation, route }) => {
       console.error('添付表示エラー:', error);
       showMessage('添付表示エラー', '添付ファイルを開けませんでした。');
     }
-  };
-
-  /**
-   * 回答スレッドへ追記投稿
-   * @returns {Promise<void>} 投稿処理
-   */
-  const handleSubmitContactReply = async () => {
-    if (!selectedContact) {
-      showMessage('送信エラー', '連絡案件を選択してください。');
-      return;
-    }
-    if (!user?.id) {
-      showMessage('送信エラー', 'ログイン情報が取得できません。');
-      return;
-    }
-    if (!normalizeText(contactReplyBody)) {
-      showMessage('入力不足', '追記内容を入力してください。');
-      return;
-    }
-
-    /** 確認ダイアログを表示 */
-    const confirmMessage = '追記を送信しますか？';
-    if (Platform.OS === 'web') {
-      if (!window.confirm(confirmMessage)) {
-        return;
-      }
-    } else {
-      const confirmed = await new Promise((resolve) => {
-        Alert.alert('確認', confirmMessage, [
-          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
-          { text: '送信', onPress: () => resolve(true) },
-        ]);
-      });
-      if (!confirmed) {
-        return;
-      }
-    }
-
-    setIsSubmittingContactReply(true);
-    const { error } = await createTicketMessage({
-      ticketId: selectedContact.id,
-      authorId: user.id,
-      body: normalizeText(contactReplyBody),
-    });
-    setIsSubmittingContactReply(false);
-
-    if (error) {
-      showMessage('送信エラー', error.message || '追記投稿に失敗しました。');
-      return;
-    }
-
-    setContactReplyBody('');
-    await loadContactMessages(selectedContact.id);
-    showMessage('送信完了', '追記を投稿しました。');
-  };
-
-  /**
-   * 追記用添付ファイルを解除
-   * @returns {void}
-   */
-  const clearFollowupAttachment = () => {
-    setFollowupAttachmentFile(null);
-  };
-
-  /**
-   * 追記用添付を登録
-   * @returns {Promise<void>} 登録処理
-   */
-  const handleSubmitFollowupAttachment = async () => {
-    if (!selectedContact) {
-      showMessage('登録エラー', '連絡案件を選択してください。');
-      return;
-    }
-    if (!user?.id) {
-      showMessage('登録エラー', 'ログイン情報が取得できません。');
-      return;
-    }
-    if (!followupAttachmentFile) {
-      showMessage('入力不足', '添付ファイルを選択してください。');
-      return;
-    }
-    if (followupAttachmentFile.size > MAX_ATTACHMENT_FILE_BYTES) {
-      showMessage(
-        '容量超過',
-        `添付は${MAX_ATTACHMENT_FILE_SIZE_MB}MB以下にしてください（選択: ${formatFileSize(
-          followupAttachmentFile.size
-        )}）。`
-      );
-      return;
-    }
-
-    setIsSubmittingFollowupAttachment(true);
-    const uploadResult = await uploadTicketAttachmentFile({
-      ticketId: selectedContact.id,
-      file: followupAttachmentFile,
-      fileName: followupAttachmentFile.name || 'attachment.bin',
-      mimeType: followupAttachmentFile.type || null,
-      fileSizeBytes: followupAttachmentFile.size || null,
-    });
-
-    if (uploadResult.error || !uploadResult.data) {
-      setIsSubmittingFollowupAttachment(false);
-      showMessage('登録エラー', uploadResult.error?.message || '添付アップロードに失敗しました。');
-      return;
-    }
-
-    const { error } = await createTicketAttachment({
-      ticketId: selectedContact.id,
-      uploadedBy: user.id,
-      storageBucket: uploadResult.data.storageBucket,
-      storagePath: uploadResult.data.storagePath,
-      mimeType: uploadResult.data.mimeType,
-      fileSizeBytes: uploadResult.data.fileSizeBytes,
-      caption: normalizeText(followupAttachmentCaption) || null,
-    });
-    setIsSubmittingFollowupAttachment(false);
-
-    if (error) {
-      showMessage('登録エラー', error.message || '添付情報の登録に失敗しました。');
-      return;
-    }
-
-    clearFollowupAttachment();
-    setFollowupAttachmentCaption('');
-    await loadContactAttachments(selectedContact.id);
-    showMessage('登録完了', '添付を追加しました。');
   };
 
   /**
@@ -711,9 +577,6 @@ const Item16Screen = ({ navigation, route }) => {
   useEffect(() => {
     loadContactMessages(selectedContactId);
     loadContactAttachments(selectedContactId);
-    setContactReplyBody('');
-    clearFollowupAttachment();
-    setFollowupAttachmentCaption('');
   }, [selectedContactId]);
 
   /**
@@ -928,10 +791,6 @@ const Item16Screen = ({ navigation, route }) => {
    * 追記用の添付をファイルから選択
    * @returns {void}
    */
-  const pickFollowupAttachmentFile = () => {
-    pickFileFromDevice((file) => setFollowupAttachmentFile(file));
-  };
-
   /**
    * 仮送信処理
    * @returns {void}
@@ -1401,17 +1260,6 @@ const Item16Screen = ({ navigation, route }) => {
               loadContactMessages(selectedContact.id);
               loadContactAttachments(selectedContact.id);
             }}
-            contactReplyBody={contactReplyBody}
-            onChangeContactReplyBody={setContactReplyBody}
-            onSubmitContactReply={handleSubmitContactReply}
-            isSubmittingContactReply={isSubmittingContactReply}
-            followupAttachmentFile={followupAttachmentFile}
-            onPickFollowupAttachment={pickFollowupAttachmentFile}
-            onClearFollowupAttachment={clearFollowupAttachment}
-            followupAttachmentCaption={followupAttachmentCaption}
-            onChangeFollowupAttachmentCaption={setFollowupAttachmentCaption}
-            onSubmitFollowupAttachment={handleSubmitFollowupAttachment}
-            isSubmittingFollowupAttachment={isSubmittingFollowupAttachment}
           />
         </ScrollView>
 

@@ -41,7 +41,14 @@ import {
   createEvaluationCheck,
   listEvaluationChecks,
 } from '../../../services/supabase/evaluationService';
-import { selectEventOrganizations } from '../../../services/supabase/eventOrganizationService';
+import { selectOrganizationEvents } from '../../../services/supabase/organizationEventService';
+import {
+  ALL_ORGANIZATION_EVENT_FILTER,
+  buildOrganizationEventOptions,
+  matchesOrganizationEventSearchKeyword,
+  normalizeOrganizationEventSearchValue,
+  ORGANIZATION_EVENT_OPTION_LIMIT,
+} from '../../../shared/utils/organizationEventList';
 import PatrolTaskList from '../components/PatrolTaskList';
 import PatrolTaskDetail from '../components/PatrolTaskDetail';
 import PatrolCheckForm from '../components/PatrolCheckForm';
@@ -213,12 +220,16 @@ const Item12Screen = ({ navigation, route }) => {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   /* ---- 企画一覧関連 ---- */
-  /** 企画組織一覧（event_organizations） */
-  const [eventOrganizations, setEventOrganizations] = useState([]);
-  /** 企画一覧読み込み中フラグ */
-  const [isLoadingEventOrgs, setIsLoadingEventOrgs] = useState(false);
-  /** 企画一覧検索テキスト */
-  const [eventOrgSearch, setEventOrgSearch] = useState('');
+  /** 団体別企画一覧（organizations_events） */
+  const [organizationEvents, setOrganizationEvents] = useState([]);
+  /** 団体別企画一覧読み込み中フラグ */
+  const [isLoadingOrganizationEvents, setIsLoadingOrganizationEvents] = useState(false);
+  /** 団体候補検索テキスト */
+  const [organizationEventSearch, setOrganizationEventSearch] = useState('');
+  /** 選択中団体名 */
+  const [selectedOrganizationEvent, setSelectedOrganizationEvent] = useState(ALL_ORGANIZATION_EVENT_FILTER);
+  /** 団体候補表示フラグ */
+  const [isOrganizationEventDropdownOpen, setIsOrganizationEventDropdownOpen] = useState(false);
 
   /* ---- トースト通知 ---- */
   /** トースト表示フラグ・メッセージ・種別 */
@@ -241,6 +252,50 @@ const Item12Screen = ({ navigation, route }) => {
   const hideToast = () => {
     setToast((prev) => ({ ...prev, visible: false }));
   };
+
+  /** 団体候補一覧 */
+  const organizationEventOptions = useMemo(() => {
+    return buildOrganizationEventOptions(organizationEvents);
+  }, [organizationEvents]);
+
+  /** 団体候補検索で絞り込んだ団体一覧 */
+  const filteredOrganizationEventOptions = useMemo(() => {
+    /** 団体候補の検索キーワード */
+    const keyword = normalizeOrganizationEventSearchValue(organizationEventSearch);
+    if (!keyword) {
+      return organizationEventOptions;
+    }
+
+    return organizationEventOptions.filter((option) =>
+      matchesOrganizationEventSearchKeyword(option.label, keyword)
+    );
+  }, [organizationEventOptions, organizationEventSearch]);
+
+  /** ドロップダウンに表示する団体候補一覧 */
+  const visibleOrganizationEventOptions = useMemo(() => {
+    return filteredOrganizationEventOptions.slice(0, ORGANIZATION_EVENT_OPTION_LIMIT);
+  }, [filteredOrganizationEventOptions]);
+
+  /** 画面表示用の選択中団体ラベル */
+  const selectedOrganizationEventLabel = useMemo(() => {
+    if (selectedOrganizationEvent === ALL_ORGANIZATION_EVENT_FILTER) {
+      return 'すべての団体';
+    }
+
+    return selectedOrganizationEvent;
+  }, [selectedOrganizationEvent]);
+
+  /** 選択中団体で絞り込んだ企画一覧 */
+  const filteredOrganizationEvents = useMemo(() => {
+    return organizationEvents.filter((item) => {
+      /** 団体選択との一致判定 */
+      const matchesSelectedOrganization =
+        selectedOrganizationEvent === ALL_ORGANIZATION_EVENT_FILTER ||
+        (item.organization_name || '') === selectedOrganizationEvent;
+
+      return matchesSelectedOrganization;
+    });
+  }, [organizationEvents, selectedOrganizationEvent]);
 
   /** 選択中タスク */
   const selectedTask = useMemo(() => {
@@ -483,20 +538,51 @@ const Item12Screen = ({ navigation, route }) => {
   };
 
   /**
-   * 企画組織一覧を取得
+   * 団体別企画一覧を取得
    * @returns {Promise<void>} 取得処理
    */
-  const loadEventOrganizations = async () => {
-    setIsLoadingEventOrgs(true);
-    const { data, error } = await selectEventOrganizations({ limit: 200 });
-    setIsLoadingEventOrgs(false);
+  const loadOrganizationEvents = async () => {
+    setIsLoadingOrganizationEvents(true);
+    const { data, error } = await selectOrganizationEvents({ limit: 200 });
+    setIsLoadingOrganizationEvents(false);
 
     if (error) {
-      console.error('企画組織一覧の取得に失敗:', error);
+      console.error('団体別企画一覧の取得に失敗:', error);
       return;
     }
 
-    setEventOrganizations(data || []);
+    setOrganizationEvents(data || []);
+  };
+
+  /**
+   * 団体候補検索を更新する
+   * @param {string} value - 入力値
+   * @returns {void}
+   */
+  const handleOrganizationEventSearchChange = (value) => {
+    setOrganizationEventSearch(value);
+    setIsOrganizationEventDropdownOpen(true);
+  };
+
+  /**
+   * 団体を選択して企画一覧を絞り込む
+   * @param {string} organizationName - 団体名
+   * @returns {void}
+   */
+  const handleOrganizationEventSelect = (organizationName) => {
+    setSelectedOrganizationEvent(organizationName);
+    setOrganizationEventSearch('');
+    setIsOrganizationEventDropdownOpen(false);
+  };
+
+  /**
+   * 団体選択を解除して全件表示に戻す
+   * @returns {void}
+   */
+  const handleOrganizationEventReset = () => {
+    setSelectedOrganizationEvent(ALL_ORGANIZATION_EVENT_FILTER);
+    setOrganizationEventSearch('');
+    setIsOrganizationEventDropdownOpen(false);
   };
 
   /**
@@ -810,8 +896,25 @@ const Item12Screen = ({ navigation, route }) => {
     refreshPatrolCheckData();
     loadRanking();
     loadMyHistory();
-    loadEventOrganizations();
+    loadOrganizationEvents();
   }, [user?.id]);
+
+  useEffect(() => {
+    if (selectedOrganizationEvent === ALL_ORGANIZATION_EVENT_FILTER) {
+      return;
+    }
+
+    /** 再取得後も選択中団体が存在するか確認 */
+    const hasSelectedOrganization = organizationEventOptions.some(
+      (option) => option.value === selectedOrganizationEvent
+    );
+
+    if (!hasSelectedOrganization) {
+      setSelectedOrganizationEvent(ALL_ORGANIZATION_EVENT_FILTER);
+      setOrganizationEventSearch('');
+      setIsOrganizationEventDropdownOpen(false);
+    }
+  }, [organizationEventOptions, selectedOrganizationEvent]);
 
   useEffect(() => {
     /** 30秒ごとに自動更新（他者が受諾したタスクを即座に非表示にする） */
@@ -1046,22 +1149,23 @@ const Item12Screen = ({ navigation, route }) => {
                 <Text style={[eventOrgStyles.title, { color: theme.text }]}>企画一覧</Text>
                 <Pressable
                   style={[eventOrgStyles.refreshButton, { borderColor: theme.border }]}
-                  onPress={loadEventOrganizations}
+                  onPress={loadOrganizationEvents}
                 >
                   <Text style={[eventOrgStyles.refreshButtonText, { color: theme.textSecondary }]}>
-                    {isLoadingEventOrgs ? '読込中...' : '更新'}
+                    {isLoadingOrganizationEvents ? '読込中...' : '更新'}
                   </Text>
                 </Pressable>
               </View>
               <Text style={[eventOrgStyles.helpText, { color: theme.textSecondary }]}>
-                企画の運営チーム一覧です。名前で検索できます。
+                organizations_events の団体別企画一覧です。団体を選ぶと対象企画だけ確認できます。
               </Text>
 
-              {/* 検索バー */}
+              {/* 団体候補検索バー */}
               <TextInput
-                value={eventOrgSearch}
-                onChangeText={setEventOrgSearch}
-                placeholder="企画名・チーム名で検索..."
+                value={organizationEventSearch}
+                onChangeText={handleOrganizationEventSearchChange}
+                onFocus={() => setIsOrganizationEventDropdownOpen(true)}
+                placeholder="団体名を入力して候補を絞り込み..."
                 placeholderTextColor={theme.textSecondary}
                 style={[
                   eventOrgStyles.searchInput,
@@ -1069,45 +1173,120 @@ const Item12Screen = ({ navigation, route }) => {
                 ]}
               />
 
-              {isLoadingEventOrgs ? (
+              <View
+                style={[
+                  eventOrgStyles.selectedSummaryCard,
+                  { borderColor: theme.border, backgroundColor: theme.background },
+                ]}
+              >
+                <View style={eventOrgStyles.selectedSummaryContent}>
+                  <Text style={[eventOrgStyles.selectedSummaryLabel, { color: theme.textSecondary }]}>
+                    選択中の団体
+                  </Text>
+                  <Text style={[eventOrgStyles.selectedSummaryValue, { color: theme.text }]}>
+                    {selectedOrganizationEventLabel}
+                  </Text>
+                </View>
+                <Pressable
+                  style={[eventOrgStyles.inlineActionButton, { borderColor: theme.border }]}
+                  onPress={handleOrganizationEventReset}
+                >
+                  <Text style={[eventOrgStyles.inlineActionButtonText, { color: theme.textSecondary }]}>
+                    すべて表示
+                  </Text>
+                </Pressable>
+              </View>
+
+              {isOrganizationEventDropdownOpen ? (
+                <View
+                  style={[
+                    eventOrgStyles.dropdownOptionList,
+                    { borderColor: theme.border, backgroundColor: theme.background },
+                  ]}
+                >
+                  {filteredOrganizationEventOptions.length === 0 ? (
+                    <Text style={[eventOrgStyles.helpText, { color: theme.textSecondary }]}>
+                      該当する団体候補がありません
+                    </Text>
+                  ) : (
+                    <>
+                      {visibleOrganizationEventOptions.map((option) => {
+                        /** 選択中団体かどうか */
+                        const isSelected = option.value === selectedOrganizationEvent;
+
+                        return (
+                          <Pressable
+                            key={option.value}
+                            onPress={() => handleOrganizationEventSelect(option.value)}
+                            style={[
+                              eventOrgStyles.dropdownOptionItem,
+                              {
+                                borderColor: theme.border,
+                                backgroundColor: isSelected ? theme.primary : theme.surface,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                eventOrgStyles.dropdownOptionTitle,
+                                { color: isSelected ? '#FFFFFF' : theme.text },
+                              ]}
+                            >
+                              {option.label}
+                            </Text>
+                            <Text
+                              style={[
+                                eventOrgStyles.dropdownOptionMeta,
+                                { color: isSelected ? 'rgba(255,255,255,0.86)' : theme.textSecondary },
+                              ]}
+                            >
+                              企画 {option.count} 件
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+
+                      {filteredOrganizationEventOptions.length > visibleOrganizationEventOptions.length ? (
+                        <Text style={[eventOrgStyles.dropdownOverflowText, { color: theme.textSecondary }]}>
+                          ほか {filteredOrganizationEventOptions.length - visibleOrganizationEventOptions.length} 件あります。さらに入力すると絞り込めます。
+                        </Text>
+                      ) : null}
+                    </>
+                  )}
+                </View>
+              ) : null}
+
+              {isLoadingOrganizationEvents ? (
                 <Text style={[eventOrgStyles.emptyText, { color: theme.textSecondary }]}>読み込み中...</Text>
-              ) : eventOrganizations.length === 0 ? (
+              ) : organizationEvents.length === 0 ? (
                 <Text style={[eventOrgStyles.emptyText, { color: theme.textSecondary }]}>
-                  企画組織データがありません
+                  団体別企画データがありません
+                </Text>
+              ) : filteredOrganizationEvents.length === 0 ? (
+                <Text style={[eventOrgStyles.emptyText, { color: theme.textSecondary }]}>
+                  該当する企画がありません
                 </Text>
               ) : (
-                (() => {
-                  /** 検索キーワードで絞り込んだ企画一覧 */
-                  const keyword = eventOrgSearch.trim().toLowerCase();
-                  const filtered = keyword
-                    ? eventOrganizations.filter((org) =>
-                        (org.name || '').toLowerCase().includes(keyword)
-                      )
-                    : eventOrganizations;
-
-                  if (filtered.length === 0) {
-                    return (
-                      <Text style={[eventOrgStyles.emptyText, { color: theme.textSecondary }]}>
-                        該当する企画がありません
+                <View style={eventOrgStyles.list}>
+                  {filteredOrganizationEvents.map((item) => (
+                    <View
+                      key={`${item.id}-${item.organization_name}-${item.event_name}`}
+                      style={[eventOrgStyles.item, { borderColor: theme.border, backgroundColor: theme.background }]}
+                    >
+                      <Text style={[eventOrgStyles.itemMeta, { color: theme.textSecondary }]}>
+                        {item.organization_name || '団体名未設定'}
                       </Text>
-                    );
-                  }
-
-                  return (
-                    <View style={eventOrgStyles.list}>
-                      {filtered.map((org) => (
-                        <View
-                          key={org.id}
-                          style={[eventOrgStyles.item, { borderColor: theme.border, backgroundColor: theme.background }]}
-                        >
-                          <Text style={[eventOrgStyles.itemName, { color: theme.text }]}>
-                            {org.name}
-                          </Text>
-                        </View>
-                      ))}
+                      <Text style={[eventOrgStyles.itemName, { color: theme.text }]}>
+                        {item.event_name || '企画名未設定'}
+                      </Text>
+                      {item.sheet_name ? (
+                        <Text style={[eventOrgStyles.itemSubText, { color: theme.textSecondary }]}>
+                          シート: {item.sheet_name}
+                        </Text>
+                      ) : null}
                     </View>
-                  );
-                })()
+                  ))}
+                </View>
               )}
             </View>
           )}
@@ -1263,6 +1442,63 @@ const eventOrgStyles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
   },
+  selectedSummaryCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  selectedSummaryContent: {
+    flex: 1,
+  },
+  selectedSummaryLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  selectedSummaryValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  inlineActionButton: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  inlineActionButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  dropdownOptionList: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 8,
+    gap: 8,
+  },
+  dropdownOptionItem: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  dropdownOptionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  dropdownOptionMeta: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  dropdownOverflowText: {
+    fontSize: 12,
+    lineHeight: 18,
+    paddingHorizontal: 4,
+  },
   emptyText: {
     fontSize: 13,
     textAlign: 'center',
@@ -1280,6 +1516,14 @@ const eventOrgStyles = StyleSheet.create({
   itemName: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  itemMeta: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  itemSubText: {
+    fontSize: 12,
+    marginTop: 4,
   },
 });
 

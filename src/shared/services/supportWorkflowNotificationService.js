@@ -3,7 +3,7 @@
  * item12〜16 の業務イベントを通知サービスへ橋渡しする
  */
 
-import { getRoles, sendNotificationToRoles } from './notificationService.js';
+import { getRoles, getUserProfilesByIds, sendNotificationToRoles } from './notificationService.js';
 
 const ROLE_NAME_TARGETS = {
   hq: ['企画管理部', '管理者'],
@@ -16,7 +16,7 @@ const TICKET_TYPE_LABELS = {
   emergency: '緊急連絡',
   rule_question: 'ルール問い合わせ',
   layout_change: '配置図変更',
-  distribution_change: '配布ルール変更',
+  distribution_change: '商品配布基準変更',
   damage_report: '物品破損報告',
   key_preapply: '鍵事前申請',
   start_report: '企画開始報告',
@@ -122,18 +122,101 @@ const getRoleNamesForTicket = (ticket) => {
   return ROLE_NAME_TARGETS.hq;
 };
 
-const buildTicketNotification = (ticket) => {
+/**
+ * ユーザープロフィール配列を user_id キーのマップへ変換する
+ * @param {Array<Object>} profiles - プロフィール一覧
+ * @returns {Object<string, Object>} user_id -> profile
+ */
+const buildProfileMap = (profiles) => {
+  return (profiles || []).reduce((accumulator, profile) => {
+    /** プロフィールのユーザーID */
+    const userId = normalizeText(profile?.user_id);
+    if (userId) {
+      accumulator[userId] = profile;
+    }
+    return accumulator;
+  }, {});
+};
+
+/**
+ * 指定ユーザーのプロフィールマップを取得する
+ * @param {Array<string|null|undefined>} userIds - ユーザーID一覧
+ * @returns {Promise<Object<string, Object>>} user_id -> profile
+ */
+const loadProfileMap = async (userIds) => {
+  /** 正規化済みユーザーID一覧 */
+  const normalizedUserIds = unique((userIds || []).map(normalizeText));
+  if (normalizedUserIds.length === 0) {
+    return {};
+  }
+
+  /** プロフィール取得結果 */
+  const { profiles, error } = await getUserProfilesByIds(normalizedUserIds);
+  if (error) {
+    return {};
+  }
+
+  return buildProfileMap(profiles);
+};
+
+/**
+ * 連絡案件通知に必要な文脈情報を解決する
+ * @param {Object} ticket - 連絡案件
+ * @param {string|null} [senderUserId=null] - 送信者ユーザーID
+ * @returns {Promise<Object>} 通知文脈
+ */
+const resolveTicketContext = async (ticket, senderUserId = null) => {
+  /** 依頼者ユーザーID */
+  const requesterUserId = normalizeText(ticket?.created_by) || normalizeText(senderUserId);
+  /** プロフィールマップ */
+  const profileMap = await loadProfileMap([requesterUserId]);
+  /** 依頼者プロフィール */
+  const requesterProfile = profileMap[requesterUserId] || null;
+  /** 団体名 */
+  const organizationName =
+    normalizeText(ticket?.organizations?.name) ||
+    normalizeText(requesterProfile?.organization) ||
+    '団体未設定';
+  /** 依頼者名 */
+  const requesterName = normalizeText(requesterProfile?.name) || '依頼者未設定';
+  /** 企画名 */
+  const eventName = normalizeText(ticket?.event_name) || '企画名未設定';
+  /** 場所 */
+  const eventLocation = normalizeText(ticket?.event_location) || '場所未設定';
+  /** 件名 */
+  const ticketTitle = normalizeText(ticket?.title) || '新規連絡';
+
+  return {
+    organizationName,
+    requesterName,
+    eventName,
+    eventLocation,
+    ticketTitle,
+  };
+};
+
+/**
+ * 新規連絡案件通知のタイトル・本文を返す
+ * @param {Object} ticket - 連絡案件
+ * @param {string|null} [senderUserId=null] - 送信者ユーザーID
+ * @returns {Promise<{title: string, body: string, context: Object}>} 通知内容
+ */
+const buildTicketNotification = async (ticket, senderUserId = null) => {
   const ticketType = normalizeText(ticket?.ticket_type);
   const ticketTypeLabel = TICKET_TYPE_LABELS[ticketType] || '連絡案件';
-  const ticketTitle = normalizeText(ticket?.title) || '新規連絡';
-  const eventName = normalizeText(ticket?.event_name) || '企画名未設定';
-  const eventLocation = normalizeText(ticket?.event_location) || '場所未設定';
+  const context = await resolveTicketContext(ticket, senderUserId);
   const description = normalizeText(ticket?.description);
   const descriptionPreview = description ? description.slice(0, 80) : '詳細なし';
 
   return {
-    title: `[${ticketTypeLabel}] ${ticketTitle}`,
-    body: `${eventName} / ${eventLocation}\n${descriptionPreview}`,
+    title: `[${ticketTypeLabel}] ${context.organizationName} / ${context.eventName}`,
+    body: [
+      `依頼者: ${context.requesterName}`,
+      `場所: ${context.eventLocation}`,
+      `件名: ${context.ticketTitle}`,
+      `内容: ${descriptionPreview || context.ticketTitle}`,
+    ].join('\n'),
+    context,
   };
 };
 
@@ -150,7 +233,7 @@ export const notifySupportTicketCreated = async ({ ticket, senderUserId = null }
   }
 
   const roleNames = getRoleNamesForTicket(ticket);
-  const { title, body } = buildTicketNotification(ticket);
+  const { title, body, context } = await buildTicketNotification(ticket, senderUserId);
   const metadata = {
     source: 'support_ticket',
     /** type は通知ナビゲーション（notificationNavigation.js）で遷移先解決に使用する */
@@ -159,6 +242,10 @@ export const notifySupportTicketCreated = async ({ ticket, senderUserId = null }
     ticket_no: ticket.ticket_no || null,
     ticket_type: ticket.ticket_type || null,
     notify_target: ticket.notify_target || null,
+    organization_name: context.organizationName,
+    requester_name: context.requesterName,
+    event_name: context.eventName,
+    event_location: context.eventLocation,
   };
 
   return sendNotificationToRoleNames({

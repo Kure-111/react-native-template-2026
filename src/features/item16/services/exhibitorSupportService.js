@@ -14,6 +14,9 @@ import { notifySupportTicketCreated } from '../../../shared/services/supportWork
 
 /** 連絡案件テーブル名 */
 const SUPPORT_TICKETS_TABLE = 'support_tickets';
+/** 通知に必要な連絡案件取得カラム */
+const SUPPORT_TICKET_NOTIFICATION_COLUMNS =
+  'id,ticket_no,ticket_type,ticket_status,priority,title,description,event_id,event_name,event_location,created_by,org_id,notify_target,metadata,created_at,updated_at,organizations(id,name)';
 
 /**
  * 受付番号を生成する
@@ -318,7 +321,7 @@ const createSupportTicket = async (payload) => {
     const { data, error } = await getSupabaseClient()
       .from(SUPPORT_TICKETS_TABLE)
       .insert(input)
-      .select('*')
+      .select(SUPPORT_TICKET_NOTIFICATION_COLUMNS)
       .single();
 
     if (error) {
