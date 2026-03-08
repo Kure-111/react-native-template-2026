@@ -114,7 +114,7 @@ export const selectTicketDistributions = async () => {
 
   /** 企画一覧取得結果 */
   const { data: eventList, error: eventError } = await supabase
-    .from('events')
+    .from('events_numbered_ticket')
     .select(
       `
       id,
@@ -122,22 +122,7 @@ export const selectTicketDistributions = async () => {
       location,
       type,
       capacity_per_slot,
-      estimated_wait_minutes,
-      event_dates (
-        id,
-        date,
-        status,
-        next_ticket_number,
-        updated_at,
-        time_slots (
-          id,
-          start_time,
-          end_time,
-          status,
-          current_count,
-          updated_at
-        )
-      )
+      estimated_wait_minutes
     `
     )
     .order('name', { ascending: true });
@@ -146,11 +131,80 @@ export const selectTicketDistributions = async () => {
     throw eventError;
   }
 
+  /** 企画ID一覧 */
+  const eventIdList = (eventList || [])
+    .map((event) => event.id)
+    .filter(Boolean);
+
+  /** 開催日一覧 */
+  const { data: eventDateList, error: eventDateError } = eventIdList.length
+    ? await supabase
+        .from('event_dates')
+        .select(
+          `
+          id,
+          event_id,
+          date,
+          status,
+          next_ticket_number,
+          updated_at
+        `
+        )
+        .in('event_id', eventIdList)
+    : { data: [], error: null };
+
+  if (eventDateError) {
+    throw eventDateError;
+  }
+
+  /** 開催日マップ */
+  const eventDateMap = {};
+
+  (eventDateList || []).forEach((eventDate) => {
+    if (!eventDateMap[eventDate.event_id]) {
+      eventDateMap[eventDate.event_id] = [];
+    }
+
+    eventDateMap[eventDate.event_id].push(eventDate);
+  });
+
   /** 開催日ID一覧 */
-  const eventDateIdList = (eventList || [])
-    .flatMap((event) => event.event_dates || [])
+  const eventDateIdList = (eventDateList || [])
     .map((eventDate) => eventDate.id)
     .filter(Boolean);
+
+  /** 時間枠一覧 */
+  const { data: timeSlotList, error: timeSlotError } = eventDateIdList.length
+    ? await supabase
+        .from('time_slots')
+        .select(
+          `
+          id,
+          event_date_id,
+          start_time,
+          end_time,
+          status,
+          current_count,
+          updated_at
+        `
+        )
+        .in('event_date_id', eventDateIdList)
+    : { data: [], error: null };
+
+  if (timeSlotError) {
+    throw timeSlotError;
+  }
+
+  /** 時間枠マップ */
+  const timeSlotMap = {};
+
+  (timeSlotList || []).forEach((timeSlot) => {
+    if (!timeSlotMap[timeSlot.event_date_id]) {
+      timeSlotMap[timeSlot.event_date_id] = [];
+    }
+
+    timeSlotMap[timeSlot.event_date_id].push(timeSlot);
+  });
 
   /** 呼び出し状態一覧 */
   const { data: callStatusList, error: callStatusError } = eventDateIdList.length
@@ -177,7 +231,9 @@ export const selectTicketDistributions = async () => {
   /** 配布状況一覧 */
   const distributionList = (eventList || []).flatMap((event) => {
     /** 開催日一覧 */
-    const eventDateList = event.event_dates || [];
+    const eventDateList = (eventDateMap[event.id] || [])
+      .slice()
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
     return eventDateList.map((eventDate) => {
       /** 呼び出し状態キー */
@@ -213,7 +269,7 @@ export const selectTicketDistributions = async () => {
       }
 
       /** 時間枠一覧 */
-      const timeSlotList = (eventDate.time_slots || [])
+      const timeSlotList = (timeSlotMap[eventDate.id] || [])
         .slice()
         .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
         .map((timeSlot) => createTimeSlotData({ event, timeSlot }));

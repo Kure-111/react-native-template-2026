@@ -3,16 +3,13 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { DEFAULT_REFRESH_INTERVAL } from '../constants';
 import { selectTicketDistributions } from '../services/ticketDistributionService';
 
 /**
  * 配布率確認用のデータ取得フック
- * @param {Object} [params] - パラメータ
- * @param {number} [params.refreshInterval] - 自動更新間隔
  * @returns {Object} 取得結果
  */
-const useTicketDistributionData = ({ refreshInterval } = {}) => {
+const useTicketDistributionData = () => {
   /** 配布状況一覧 */
   const [distributionList, setDistributionList] = useState([]);
   /** ローディング状態 */
@@ -22,8 +19,6 @@ const useTicketDistributionData = ({ refreshInterval } = {}) => {
   /** 最終更新時刻 */
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
 
-  /** 更新間隔 */
-  const intervalMs = refreshInterval ?? DEFAULT_REFRESH_INTERVAL;
 
   /**
    * データを再取得する
@@ -57,7 +52,7 @@ const useTicketDistributionData = ({ refreshInterval } = {}) => {
     return () => {
       isMounted = false;
     };
-  }, [fetchDistributions, intervalMs]);
+  }, [fetchDistributions]);
 
   return {
     distributionList,
