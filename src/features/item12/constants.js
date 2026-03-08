@@ -23,8 +23,8 @@ export const PATROL_TAB_TYPES = {
   TASKS: 'tasks',
   /** 巡回チェック記録・未巡回アラート */
   CHECK: 'check',
-  /** 完了ランキング・企画評価 */
-  RANKING: 'ranking',
+  /** 企画評価 */
+  EVALUATION: 'evaluation',
   /** 自分の対応履歴 */
   HISTORY: 'history',
   /** 企画一覧（organizations_events） */
@@ -44,9 +44,9 @@ export const PATROL_TABS = [
     icon: '📍',
   },
   {
-    key: PATROL_TAB_TYPES.RANKING,
-    label: 'ランキング',
-    icon: '🏆',
+    key: PATROL_TAB_TYPES.EVALUATION,
+    label: '評価',
+    icon: '📝',
   },
   {
     key: PATROL_TAB_TYPES.HISTORY,

@@ -28,7 +28,6 @@ import {
   PATROL_RESULT_CODES,
   PATROL_TASK_STATUSES,
   PATROL_TASK_TYPES,
-  selectPatrolRankingData,
 } from '../../../services/supabase/patrolTaskService';
 import { createTicketMessage, listTicketMessages } from '../../../services/supabase/supportTicketService';
 import {
@@ -54,7 +53,6 @@ import PatrolTaskDetail from '../components/PatrolTaskDetail';
 import PatrolCheckForm from '../components/PatrolCheckForm';
 import UnvisitedAlertList from '../components/UnvisitedAlertList';
 import PatrolEvaluationForm from '../components/PatrolEvaluationForm';
-import PatrolRankingCard from '../components/PatrolRankingCard';
 import ToastMessage from '../../../shared/components/ToastMessage';
 import OfflineBanner from '../../../shared/components/OfflineBanner';
 import { useManagedPushSubscription } from '../../notifications/hooks/useManagedPushSubscription';
@@ -206,12 +204,6 @@ const Item12Screen = ({ navigation, route }) => {
   const [isSubmittingEvaluation, setIsSubmittingEvaluation] = useState(false);
   const [myEvaluationChecks, setMyEvaluationChecks] = useState([]);
   const [isLoadingMyEvaluationChecks, setIsLoadingMyEvaluationChecks] = useState(false);
-
-  /* ---- ランキング関連 ---- */
-  /** 完了件数ランキングデータ */
-  const [rankingData, setRankingData] = useState([]);
-  /** ランキング読み込み中フラグ */
-  const [isLoadingRanking, setIsLoadingRanking] = useState(false);
 
   /* ---- 自分の履歴関連 ---- */
   /** 自分が対応した過去タスク（完了・取消）一覧 */
@@ -490,23 +482,6 @@ const Item12Screen = ({ navigation, route }) => {
     }
 
     setMyEvaluationChecks(data || []);
-  };
-
-  /**
-   * 完了件数ランキングを取得
-   * @returns {Promise<void>} 取得処理
-   */
-  const loadRanking = async () => {
-    setIsLoadingRanking(true);
-    const { data, error } = await selectPatrolRankingData({ limit: 500 });
-    setIsLoadingRanking(false);
-
-    if (error) {
-      console.error('ランキング取得に失敗:', error);
-      return;
-    }
-
-    setRankingData(data || []);
   };
 
   /**
@@ -894,7 +869,6 @@ const Item12Screen = ({ navigation, route }) => {
   useEffect(() => {
     loadTasks();
     refreshPatrolCheckData();
-    loadRanking();
     loadMyHistory();
     loadOrganizationEvents();
   }, [user?.id]);
@@ -1047,16 +1021,9 @@ const Item12Screen = ({ navigation, route }) => {
             </>
           )}
 
-          {/* ランキングタブ */}
-          {activeTab === PATROL_TAB_TYPES.RANKING && (
+          {/* 評価タブ */}
+          {activeTab === PATROL_TAB_TYPES.EVALUATION && (
             <>
-              <PatrolRankingCard
-                theme={theme}
-                rankingData={rankingData}
-                isLoading={isLoadingRanking}
-                onRefresh={loadRanking}
-              />
-
               <PatrolEvaluationForm
                 theme={theme}
                 selectedTask={selectedTask}
