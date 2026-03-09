@@ -85,7 +85,7 @@ const isAuthorizedSender = async (supabase: ReturnType<typeof createServiceClien
     .from('user_roles')
     .select('roles!inner(name)')
     .eq('user_id', userId)
-    .in('roles.name', ['管理者', '祭実長', '部長', '事務部'])
+    .in('roles.name', ['管理者', '祭実長', '部長', '事務部', '実長', '渉外部'])
     .limit(1);
 
   if (error) {
@@ -199,6 +199,8 @@ const getNavigateTo = (
       return { screen: 'JimuShift', tab: 'requestHistory' };
     case 'shift_reminder':
       return { screen: 'JimuShift', tab: 'myShift' };
+    case 'missing_child':
+      return { screen: 'Item5', tab: 'manage' };
     default:
       return null;
   }

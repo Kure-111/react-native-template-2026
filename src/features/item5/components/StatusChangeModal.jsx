@@ -45,10 +45,10 @@ const StatusChangeModal = ({ isVisible, child, onSubmit, onClose, isSubmitting =
   /** バリデーションエラー */
   const [validationError, setValidationError] = useState('');
 
-  /* モーダル表示時に現在値で初期化する */
+  /* モーダル表示時に現在値で初期化する（ステータスは未選択状態にして必須選択とする） */
   useEffect(() => {
     if (child && isVisible) {
-      setSelectedStatus(child.status);
+      setSelectedStatus('');
       setComment(child.admin_comment || '');
       setShelterTent(child.shelter_tent);
       setPickupLocation(child.pickup_location || '');
@@ -95,6 +95,12 @@ const StatusChangeModal = ({ isVisible, child, onSubmit, onClose, isSubmitting =
    * 送信ボタン押下時のハンドラ
    */
   const handleSubmit = () => {
+    /* ステータスは必須選択 */
+    if (!selectedStatus) {
+      setValidationError('ステータスを選択してください。');
+      return;
+    }
+
     /* 移動不可のままの場合は迎え場所が必須 */
     if (isCurrentlyUrgent && !pickupLocation.trim()) {
       setValidationError('「移動不可」の場合は迎え場所を入力してください。');
@@ -157,7 +163,7 @@ const StatusChangeModal = ({ isVisible, child, onSubmit, onClose, isSubmitting =
             </View>
 
             {/* 名前登録（管理ロールが入力） */}
-            <Text style={[styles.sectionLabel, { color: theme.text }]}>名前（任意）</Text>
+            <Text style={[styles.sectionLabel, { color: theme.text, marginBottom: 8 }]}>名前（任意）</Text>
             <TextInput
               style={[styles.nameInput, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]}
               value={name}
@@ -166,8 +172,16 @@ const StatusChangeModal = ({ isVisible, child, onSubmit, onClose, isSubmitting =
               placeholderTextColor={theme.textSecondary}
             />
 
-            {/* ステータス選択 */}
-            <Text style={[styles.sectionLabel, { color: theme.text }]}>ステータス</Text>
+            {/* ステータス選択（必須） */}
+            <View style={styles.sectionLabelRow}>
+              <Text style={[styles.sectionLabel, { color: theme.text }]}>ステータス</Text>
+              <Text style={styles.requiredBadge}>必須</Text>
+            </View>
+            {!selectedStatus && (
+              <Text style={[styles.statusHint, { color: theme.textSecondary }]}>
+                いずれかを選択してください
+              </Text>
+            )}
             <View style={styles.statusContainer}>
               {ADMIN_CHANGEABLE_STATUSES.map((status) => {
                 /** 選択中かどうか */
@@ -198,7 +212,7 @@ const StatusChangeModal = ({ isVisible, child, onSubmit, onClose, isSubmitting =
             </View>
 
             {/* コメント */}
-            <Text style={[styles.sectionLabel, { color: theme.text }]}>コメント（任意）</Text>
+            <Text style={[styles.sectionLabel, { color: theme.text, marginBottom: 8 }]}>コメント（任意）</Text>
             <TextInput
               style={[styles.commentInput, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]}
               value={comment}
@@ -217,7 +231,7 @@ const StatusChangeModal = ({ isVisible, child, onSubmit, onClose, isSubmitting =
                   <UrgencyBadge label="保護場所の編集" />
                 </View>
 
-                <Text style={[styles.sectionLabel, { color: theme.text }]}>保護テント</Text>
+                <Text style={[styles.sectionLabel, { color: '#212121', marginBottom: 8 }]}>保護テント</Text>
                 <View style={styles.shelterContainer}>
                   {SHELTER_TENT_OPTIONS.map((option) => {
                     /** 選択中かどうか */
@@ -238,7 +252,7 @@ const StatusChangeModal = ({ isVisible, child, onSubmit, onClose, isSubmitting =
                       >
                         <Text style={[
                           styles.shelterButtonText,
-                          { color: theme.textSecondary },
+                          { color: '#555555' },
                           isSelected && { color: '#FFFFFF', fontWeight: '600' },
                         ]}>
                           {option.label}
@@ -251,15 +265,15 @@ const StatusChangeModal = ({ isVisible, child, onSubmit, onClose, isSubmitting =
                 {/* 迎え場所（移動不可のままの場合） */}
                 {isCurrentlyUrgent && (
                   <View style={styles.pickupEditContainer}>
-                    <Text style={[styles.sectionLabel, { color: URGENCY_CARD_BORDER_COLOR }]}>
+                    <Text style={[styles.sectionLabel, { color: URGENCY_CARD_BORDER_COLOR, marginBottom: 8 }]}>
                       迎えに来て欲しい場所 *
                     </Text>
                     <TextInput
-                      style={[styles.pickupInput, { backgroundColor: '#FFF3F3', borderColor: URGENCY_CARD_BORDER_COLOR, color: theme.text }]}
+                      style={[styles.pickupInput, { backgroundColor: '#FFF3F3', borderColor: URGENCY_CARD_BORDER_COLOR, color: '#212121' }]}
                       value={pickupLocation}
                       onChangeText={setPickupLocation}
                       placeholder="例: A館1階エレベーター前"
-                      placeholderTextColor={theme.textSecondary}
+                      placeholderTextColor="#999999"
                     />
                   </View>
                 )}
@@ -283,9 +297,9 @@ const StatusChangeModal = ({ isVisible, child, onSubmit, onClose, isSubmitting =
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.submitButton, { backgroundColor: theme.primary, opacity: isSubmitting ? 0.6 : 1 }]}
+                style={[styles.submitButton, { backgroundColor: theme.primary, opacity: (isSubmitting || !selectedStatus) ? 0.6 : 1 }]}
                 onPress={handleSubmit}
-                disabled={isSubmitting}
+                disabled={isSubmitting || !selectedStatus}
                 activeOpacity={0.7}
               >
                 <Text style={styles.submitButtonText}>
@@ -307,7 +321,10 @@ const styles = StyleSheet.create({
   summaryBox: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 20 },
   summaryName: { fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
   summaryDetail: { fontSize: 13, marginBottom: 2 },
-  sectionLabel: { fontSize: 14, fontWeight: '600', marginBottom: 8 },
+  sectionLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  sectionLabel: { fontSize: 14, fontWeight: '600' },
+  requiredBadge: { fontSize: 11, fontWeight: '600', color: '#FFFFFF', backgroundColor: '#F44336', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  statusHint: { fontSize: 12, marginBottom: 8 },
   nameInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 20 },
   statusContainer: { flexDirection: 'row', gap: 8, marginBottom: 20, flexWrap: 'wrap' },
   statusButton: { borderWidth: 2, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 10 },

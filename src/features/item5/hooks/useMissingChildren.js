@@ -12,8 +12,8 @@ import {
   deleteAllMissingChildren,
   selectMissingChildrenStatusCounts,
 } from '../services/missingChildService';
-import { sendNotificationToRoles } from '../../../shared/services/notificationService';
-import { ADMIN_ROLE_IDS, UNABLE_TO_MOVE, SHELTER_TENT_LABELS } from '../constants';
+import { sendNotificationToRoles, sendNotificationToUser } from '../../../shared/services/notificationService';
+import { ADMIN_ROLE_IDS, UNABLE_TO_MOVE, SHELTER_TENT_LABELS, MISSING_CHILD_STATUS_LABELS } from '../constants';
 
 /**
  * 迷子情報管理フック
@@ -166,15 +166,18 @@ export const useMissingChildren = () => {
 
   /**
    * 迷子情報のステータス・コメント・保護場所・名前を更新する（管理ロール用）
+   * 移動不可の案件で未対応から変更された場合、登録者にステータス変更通知を送信する
    * @param {string} id - 迷子情報ID
    * @param {string} status - 新しいステータス
    * @param {string|null} adminComment - コメント
    * @param {string|null} shelterTent - 保護テント（変更する場合のみ）
    * @param {string|null} pickupLocation - 迎え場所（変更する場合のみ）
    * @param {string|null} name - 迷子の名前（管理ロールが登録する場合のみ）
+   * @param {Object|null} originalChild - 変更前の迷子情報（通知判定用）
+   * @param {string|null} senderUserId - 操作者のユーザーID（通知送信者）
    * @returns {Promise<boolean>} 更新成功したかどうか
    */
-  const updateStatus = useCallback(async (id, status, adminComment = null, shelterTent = null, pickupLocation = null, name = null) => {
+  const updateStatus = useCallback(async (id, status, adminComment = null, shelterTent = null, pickupLocation = null, name = null, originalChild = null, senderUserId = null) => {
     setIsLoading(true);
     setErrorMessage(null);
 
@@ -184,6 +187,41 @@ export const useMissingChildren = () => {
       setErrorMessage('ステータスの更新に失敗しました。');
       setIsLoading(false);
       return false;
+    }
+
+    /**
+     * 移動不可の案件で、未対応からステータスが変更された場合
+     * 登録者にステータス変更通知を送信する（登録者がその場で待っているため）
+     */
+    if (
+      originalChild &&
+      originalChild.shelter_tent === UNABLE_TO_MOVE &&
+      originalChild.status === 'pending' &&
+      status !== 'pending' &&
+      originalChild.reported_by
+    ) {
+      /** 新しいステータスの日本語ラベル */
+      const statusLabel = MISSING_CHILD_STATUS_LABELS[status] || status;
+      /** 通知タイトル */
+      const notifTitle = '【迷子対応】移動不可の迷子のステータスが変更されました';
+      /** 通知本文（コメントがあれば含める） */
+      const notifBody = adminComment
+        ? `発見場所「${originalChild.discovery_location}」の迷子のステータスが「${statusLabel}」に変更されました。\nコメント: ${adminComment}`
+        : `発見場所「${originalChild.discovery_location}」の迷子のステータスが「${statusLabel}」に変更されました。`;
+      /** 通知メタデータ */
+      const notifMetadata = {
+        type: 'missing_child',
+        missingChildId: id,
+        isUrgent: true,
+      };
+
+      await sendNotificationToUser(
+        originalChild.reported_by,
+        notifTitle,
+        notifBody,
+        notifMetadata,
+        senderUserId
+      );
     }
 
     setIsLoading(false);

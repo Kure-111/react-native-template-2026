@@ -151,7 +151,7 @@ const MissingChildCard = ({ child, showReporterName = false, showActionButton = 
 
       {/* 管理ロールコメント */}
       {child.admin_comment && (
-        <View style={[styles.commentBox, { backgroundColor: theme.background, borderColor: theme.border }]}>
+        <View style={[styles.commentBox, { backgroundColor: isUrgent ? '#FFFFFF' : theme.background, borderColor: isUrgent ? '#E0E0E0' : theme.border }]}>
           <Text style={[styles.commentLabel, { color: subTextColor }]}>コメント:</Text>
           <Text style={[styles.commentText, { color: textColor }]}>{child.admin_comment}</Text>
         </View>

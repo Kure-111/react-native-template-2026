@@ -189,7 +189,9 @@ const Item5Screen = ({ navigation }) => {
   const handleStatusUpdate = useCallback(async (id, status, comment, shelterTent, pickupLocation, name) => {
     setIsSubmitting(true);
 
-    const success = await updateStatus(id, status, comment, shelterTent, pickupLocation, name);
+    /** 通知判定用に変更前の迷子情報を保持 */
+    const originalChild = statusChangeTarget;
+    const success = await updateStatus(id, status, comment, shelterTent, pickupLocation, name, originalChild, userInfo?.user_id);
 
     setIsSubmitting(false);
     setIsStatusModalVisible(false);
@@ -201,7 +203,7 @@ const Item5Screen = ({ navigation }) => {
       fetchAllChildren(statusFilter);
       fetchStatusCounts();
     }
-  }, [updateStatus, fetchAllChildren, fetchStatusCounts, statusFilter]);
+  }, [updateStatus, fetchAllChildren, fetchStatusCounts, statusFilter, statusChangeTarget, userInfo?.user_id]);
 
   /**
    * 全データ削除時のハンドラ
