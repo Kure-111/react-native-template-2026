@@ -1,6 +1,6 @@
 /**
- * ”»é¢
- * ©Ÿèƒ½ã®ãƒ¡ã‚¤ãƒ³ç”»é¢
+ * 項目3画面
+ * 項目3機能のメイン画面
  */
 
 import React, { useMemo, useState } from 'react';
@@ -21,57 +21,48 @@ import {
   SCREEN_LABELS,
 } from '../constants';
 
-/** ãƒ–ãƒ¬ãƒ¼ã‚¯ãƒã‚¤ãƒ³ãƒˆï¼ˆã‚¹ãƒžãƒ›/PCåˆ‡ã‚Šæ›¿ãˆï¼‰ */
+/** ブレークポイント（スマホ/PC切り替え） */
 const MOBILE_BREAKPOINT = 768;
 
-/** ãƒ•ã‚£ãƒ«ã‚¿ç¨®åˆ¥ */
+/** フィルタ種別 */
 const FILTER_TYPES = {
-  /** å…¨ã¦ */
+  /** 全て */
   ALL: 'all',
-  /** é †æ¬¡æ¡ˆå†…åˆ¶ */
+  /** 順次案内制 */
   SEQUENTIAL: DISTRIBUTION_TYPES.SEQUENTIAL,
-  /** æ™‚é–“æž å®šå“¡åˆ¶ */
+  /** 時間枠定員制 */
   TIME_SLOT: DISTRIBUTION_TYPES.TIME_SLOT,
 };
 
-import React from 'react';
-import { View, StyleSheet, SafeAreaView } from 'react-native';
-import { useTheme } from '../../../shared/hooks/useTheme';
-import { ThemedHeader } from '../../../shared/components/ThemedHeader';
-import PlaceholderContent from '../../../shared/components/PlaceholderContent';
-
-/** ç”»é¢å */
-const SCREEN_NAME = 'é …ç›®3';
-
 /**
- * ”»é¢ã‚³ãƒ³ãƒãƒ¼ãƒãƒ³ãƒˆ
- * @param {Object} props - ã‚³ãƒ³ãƒãƒ¼ãƒãƒ³ãƒˆãƒ—ãƒ­ãƒ‘ãƒ†ã‚£
- * @param {Object} props.navigation - React Navigationã®navigationã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆ
- * @returns {JSX.Element} ”»é¢
+ * 項目3画面コンポーネント
+ * @param {Object} props - コンポーネントプロパティ
+ * @param {Object} props.navigation - React Navigationのnavigationオブジェクト
+ * @returns {JSX.Element} 項目3画面
  */
 const Item3Screen = ({ navigation }) => {
-  /** ç”»é¢ã‚µã‚¤ã‚ºå–å¾— */
+  /** 画面サイズ取得 */
   const { width } = useWindowDimensions();
-  /** ãƒ¢ãƒã‚¤ãƒ«åˆ¤å®š */
+  /** モバイル判定 */
   const isMobile = width < MOBILE_BREAKPOINT;
-  /** ãƒ•ã‚£ãƒ«ã‚¿çŠ¶æ…‹ */
+  /** フィルタ状態 */
   const [selectedFilter, setSelectedFilter] = useState(FILTER_TYPES.ALL);
-  /** æ—¥ä»˜æ¤œç´¢æ–‡å­—åˆ— */
+  /** 日付検索文字列 */
   const [dateQuery, setDateQuery] = useState('');
-  /** æ—¥ä»˜ãƒ—ãƒ«ãƒ€ã‚¦ãƒ³è¡¨ç¤º */
+  /** 日付プルダウン表示 */
   const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
-  /** é–‹å§‹æ™‚é–“ãƒ•ã‚£ãƒ«ã‚¿ */
+  /** 開始時間フィルタ */
   const [selectedStartTime, setSelectedStartTime] = useState('');
-  /** é–‹å§‹æ™‚é–“ãƒ—ãƒ«ãƒ€ã‚¦ãƒ³è¡¨ç¤º */
+  /** 開始時間プルダウン表示 */
   const [isTimeDropdownOpen, setIsTimeDropdownOpen] = useState(false);
 
-  /** æ—¥ä»˜ãƒ—ãƒ«ãƒ€ã‚¦ãƒ³å€™è£œ */
+  /** 日付プルダウン候補 */
   const dateOptions = [
-    { value: '2026-11-02', label: '11/2(æœˆ)' },
-    { value: '2026-11-03', label: '11/3(ç«)' },
-    { value: '2026-11-04', label: '11/4(æ°´)' },
+    { value: '2026-11-02', label: '11/2(月)' },
+    { value: '2026-11-03', label: '11/3(火)' },
+    { value: '2026-11-04', label: '11/4(水)' },
   ];
-  /** é…å¸ƒçŠ¶æ³ãƒ‡ãƒ¼ã‚¿å–å¾— */
+  /** 配布状況データ取得 */
   const {
     distributionList,
     isLoading,
@@ -80,11 +71,11 @@ const Item3Screen = ({ navigation }) => {
     refresh,
   } = useTicketDistributionData();
 
-  /** ãƒ•ã‚£ãƒ«ã‚¿æ¸ˆã¿ãƒ‡ãƒ¼ã‚¿ */
+  /** フィルタ済みデータ */
   const filteredList = useMemo(() => {
-  /** æ—¥ä»˜æ¤œç´¢æ–‡å­—åˆ— */
+  /** 日付検索文字列 */
   const normalizedDateQuery = dateQuery.trim();
-    /** é–‹å§‹æ™‚é–“æ¤œç´¢ */
+    /** 開始時間検索 */
     const normalizedStartTime = selectedStartTime.trim();
 
     const typeFilteredList = selectedFilter === FILTER_TYPES.ALL
@@ -106,7 +97,7 @@ const Item3Screen = ({ navigation }) => {
         return item;
       }
 
-      /** é–‹å§‹æ™‚é–“ã§çµžã‚Šè¾¼ã¿ */
+      /** 開始時間で絞り込み */
       const filteredTimeSlots = (item.timeSlots || []).filter(
         (slot) => slot.startTime?.slice(0, 5) === normalizedStartTime
       );
@@ -118,16 +109,16 @@ const Item3Screen = ({ navigation }) => {
     });
   }, [distributionList, selectedFilter, dateQuery, selectedStartTime]);
 
-  /** é–‹å§‹æ™‚é–“ãƒ—ãƒ«ãƒ€ã‚¦ãƒ³å€™è£œ */
+  /** 開始時間プルダウン候補 */
   const startTimeOptions = useMemo(() => {
-    /** é–‹å§‹æ™‚åˆ»ä¸€è¦§ */
+    /** 開始時刻一覧 */
     const timeSlotList = distributionList
       .filter((item) => item.type === FILTER_TYPES.TIME_SLOT)
       .flatMap((item) => item.timeSlots || [])
       .map((slot) => slot.startTime?.slice(0, 5))
       .filter(Boolean);
 
-    /** é‡è¤‡æŽ’é™¤æ¸ˆã¿ãƒžãƒƒãƒ— */
+    /** 重複排除済みマップ */
     const uniqueMap = new Map();
 
     timeSlotList.forEach((timeValue) => {
@@ -140,16 +131,15 @@ const Item3Screen = ({ navigation }) => {
   }, [distributionList]);
 
   /**
-   * ãƒ‰ãƒ­ãƒ¯ãƒ¼ã‚’é–‹ã
+   * ドロワーを開く
    */
   const openDrawer = () => {
     navigation.openDrawer();
   };
-  const { theme } = useTheme();
 
   /**
-   * ãƒ•ã‚£ãƒ«ã‚¿ã‚’åˆ‡ã‚Šæ›¿ãˆã‚‹
-   * @param {string} filterType - ãƒ•ã‚£ãƒ«ã‚¿ç¨®åˆ¥
+   * フィルタを切り替える
+   * @param {string} filterType - フィルタ種別
    */
   const handleFilterChange = (filterType) => {
     setSelectedFilter(filterType);
@@ -164,8 +154,8 @@ const Item3Screen = ({ navigation }) => {
   };
 
   /**
-   * æ—¥ä»˜æ¤œç´¢ã‚’æ›´æ–°ã™ã‚‹
-   * @param {string} value - å…¥åŠ›å€¤
+   * 日付検索を更新する
+   * @param {string} value - 入力値
    */
   const handleDateSelect = (value) => {
     setDateQuery(value);
@@ -173,15 +163,15 @@ const Item3Screen = ({ navigation }) => {
   };
 
   /**
-   * æ—¥ä»˜ãƒ—ãƒ«ãƒ€ã‚¦ãƒ³ã‚’é–‹é–‰ã™ã‚‹
+   * 日付プルダウンを開閉する
    */
   const toggleDateDropdown = () => {
     setIsDateDropdownOpen((prev) => !prev);
   };
 
   /**
-   * é–‹å§‹æ™‚é–“ã‚’é¸æŠžã™ã‚‹
-   * @param {string} value - é–‹å§‹æ™‚é–“
+   * 開始時間を選択する
+   * @param {string} value - 開始時間
    */
   const handleStartTimeSelect = (value) => {
     setSelectedStartTime(value);
@@ -189,7 +179,7 @@ const Item3Screen = ({ navigation }) => {
   };
 
   /**
-   * é–‹å§‹æ™‚é–“ãƒ—ãƒ«ãƒ€ã‚¦ãƒ³ã‚’é–‹é–‰ã™ã‚‹
+   * 開始時間プルダウンを開閉する
    */
   const toggleTimeDropdown = () => {
     setIsTimeDropdownOpen((prev) => !prev);
@@ -197,21 +187,21 @@ const Item3Screen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* ãƒ˜ãƒƒãƒ€ãƒ¼ */}
+      {/* ヘッダー */}
       <View style={styles.header}>
         {isMobile && (
           <TouchableOpacity style={styles.menuButton} onPress={openDrawer}>
-            <Text style={styles.menuButtonText}>â˜°</Text>
+            <Text style={styles.menuButtonText}>☰</Text>
           </TouchableOpacity>
         )}
         <Text style={styles.headerTitle}>{SCREEN_LABELS.title}</Text>
         {isMobile && <View style={styles.menuButton} />}
       </View>
 
-      {/* ã‚³ãƒ³ãƒ†ãƒ³ãƒ„ */}
+      {/* コンテンツ */}
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.filterContainer}>
-          <Text style={styles.sectionTitle}>è¡¨ç¤ºãƒ•ã‚£ãƒ«ã‚¿</Text>
+          <Text style={styles.sectionTitle}>表示フィルタ</Text>
           <View style={styles.filterButtons}>
             {[
               { label: SCREEN_LABELS.all, value: FILTER_TYPES.ALL },
@@ -248,7 +238,7 @@ const Item3Screen = ({ navigation }) => {
                   ? dateOptions.find((option) => option.value === dateQuery)?.label
                   : SCREEN_LABELS.allDates}
               </Text>
-              <Text style={styles.dropdownIcon}>{isDateDropdownOpen ? 'â–²' : 'â–¼'}</Text>
+              <Text style={styles.dropdownIcon}>{isDateDropdownOpen ? '▲' : '▼'}</Text>
             </TouchableOpacity>
             {isDateDropdownOpen && (
               <View style={styles.dropdownMenu}>
@@ -282,7 +272,7 @@ const Item3Screen = ({ navigation }) => {
                 <Text style={styles.dropdownButtonText}>
                   {selectedStartTime || SCREEN_LABELS.allTimes}
                 </Text>
-                <Text style={styles.dropdownIcon}>{isTimeDropdownOpen ? 'â–²' : 'â–¼'}</Text>
+                <Text style={styles.dropdownIcon}>{isTimeDropdownOpen ? '▲' : '▼'}</Text>
               </TouchableOpacity>
               {isTimeDropdownOpen && (
                 <View style={styles.dropdownMenu}>
@@ -309,17 +299,17 @@ const Item3Screen = ({ navigation }) => {
 
         <View style={styles.refreshRow}>
           <Text style={styles.refreshText}>
-            æœ€çµ‚æ›´æ–°: {lastUpdatedAt ? lastUpdatedAt.toLocaleString('ja-JP') : 'å–å¾—ä¸­'}
+            最終更新: {lastUpdatedAt ? lastUpdatedAt.toLocaleString('ja-JP') : '取得中'}
           </Text>
           <TouchableOpacity style={styles.refreshButton} onPress={refresh}>
-            <Text style={styles.refreshButtonText}>æ›´æ–°</Text>
+            <Text style={styles.refreshButtonText}>更新</Text>
           </TouchableOpacity>
         </View>
 
         {isLoading && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#007AFF" />
-            <Text style={styles.loadingText}>ãƒ‡ãƒ¼ã‚¿ã‚’å–å¾—ä¸­...</Text>
+            <Text style={styles.loadingText}>データを取得中...</Text>
           </View>
         )}
 
@@ -331,7 +321,7 @@ const Item3Screen = ({ navigation }) => {
 
         {!isLoading && !errorMessage && filteredList.length === 0 && (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>è¡¨ç¤ºã§ãã‚‹ãƒ‡ãƒ¼ã‚¿ãŒã‚ã‚Šã¾ã›ã‚“</Text>
+            <Text style={styles.emptyText}>表示できるデータがありません</Text>
           </View>
         )}
 
@@ -343,9 +333,6 @@ const Item3Screen = ({ navigation }) => {
           </View>
         )}
       </ScrollView>
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <ThemedHeader title={SCREEN_NAME} navigation={navigation} />
-      <PlaceholderContent title={SCREEN_NAME} />
     </SafeAreaView>
   );
 };
@@ -353,6 +340,32 @@ const Item3Screen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#f5f5f7',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  menuButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuButtonText: {
+    fontSize: 24,
+    color: '#333333',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333333',
   },
   content: {
     padding: 16,
