@@ -297,10 +297,17 @@ const FilterBar = ({
                                     </Text>
                                     <View style={styles.chipRow}>
                                         {renderLetterChip({ id: 'all_letters', area_letter: 'すべて' })}
-                                        {stallAreaLetters
-                                            .filter(l => selectedArea === AREA_ALL || l.area_id === selectedArea)
-                                            .map(renderLetterChip)
-                                        }
+                                        {(() => {
+                                            const seenLetters = new Set();
+                                            return stallAreaLetters
+                                                .filter(l => selectedArea === AREA_ALL || l.area_id === selectedArea)
+                                                .filter(l => {
+                                                    if (seenLetters.has(l.area_letter)) return false;
+                                                    seenLetters.add(l.area_letter);
+                                                    return true;
+                                                })
+                                                .map(renderLetterChip);
+                                        })()}
                                     </View>
                                 </View>
                             )}
