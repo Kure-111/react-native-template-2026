@@ -19,12 +19,22 @@ const FilterBar = ({
     selectedArea,
     onAreaChange,
     areas,
+    buildings,
+    selectedBuilding,
+    onBuildingChange,
+    stallAreaLetters,
+    selectedStallLetter,
+    onStallLetterChange,
     showFilters,
     onToggleFilters,
 }) => {
     const { theme } = useTheme();
+    const [showBuildingFilter, setShowBuildingFilter] = useState(false);
 
-    const hasFilters = selectedCategories.length > 0 || selectedArea !== AREA_ALL;
+    const hasFilters = selectedCategories.length > 0 ||
+        selectedArea !== AREA_ALL ||
+        (selectedBuilding && selectedBuilding !== 'すべて') ||
+        (selectedStallLetter && selectedStallLetter !== 'すべて');
 
     const renderCategoryChip = (cat) => {
         const isSelected = selectedCategories.includes(cat.id);
@@ -76,6 +86,64 @@ const FilterBar = ({
                     { color: isSelected ? 'white' : theme.text }
                 ]}>
                     {areaName}
+                </Text>
+                {isSelected && (
+                    <Ionicons name="checkmark" size={14} color="white" style={{ marginLeft: 2 }} />
+                )}
+            </TouchableOpacity>
+        );
+    };
+
+    const renderBuildingChip = (building) => {
+        const isSelected = selectedBuilding === building.id;
+        return (
+            <TouchableOpacity
+                key={building.id}
+                style={[
+                    styles.chip,
+                    {
+                        backgroundColor: isSelected ? theme.primary : theme.surface,
+                        borderColor: isSelected ? theme.primary : theme.border,
+                        borderRadius: theme.borderRadius,
+                    }
+                ]}
+                onPress={() => onBuildingChange(building.id)}
+                activeOpacity={0.7}
+            >
+                <Text style={[
+                    styles.chipText,
+                    { color: isSelected ? 'white' : theme.text }
+                ]}>
+                    {building.name}
+                </Text>
+                {isSelected && (
+                    <Ionicons name="checkmark" size={14} color="white" style={{ marginLeft: 2 }} />
+                )}
+            </TouchableOpacity>
+        );
+    };
+
+    const renderLetterChip = (letterInfo) => {
+        const isSelected = selectedStallLetter === letterInfo.area_letter;
+        return (
+            <TouchableOpacity
+                key={letterInfo.id}
+                style={[
+                    styles.chip,
+                    {
+                        backgroundColor: isSelected ? theme.primary : theme.surface,
+                        borderColor: isSelected ? theme.primary : theme.border,
+                        borderRadius: theme.borderRadius,
+                    }
+                ]}
+                onPress={() => onStallLetterChange(isSelected ? 'すべて' : letterInfo.area_letter)}
+                activeOpacity={0.7}
+            >
+                <Text style={[
+                    styles.chipText,
+                    { color: isSelected ? 'white' : theme.text }
+                ]}>
+                    {letterInfo.area_letter}
                 </Text>
                 {isSelected && (
                     <Ionicons name="checkmark" size={14} color="white" style={{ marginLeft: 2 }} />
@@ -140,6 +208,9 @@ const FilterBar = ({
                             onPress={() => {
                                 onClearCategories();
                                 onAreaChange(AREA_ALL);
+                                onBuildingChange('すべて');
+                                onStallLetterChange('すべて');
+                                setShowBuildingFilter(false);
                             }}
                         >
                             <Ionicons name="close" size={14} color={theme.textSecondary} />
@@ -174,13 +245,65 @@ const FilterBar = ({
                     {/* エリア絞り込み */}
                     {areas && areas.length > 0 && (
                         <View style={[styles.categorySection, { marginTop: 4 }]}>
-                            <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>
-                                エリア（大まかな場所）
-                            </Text>
+                            <View style={styles.sectionHeaderRow}>
+                                <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>
+                                    エリア（大まかな場所）
+                                </Text>
+                                <TouchableOpacity
+                                    style={styles.moreDetailBtn}
+                                    onPress={() => setShowBuildingFilter(prev => !prev)}
+                                >
+                                    <Text style={[styles.moreDetailText, { color: theme.primary }]}>
+                                        {showBuildingFilter ? '詳細を閉じる' : 'さらに詳しく'}
+                                    </Text>
+                                    <Ionicons
+                                        name={showBuildingFilter ? "chevron-up" : "chevron-down"}
+                                        size={14}
+                                        color={theme.primary}
+                                    />
+                                </TouchableOpacity>
+                            </View>
                             <View style={styles.chipRow}>
                                 {renderAreaChip(AREA_ALL, AREA_ALL)}
                                 {areas.map(area => renderAreaChip(area.id, area.name))}
                             </View>
+                        </View>
+                    )}
+
+                    {/* 建物・屋台エリア絞り込み（詳細） */}
+                    {showBuildingFilter && (
+                        <View style={[styles.filtersContainer, { marginTop: 0, gap: 8 }]}>
+                            {/* 建物 */}
+                            {buildings && buildings.length > 0 && (
+                                <View style={[styles.categorySection, { marginTop: 0, paddingLeft: 8 }]}>
+                                    <Text style={[styles.sectionLabel, { color: theme.textSecondary, fontSize: 10 }]}>
+                                        建物で絞り込む
+                                    </Text>
+                                    <View style={styles.chipRow}>
+                                        {renderBuildingChip({ id: 'すべて', name: 'すべて' })}
+                                        {buildings
+                                            .filter(b => selectedArea === AREA_ALL || b.area_id === selectedArea)
+                                            .map(renderBuildingChip)
+                                        }
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* 屋台エリア記号 */}
+                            {stallAreaLetters && stallAreaLetters.length > 0 && (
+                                <View style={[styles.categorySection, { marginTop: 4, paddingLeft: 8 }]}>
+                                    <Text style={[styles.sectionLabel, { color: theme.textSecondary, fontSize: 10 }]}>
+                                        屋台エリアで絞り込む
+                                    </Text>
+                                    <View style={styles.chipRow}>
+                                        {renderLetterChip({ id: 'all_letters', area_letter: 'すべて' })}
+                                        {stallAreaLetters
+                                            .filter(l => selectedArea === AREA_ALL || l.area_id === selectedArea)
+                                            .map(renderLetterChip)
+                                        }
+                                    </View>
+                                </View>
+                            )}
                         </View>
                     )}
                 </View>
@@ -285,6 +408,21 @@ const styles = StyleSheet.create({
     chipText: {
         fontSize: 13,
         fontWeight: '500',
+    },
+    sectionHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginRight: 4,
+    },
+    moreDetailBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 2,
+    },
+    moreDetailText: {
+        fontSize: 12,
+        fontWeight: '600',
     },
 });
 

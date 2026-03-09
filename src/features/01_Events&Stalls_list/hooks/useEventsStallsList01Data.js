@@ -11,11 +11,13 @@ import { TABS, SORT_OPTIONS } from '../constants';
  * @param {string} sortOrder ソート順オプション
  * @returns {Object} データ、カテゴリ一覧、読み込み状態、エラー情報
  */
-export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategories, sortOrder, selectedArea) => {
+export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategories, sortOrder, selectedArea, selectedBuilding, selectedStallLetter) => {
     const [data, setData] = useState([]);
     const [stallCategories, setStallCategories] = useState([]);
     const [eventCategories, setEventCategories] = useState([]);
     const [areas, setAreas] = useState([]);
+    const [buildings, setBuildings] = useState([]);
+    const [stallAreaLetters, setStallAreaLetters] = useState([]); // 新規追加: 屋台エリア記号 (A, B, C...)
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -47,14 +49,28 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                 if (fetchStalls) {
                     promises.push(
                         supabase.from('stalls')
-                            .select('id, name, description, image_path, category_id, updated_at, location_id, stall_organization_id, stall_locations(name, area_id, building_locations(name, display_order)), stall_organizations(name)')
+                            .select(`
+                                id, name, description, image_path, category_id, updated_at, location_id, stall_organization_id, 
+                                stall_locations(
+                                    name, 
+                                    stall_number,
+                                    stall_area_letters(
+                                        id,
+                                        area_id, 
+                                        building_id,
+                                        area_letter,
+                                        building_locations(id, name, display_order)
+                                    )
+                                ), 
+                                stall_organizations(name)
+                            `)
                             .then(res => ({ ...res, type: TABS.STALLS }))
                     );
                 }
                 if (fetchEvents) {
                     promises.push(
                         supabase.from('events')
-                            .select('id, name, description, image_path, category_id, updated_at, location_id, event_organization_id, event_locations(name, building_locations(name, area_id, display_order)), event_organizations(name)')
+                            .select('id, name, description, image_path, category_id, updated_at, location_id, event_organization_id, event_locations(id, name, building_id, building_locations(id, name, area_id, display_order)), event_organizations(name)')
                             .then(res => ({ ...res, type: TABS.EVENTS }))
                     );
                 }
@@ -76,6 +92,19 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                         .select('id, name, display_order')
                         .order('display_order', { ascending: true })
                         .then(res => ({ ...res, type: 'EVENT_CATEGORIES' }))
+                );
+                promises.push(
+                    supabase.from('building_locations')
+                        .select('id, name, area_id')
+                        .order('display_order', { ascending: true })
+                        .then(res => ({ ...res, type: 'BUILDING_LOCATIONS' }))
+                );
+                // 屋台エリア記号マスタの取得 (新規追加)
+                promises.push(
+                    supabase.from('stall_area_letters')
+                        .select('id, area_letter, area_id')
+                        .order('area_letter', { ascending: true })
+                        .then(res => ({ ...res, type: 'STALL_AREA_LETTERS' }))
                 );
 
                 const results = await Promise.all(promises);
@@ -112,12 +141,36 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                     });
                 }
 
-                // --- 2.5 エリアマスタの処理 ---
+                // --- 2.5 エリア・建物マスタの処理 ---
                 let areasList = [];
                 const areasResult = results.find(r => r.type === 'AREA_LOCATIONS');
                 if (areasResult && areasResult.data) {
                     areasList = areasResult.data;
                 }
+
+                let buildingsList = [];
+                const buildingsResult = results.find(r => r.type === 'BUILDING_LOCATIONS');
+                if (buildingsResult && buildingsResult.data) {
+                    buildingsList = buildingsResult.data;
+                }
+
+                let stallAreaLettersList = [];
+                const stallAreaLettersResult = results.find(r => r.type === 'STALL_AREA_LETTERS');
+                if (stallAreaLettersResult && stallAreaLettersResult.data) {
+                    stallAreaLettersList = stallAreaLettersResult.data;
+                }
+
+                // --- 2.6 エリアIDから名前へのマップ作成 ---
+                let areaNameMap = {};
+                areasList.forEach(a => {
+                    areaNameMap[a.id] = a.name;
+                });
+
+                // 建物IDから名前へのマップ作成
+                let buildingNameMap = {};
+                buildingsList.forEach(b => {
+                    buildingNameMap[b.id] = b.name;
+                });
 
                 // --- 3. データの結合と正規化 ---
                 let combinedData = [];
@@ -128,32 +181,43 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                             let locationName = '';
                             let listLocationName = '';
                             let areaId = null;
+                            let buildingId = null;
                             let buildingLocationOrder = 9999;
 
                             if (result.type === TABS.STALLS && item.stall_locations) {
                                 const lName = item.stall_locations.name || '';
-                                const bName = item.stall_locations.building_locations?.name || '';
-                                listLocationName = bName ? `${bName}前` : lName;
+                                const areaLetterInfo = item.stall_locations.stall_area_letters;
 
-                                if (bName && lName && bName !== lName) {
-                                    locationName = `${bName} ${lName}`;
-                                } else {
-                                    locationName = bName || lName;
-                                }
-                                areaId = item.stall_locations.area_id;
-                                buildingLocationOrder = item.stall_locations.building_locations?.display_order ?? 9999;
+                                locationName = lName;
+                                listLocationName = lName;
+
+                                areaId = areaLetterInfo?.area_id;
+                                buildingId = areaLetterInfo?.building_id;
+                                buildingLocationOrder = areaLetterInfo?.building_locations?.display_order ?? 9999;
+                                item.areaLetter = areaLetterInfo?.area_letter || ''; // エリア記号を追加
+
+                                const areaName = areaNameMap[areaId] || '';
+                                const buildingName = areaLetterInfo?.building_locations?.name || buildingNameMap[buildingId] || '';
+                                locationName = [areaName, buildingName, lName].filter(Boolean).join(' ');
+                                listLocationName = lName;
+                                item.areaName = areaName;
+                                item.buildingName = buildingName;
                             } else if (result.type === TABS.EVENTS && item.event_locations) {
                                 const lName = item.event_locations.name || '';
-                                const bName = item.event_locations.building_locations?.name || '';
-                                listLocationName = bName || lName;
 
-                                if (bName && lName && bName !== lName) {
-                                    locationName = `${bName} ${lName}`;
-                                } else {
-                                    locationName = bName || lName;
-                                }
-                                areaId = item.event_locations.building_locations?.area_id || null;
+                                locationName = lName;
+                                listLocationName = lName;
+
+                                areaId = item.event_locations.building_locations?.area_id || item.event_locations.area_id || null;
+                                buildingId = item.event_locations.building_locations?.id || item.event_locations.building_id || null;
                                 buildingLocationOrder = item.event_locations.building_locations?.display_order ?? 9999;
+
+                                const areaName = areaNameMap[areaId] || '';
+                                const buildingName = item.event_locations.building_locations?.name || buildingNameMap[buildingId] || '';
+                                locationName = [areaName, buildingName, lName].filter(Boolean).join(' ');
+                                listLocationName = lName;
+                                item.areaName = areaName;
+                                item.buildingName = buildingName;
                             }
 
                             let groupName = '';
@@ -174,6 +238,10 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                                 categoryName: categoryMap[item.category_id] || item.category_id,
                                 categoryDisplayOrder: categoryOrderMap[item.category_id] ?? 9999,
                                 areaId: areaId,
+                                buildingId: buildingId,
+                                areaName: item.areaName || '',
+                                buildingName: item.buildingName || '',
+                                areaLetter: item.areaLetter || '',
                             };
                         });
                         combinedData = [...combinedData, ...mappedData];
@@ -186,6 +254,21 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                 // エリアで絞り込み
                 if (selectedArea && selectedArea !== 'すべて') {
                     filteredData = filteredData.filter(item => item.areaId === selectedArea);
+                }
+
+                // 建物で絞り込み
+                if (selectedBuilding && selectedBuilding !== 'すべて') {
+                    filteredData = filteredData.filter(item => item.buildingId === selectedBuilding);
+                }
+
+                // 屋台エリア記号で絞り込み (新規追加)
+                if (selectedStallLetter && selectedStallLetter !== 'すべて') {
+                    filteredData = filteredData.filter(item => {
+                        if (item.itemType === TABS.STALLS) {
+                            return item.areaLetter === selectedStallLetter;
+                        }
+                        return false; // 企画はエリア記号を持たないので除外
+                    });
                 }
 
                 // カテゴリで絞り込み（複数選択対応）
@@ -201,7 +284,9 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                     filteredData = filteredData.filter(item => {
                         const nameMatch = item.displayName?.toLowerCase().includes(query);
                         const groupMatch = item.groupName?.toLowerCase().includes(query);
-                        return nameMatch || groupMatch;
+                        const areaMatch = item.areaName?.toLowerCase().includes(query);
+                        const buildingMatch = item.buildingName?.toLowerCase().includes(query);
+                        return nameMatch || groupMatch || areaMatch || buildingMatch;
                     });
                 }
 
@@ -235,6 +320,8 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                     setStallCategories(stallCatsList);
                     setEventCategories(eventCatsList);
                     setAreas(areasList);
+                    setBuildings(buildingsList);
+                    setStallAreaLetters(stallAreaLettersList);
                 }
             } catch (err) {
                 if (isMounted) {
@@ -252,7 +339,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
         return () => {
             isMounted = false;
         };
-    }, [tabInfo, searchQuery, selectedCategories, sortOrder, selectedArea]);
+    }, [tabInfo, searchQuery, selectedCategories, sortOrder, selectedArea, selectedBuilding, selectedStallLetter]);
 
-    return { data, stallCategories, eventCategories, areas, loading, error };
+    return { data, stallCategories, eventCategories, areas, buildings, stallAreaLetters, loading, error };
 };
