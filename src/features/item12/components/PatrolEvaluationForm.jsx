@@ -67,7 +67,12 @@ const PatrolEvaluationForm = ({
   return (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>企画評価入力（承認待ち）</Text>
+        <View style={styles.sectionTitleBlock}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>企画評価入力</Text>
+          <Text style={[styles.sectionSubTitle, { color: theme.textSecondary }]}>
+            完了済みタスクを選び、現地の質を短く明確に残します。
+          </Text>
+        </View>
         <TouchableOpacity
           style={[styles.refreshButton, { borderColor: theme.border }]}
           onPress={onRefresh}
@@ -75,36 +80,59 @@ const PatrolEvaluationForm = ({
           <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
         </TouchableOpacity>
       </View>
-      <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-        完了済みタスクを選択して評価を入力し、本部承認を待ちます。
-      </Text>
 
-      <Text style={[styles.label, { color: theme.text }]}>評価対象タスク</Text>
-      <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
-        {selectedTask
-          ? `${TASK_TYPE_LABELS[selectedTask.task_type] || selectedTask.task_type} / ${selectedTask.event_name || '-'}`
-          : '未選択'}
-      </Text>
+      <View
+        style={[
+          styles.targetCard,
+          { borderColor: theme.border, backgroundColor: theme.background },
+        ]}
+      >
+        <Text style={[styles.targetLabel, { color: theme.textSecondary }]}>評価対象</Text>
+        <Text style={[styles.targetTitle, { color: theme.text }]}>
+          {selectedTask ? selectedTask.event_name || '企画名未設定' : '未選択'}
+        </Text>
+        <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
+          {selectedTask
+            ? `${TASK_TYPE_LABELS[selectedTask.task_type] || selectedTask.task_type} / ${
+                selectedTask.event_location || selectedTask.location_text || '場所未設定'
+              }`
+            : 'タスク一覧で完了済みの案件を選択してください'}
+        </Text>
+      </View>
 
       <Text style={[styles.label, { color: theme.text }]}>点数</Text>
-      <View style={styles.optionGroup}>
+      <View style={styles.scoreGrid}>
         {[1, 2, 3, 4, 5].map((score) => {
           /** 選択中かどうか */
           const isActive = score === evaluationScore;
+
           return (
             <Pressable
               key={String(score)}
               style={[
-                styles.optionButton,
+                styles.scoreButton,
                 {
                   borderColor: isActive ? theme.primary : theme.border,
-                  backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
+                  backgroundColor: isActive ? `${theme.primary}18` : theme.background,
                 },
               ]}
               onPress={() => onChangeScore(score)}
             >
-              <Text style={[styles.optionButtonText, { color: isActive ? theme.primary : theme.textSecondary }]}>
-                {score}点
+              <Text
+                style={[
+                  styles.scoreValue,
+                  { color: isActive ? theme.primary : theme.text },
+                ]}
+              >
+                {score}
+              </Text>
+              <Text
+                style={[
+                  styles.scoreLabel,
+                  { color: isActive ? theme.primary : theme.textSecondary },
+                ]}
+              >
+                点
               </Text>
             </Pressable>
           );
@@ -128,7 +156,7 @@ const PatrolEvaluationForm = ({
         ]}
       />
       <TouchableOpacity
-        style={[styles.actionButton, { backgroundColor: theme.primary, marginTop: 10 }]}
+        style={[styles.actionButton, { backgroundColor: theme.primary }]}
         onPress={onSubmitEvaluation}
         disabled={isSubmittingEvaluation}
       >
@@ -137,11 +165,21 @@ const PatrolEvaluationForm = ({
         </Text>
       </TouchableOpacity>
 
-      <Text style={[styles.label, { color: theme.text }]}>最近の評価入力</Text>
+      <View style={styles.historyHeader}>
+        <Text style={[styles.label, { color: theme.text }]}>最近の評価入力</Text>
+        <Text style={[styles.historyCount, { color: theme.textSecondary }]}>
+          {myEvaluationChecks.length}件
+        </Text>
+      </View>
       {isLoadingMyEvaluationChecks ? (
         <SkeletonLoader lines={3} baseColor={theme.border} />
       ) : myEvaluationChecks.length === 0 ? (
-        <EmptyState icon="⭐" title="評価入力履歴はまだありません" description="評価を登録すると履歴が表示されます" theme={theme} />
+        <EmptyState
+          icon="⭐"
+          title="評価入力履歴はまだありません"
+          description="評価を登録すると履歴が表示されます"
+          theme={theme}
+        />
       ) : (
         <View style={styles.messageList}>
           {myEvaluationChecks.map((evaluation) => (
@@ -152,11 +190,24 @@ const PatrolEvaluationForm = ({
                 { borderColor: theme.border, backgroundColor: theme.background },
               ]}
             >
-              <Text style={[styles.messageAuthor, { color: theme.textSecondary }]}>
-                {EVALUATION_STATUS_LABELS[evaluation.evaluation_status] || evaluation.evaluation_status} /{' '}
-                {evaluation.score || '-'}点
+              <View style={styles.historyItemHeader}>
+                <Text style={[styles.messageAuthor, { color: theme.textSecondary }]}>
+                  {EVALUATION_STATUS_LABELS[evaluation.evaluation_status] || evaluation.evaluation_status}
+                </Text>
+                <View
+                  style={[
+                    styles.scoreMiniBadge,
+                    { borderColor: theme.border, backgroundColor: `${theme.primary}12` },
+                  ]}
+                >
+                  <Text style={[styles.scoreMiniBadgeText, { color: theme.primary }]}>
+                    {evaluation.score || '-'}点
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.messageBody, { color: theme.text }]}>
+                {evaluation.comment || 'コメントなし'}
               </Text>
-              <Text style={[styles.messageBody, { color: theme.text }]}>{evaluation.comment || 'コメントなし'}</Text>
               <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
                 {new Date(evaluation.created_at).toLocaleString('ja-JP')}
               </Text>
@@ -171,31 +222,52 @@ const PatrolEvaluationForm = ({
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 18,
     padding: 16,
+    gap: 12,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  sectionTitleBlock: {
+    flex: 1,
+    gap: 4,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
   },
-  helpText: {
-    fontSize: 13,
-    lineHeight: 20,
+  sectionSubTitle: {
+    fontSize: 12,
+    lineHeight: 18,
   },
   label: {
     fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  targetCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 4,
+  },
+  targetLabel: {
+    fontSize: 11,
     fontWeight: '700',
-    marginBottom: 6,
+  },
+  targetTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    lineHeight: 24,
   },
   ticketMeta: {
     fontSize: 12,
-    marginTop: 2,
+    lineHeight: 18,
   },
   refreshButton: {
     borderWidth: 1,
@@ -207,35 +279,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  optionGroup: {
+  scoreGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 8,
   },
-  optionButton: {
+  scoreButton: {
+    minWidth: '18%',
+    flexGrow: 1,
     borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    borderRadius: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+    gap: 2,
   },
-  optionButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
+  scoreValue: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  scoreLabel: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   memoInput: {
     borderWidth: 1,
-    borderRadius: 10,
-    minHeight: 96,
+    borderRadius: 14,
+    minHeight: 110,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     fontSize: 14,
     textAlignVertical: 'top',
   },
   actionButton: {
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 12,
+    borderRadius: 14,
+    paddingVertical: 13,
     alignItems: 'center',
   },
   actionButtonText: {
@@ -243,19 +320,44 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  historyCount: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   messageList: {
     gap: 8,
     marginBottom: 12,
   },
   messageItem: {
     borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  historyItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
   },
   messageAuthor: {
     fontSize: 11,
-    marginBottom: 2,
+  },
+  scoreMiniBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  scoreMiniBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   messageBody: {
     fontSize: 14,

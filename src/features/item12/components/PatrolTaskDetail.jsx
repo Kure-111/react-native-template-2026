@@ -97,32 +97,131 @@ const PatrolTaskDetail = ({
   isLoadingSourceMessages,
   onRefreshSourceMessages,
 }) => {
+  /** 場所表示 */
+  const locationLabel = selectedTask.event_location || selectedTask.location_text || '場所未設定';
+
   return (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-      <Text style={[styles.sectionTitle, { color: theme.text }]}>タスク詳細</Text>
-      <Text style={[styles.ticketDetailTitle, { color: theme.text }]}>
-        {TASK_TYPE_LABELS[selectedTask.task_type] || selectedTask.task_type}
-      </Text>
-      <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
-        タスク番号: {selectedTask.task_no || '-'}
-      </Text>
-      <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
-        状態: {TASK_STATUS_LABELS[selectedTask.task_status] || selectedTask.task_status}
-      </Text>
-      <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
-        企画: {selectedTask.event_name || '-'}（{selectedTask.event_location || selectedTask.location_text || '-'}）
-      </Text>
-      <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
-        元連絡案件: {selectedTask.source_ticket_id || 'なし'} / 元鍵貸出: {selectedTask.source_key_loan_id || 'なし'}
-      </Text>
-      <Text
+      <View style={styles.headerRow}>
+        <View style={styles.headerTitleBlock}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>タスク詳細</Text>
+          <Text style={[styles.sectionSubTitle, { color: theme.textSecondary }]}>
+            状況確認から対応登録まで、このカード内で完結できます。
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.statusBadge,
+            { borderColor: theme.border, backgroundColor: `${theme.primary}12` },
+          ]}
+        >
+          <Text style={[styles.statusBadgeText, { color: theme.primary }]}>
+            {TASK_STATUS_LABELS[selectedTask.task_status] || selectedTask.task_status}
+          </Text>
+        </View>
+      </View>
+
+      <View
         style={[
-          styles.requestBody,
-          { color: theme.text, borderColor: theme.border, backgroundColor: theme.background },
+          styles.focusCard,
+          { borderColor: theme.border, backgroundColor: theme.background },
         ]}
       >
-        {selectedTask.notes || '指示メモはありません'}
-      </Text>
+        <View style={styles.focusBadgeRow}>
+          <View
+            style={[
+              styles.focusBadge,
+              { borderColor: theme.border, backgroundColor: `${theme.primary}12` },
+            ]}
+          >
+            <Text style={[styles.focusBadgeText, { color: theme.primary }]}>
+              {TASK_TYPE_LABELS[selectedTask.task_type] || selectedTask.task_type}
+            </Text>
+          </View>
+          {selectedTask.source_ticket_id ? (
+            <View
+              style={[
+                styles.focusBadge,
+                { borderColor: theme.border, backgroundColor: theme.surface },
+              ]}
+            >
+              <Text style={[styles.focusBadgeText, { color: theme.textSecondary }]}>
+                元連絡案件あり
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        <Text style={[styles.ticketDetailTitle, { color: theme.text }]}>
+          {selectedTask.event_name || '企画名未設定'}
+        </Text>
+        <Text style={[styles.focusLocation, { color: theme.text }]}>📍 {locationLabel}</Text>
+        <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
+          タスク番号: {selectedTask.task_no || '-'}
+        </Text>
+        <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
+          元連絡案件: {selectedTask.source_ticket_id || 'なし'} / 元鍵貸出: {selectedTask.source_key_loan_id || 'なし'}
+        </Text>
+      </View>
+
+      <View
+        style={[
+          styles.actionPanel,
+          { borderColor: theme.border, backgroundColor: theme.background },
+        ]}
+      >
+        <Text style={[styles.label, { color: theme.text }]}>次の操作</Text>
+        <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+          現地へ向かうときは先に受諾し、対応後は結果とメモを添えて完了登録してください。
+        </Text>
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              { backgroundColor: canAccept ? theme.primary : theme.border },
+            ]}
+            disabled={!canAccept || isSubmitting}
+            onPress={onAcceptTask}
+          >
+            <Text style={styles.actionButtonText}>向かいます</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              { backgroundColor: canComplete ? (theme.success || '#22A06B') : theme.border },
+            ]}
+            disabled={!canComplete || isSubmitting}
+            onPress={onCompleteTask}
+          >
+            <Text style={styles.actionButtonText}>完了登録</Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity
+          style={[
+            styles.memoButton,
+            {
+              borderColor: theme.border,
+              backgroundColor: selectedTask.source_ticket_id ? theme.surface : theme.border,
+            },
+          ]}
+          onPress={onSendMemoOnly}
+          disabled={!selectedTask.source_ticket_id || isSubmitting}
+        >
+          <Text style={[styles.memoButtonText, { color: theme.textSecondary }]}>メモのみ共有</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View
+        style={[
+          styles.requestCard,
+          { borderColor: theme.border, backgroundColor: theme.background },
+        ]}
+      >
+        <Text style={[styles.label, { color: theme.text }]}>指示メモ</Text>
+        <Text style={[styles.requestBody, { color: theme.text }]}>
+          {selectedTask.notes || '指示メモはありません'}
+        </Text>
+      </View>
 
       <Text style={[styles.label, { color: theme.text }]}>完了結果</Text>
       <View style={styles.optionGroup}>
@@ -141,7 +240,12 @@ const PatrolTaskDetail = ({
               ]}
               onPress={() => onChangeResultCode(option.key)}
             >
-              <Text style={[styles.optionButtonText, { color: isActive ? theme.primary : theme.textSecondary }]}>
+              <Text
+                style={[
+                  styles.optionButtonText,
+                  { color: isActive ? theme.primary : theme.textSecondary },
+                ]}
+              >
                 {option.label}
               </Text>
             </Pressable>
@@ -166,44 +270,6 @@ const PatrolTaskDetail = ({
         ]}
       />
 
-      <View style={styles.actionRow}>
-        <TouchableOpacity
-          style={[
-            styles.actionButton,
-            { backgroundColor: canAccept ? theme.primary : theme.border },
-          ]}
-          disabled={!canAccept || isSubmitting}
-          onPress={onAcceptTask}
-        >
-          <Text style={styles.actionButtonText}>向かいます</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.actionButton,
-            { backgroundColor: canComplete ? '#22A06B' : theme.border },
-          ]}
-          disabled={!canComplete || isSubmitting}
-          onPress={onCompleteTask}
-        >
-          <Text style={styles.actionButtonText}>完了</Text>
-        </TouchableOpacity>
-      </View>
-
-      <TouchableOpacity
-        style={[
-          styles.memoButton,
-          {
-            borderColor: theme.border,
-            backgroundColor: selectedTask.source_ticket_id ? theme.background : theme.border,
-          },
-        ]}
-        onPress={onSendMemoOnly}
-        disabled={!selectedTask.source_ticket_id || isSubmitting}
-      >
-        <Text style={[styles.memoButtonText, { color: theme.textSecondary }]}>メモのみ共有</Text>
-      </TouchableOpacity>
-
-      {/* タスク結果履歴 */}
       <View style={styles.sectionHeader}>
         <Text style={[styles.label, { color: theme.text }]}>タスク結果履歴</Text>
         <TouchableOpacity
@@ -217,7 +283,12 @@ const PatrolTaskDetail = ({
       {isLoadingTaskResults ? (
         <SkeletonLoader lines={3} baseColor={theme.border} />
       ) : taskResults.length === 0 ? (
-        <EmptyState icon="📝" title="結果履歴はまだありません" description="タスク完了後に結果が表示されます" theme={theme} />
+        <EmptyState
+          icon="📝"
+          title="結果履歴はまだありません"
+          description="タスク完了後に結果が表示されます"
+          theme={theme}
+        />
       ) : (
         <View style={styles.messageList}>
           {taskResults.map((result) => (
@@ -242,7 +313,6 @@ const PatrolTaskDetail = ({
         </View>
       )}
 
-      {/* 元連絡案件メッセージ */}
       {selectedTask.source_ticket_id ? (
         <>
           <View style={styles.sectionHeader}>
@@ -258,12 +328,18 @@ const PatrolTaskDetail = ({
           {isLoadingSourceMessages ? (
             <SkeletonLoader lines={3} baseColor={theme.border} />
           ) : sourceMessages.length === 0 ? (
-            <EmptyState icon="📝" title="メッセージはまだありません" description="元連絡案件のメッセージが表示されます" theme={theme} />
+            <EmptyState
+              icon="📝"
+              title="メッセージはまだありません"
+              description="元連絡案件のメッセージが表示されます"
+              theme={theme}
+            />
           ) : (
             <View style={styles.messageList}>
               {sourceMessages.map((message) => {
                 /** 自分のメッセージかどうか */
                 const isMine = message.author_id === user?.id;
+
                 return (
                   <View
                     key={message.id}
@@ -296,42 +372,101 @@ const PatrolTaskDetail = ({
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 18,
     padding: 16,
+    gap: 12,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  headerTitleBlock: {
+    flex: 1,
+    gap: 4,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 2,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  sectionSubTitle: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  statusBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  focusCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 6,
+  },
+  focusBadgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  focusBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  focusBadgeText: {
+    fontSize: 11,
     fontWeight: '700',
   },
   ticketDetailTitle: {
-    fontSize: 15,
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 28,
+  },
+  focusLocation: {
+    fontSize: 14,
     fontWeight: '700',
-    marginBottom: 4,
   },
   ticketMeta: {
     fontSize: 12,
     marginTop: 2,
   },
-  requestBody: {
+  actionPanel: {
     borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    marginTop: 8,
-    marginBottom: 10,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  requestCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 8,
+  },
+  requestBody: {
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   label: {
     fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 6,
+    fontWeight: '800',
+    marginBottom: 2,
   },
   optionGroup: {
     flexDirection: 'row',
@@ -343,7 +478,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 8,
   },
   optionButtonText: {
     fontSize: 12,
@@ -365,22 +500,21 @@ const styles = StyleSheet.create({
   },
   memoInput: {
     borderWidth: 1,
-    borderRadius: 10,
-    minHeight: 96,
+    borderRadius: 14,
+    minHeight: 112,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     fontSize: 14,
     textAlignVertical: 'top',
   },
   actionRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 12,
   },
   actionButton: {
     flex: 1,
-    borderRadius: 10,
-    paddingVertical: 12,
+    borderRadius: 14,
+    paddingVertical: 13,
     alignItems: 'center',
   },
   actionButtonText: {
@@ -390,10 +524,9 @@ const styles = StyleSheet.create({
   },
   memoButton: {
     borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
+    borderRadius: 14,
+    paddingVertical: 11,
     alignItems: 'center',
-    marginTop: 8,
   },
   memoButtonText: {
     fontSize: 13,
@@ -405,9 +538,9 @@ const styles = StyleSheet.create({
   },
   messageItem: {
     borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   messageAuthor: {
     fontSize: 11,

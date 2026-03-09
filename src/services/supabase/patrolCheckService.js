@@ -5,28 +5,111 @@
 
 import { getSupabaseClient } from './client.js';
 
+/** 巡回チェックテーブル名 */
 const PATROL_CHECKS_TABLE = 'patrol_checks';
-// event_organizations テーブルを巡回場所候補として使用する
-const LOCATIONS_TABLE = 'event_organizations';
+/** 巡回対象候補として使うテーブル名 */
+const LOCATIONS_TABLE = 'organizations_events';
 
+/**
+ * 文字列を前後空白除去して正規化する
+ * @param {string|null|undefined} value - 対象文字列
+ * @returns {string} 正規化後文字列
+ */
 const normalizeText = (value) => (value || '').trim();
 
-// event_organizations テーブルの巡回場所候補に使うカラム
-const LOCATION_COLUMNS = 'id,name';
+/** 巡回対象候補に使うカラム */
+const LOCATION_COLUMNS = 'id,organization_name,event_name';
+/** 巡回チェック取得カラム */
 const PATROL_CHECK_COLUMNS =
   'id,patrol_user_id,location_id,location_text,check_items,memo,checked_at,created_at';
 
 /**
- * 場所レコードから表示用ラベルを生成する
- * @param {Object} location - event_organizations テーブルのレコード
+ * 5段階評価の値を正規化する
+ * @param {number|string|null|undefined} value - 入力値
+ * @returns {number|null} 1-5 の範囲に収めた値
+ */
+const normalizeScore = (value) => {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return null;
+  }
+
+  return Math.min(5, Math.max(1, Math.round(numericValue)));
+};
+
+/**
+ * 巡回対象レコードから表示用ラベルを生成する
+ * @param {Object} location - organizations_events テーブルのレコード
  * @returns {string} 表示ラベル
  */
 const toLocationLabel = (location) => {
   if (!location) {
     return '';
   }
-  // name カラムを使用する
-  return normalizeText(location.name) || '場所未設定';
+
+  /** 団体名 */
+  const organizationName = normalizeText(location.organization_name);
+  /** 企画名 */
+  const eventName = normalizeText(location.event_name);
+
+  if (organizationName && eventName) {
+    return `${organizationName} / ${eventName}`;
+  }
+
+  return organizationName || eventName || '企画未設定';
+};
+
+/**
+ * 巡回チェック項目を保存向けに正規化する
+ * @param {Array} rawCheckItems - 入力配列
+ * @returns {Array} 正規化後配列
+ */
+const normalizeCheckItems = (rawCheckItems) => {
+  return (Array.isArray(rawCheckItems) ? rawCheckItems : [])
+    .map((item) => {
+      if (typeof item === 'string') {
+        /** 旧形式の文字列配列 */
+        const label = normalizeText(item);
+
+        if (!label) {
+          return null;
+        }
+
+        return {
+          key: label,
+          label,
+          score: null,
+          memo: null,
+        };
+      }
+
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+
+      /** 項目キー */
+      const key = normalizeText(item.key || item.label);
+      /** 項目ラベル */
+      const label = normalizeText(item.label || item.key);
+      /** 項目別メモ */
+      const memo = normalizeText(item.memo);
+      /** 項目別評価 */
+      const score = normalizeScore(item.score);
+
+      if (!label) {
+        return null;
+      }
+
+      return {
+        key: key || label,
+        label,
+        score,
+        memo: memo || null,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 20);
 };
 
 /**
@@ -40,7 +123,8 @@ export const listPatrolLocations = async ({ limit = 200 } = {}) => {
     const { data, error } = await getSupabaseClient()
       .from(LOCATIONS_TABLE)
       .select(LOCATION_COLUMNS)
-      .order('name', { ascending: true })
+      .order('organization_name', { ascending: true })
+      .order('event_name', { ascending: true })
       .limit(limit);
 
     if (error) {
@@ -51,6 +135,8 @@ export const listPatrolLocations = async ({ limit = 200 } = {}) => {
     return {
       data: (data || []).map((location) => ({
         ...location,
+        organizationName: normalizeText(location.organization_name),
+        eventName: normalizeText(location.event_name),
         label: toLocationLabel(location),
       })),
       error: null,
@@ -65,9 +151,9 @@ export const listPatrolLocations = async ({ limit = 200 } = {}) => {
  * 巡回チェックを登録
  * @param {Object} input - 登録内容
  * @param {string} input.patrolUserId - 巡回ユーザーID
- * @param {string|null} [input.locationId] - 場所ID
- * @param {string} input.locationText - 場所表示文字列
- * @param {string[]} [input.checkItems] - チェック項目
+ * @param {string|null} [input.locationId] - 巡回対象企画ID
+ * @param {string} input.locationText - 巡回対象表示文字列
+ * @param {Array} [input.checkItems] - チェック項目
  * @param {string} [input.memo] - メモ
  * @returns {Promise<{data: Object|null, error: Error|null}>} 登録結果
  */
@@ -85,11 +171,7 @@ export const createPatrolCheck = async (input) => {
       throw new Error('場所を入力してください');
     }
 
-    const rawCheckItems = Array.isArray(input.checkItems) ? input.checkItems : [];
-    const checkItems = rawCheckItems
-      .map((item) => normalizeText(item))
-      .filter(Boolean)
-      .slice(0, 20);
+    const checkItems = normalizeCheckItems(input.checkItems);
 
     const payload = {
       patrol_user_id: patrolUserId,

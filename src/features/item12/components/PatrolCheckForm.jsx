@@ -1,9 +1,9 @@
 /**
  * 定常巡回チェックフォームコンポーネント
- * 場所選択、チェック項目、メモ入力、直近履歴を表示する
+ * organizations_events を巡回対象として選び、5段階評価と項目別メモを記録する
  */
 
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -14,13 +14,17 @@ import {
 } from 'react-native';
 import SkeletonLoader from '../../../shared/components/SkeletonLoader';
 import EmptyState from '../../../shared/components/EmptyState';
+import {
+  matchesOrganizationEventSearchKeyword,
+  normalizeOrganizationEventSearchValue,
+} from '../../../shared/utils/organizationEventList';
 
 /**
  * 巡回チェック項目の選択肢
- * チェック = 問題なし、未チェック = 問題あり（詳細はメモへ）
- * DB の patrol_checks.check_items (jsonb) に文字列配列として保存する
+ * DB の patrol_checks.check_items (jsonb) に
+ * { key, label, score, memo } の配列として保存する
  */
-const PATROL_CHECK_ITEM_OPTIONS = [
+export const PATROL_CHECK_ITEM_OPTIONS = [
   '企画書通り進行中',
   '体調問題なし',
   '困りごとなし',
@@ -28,19 +32,53 @@ const PATROL_CHECK_ITEM_OPTIONS = [
   '無人・未施錠教室なし',
 ];
 
+/** 評価選択肢 */
+const SCORE_OPTIONS = [1, 2, 3, 4, 5];
+
+/**
+ * 履歴の check_items を表示向けに正規化する
+ * @param {Array} value - patrol_checks.check_items の値
+ * @returns {Array} 表示向け配列
+ */
+const normalizeHistoryCheckItems = (value) => {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => {
+      if (typeof item === 'string') {
+        return {
+          key: item,
+          label: item,
+          score: null,
+          memo: '',
+        };
+      }
+
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+
+      return {
+        key: item.key || item.label,
+        label: item.label || item.key || '項目名未設定',
+        score: Number.isFinite(Number(item.score)) ? Number(item.score) : null,
+        memo: item.memo || '',
+      };
+    })
+    .filter(Boolean);
+};
+
 /**
  * 定常巡回チェックフォームコンポーネント
  * @param {Object} props - コンポーネントプロパティ
  * @param {Object} props.theme - テーマオブジェクト
- * @param {Array} props.patrolLocations - 巡回場所候補配列
- * @param {string} props.selectedPatrolLocationId - 選択中場所ID
- * @param {Function} props.onSelectLocation - 場所選択コールバック
- * @param {string} props.patrolLocationText - 巡回場所テキスト
- * @param {Function} props.onChangeLocationText - 場所テキスト変更コールバック
- * @param {Array} props.patrolCheckItems - 選択済みチェック項目配列
- * @param {Function} props.onToggleCheckItem - チェック項目切替コールバック
- * @param {string} props.patrolCheckMemo - メモ文字列
- * @param {Function} props.onChangeCheckMemo - メモ変更コールバック
+ * @param {Array} props.patrolLocations - 巡回対象候補配列（organizations_events）
+ * @param {string} props.selectedPatrolLocationId - 選択中企画ID
+ * @param {Function} props.onSelectLocation - 企画選択コールバック
+ * @param {string} props.patrolLocationText - 選択中企画表示文字列
+ * @param {Object} props.patrolCheckItems - 項目別評価状態
+ * @param {Function} props.onChangeCheckScore - 項目別評価変更コールバック
+ * @param {Function} props.onChangeCheckMemo - 項目別メモ変更コールバック
+ * @param {string} props.patrolCheckMemo - 全体メモ文字列
+ * @param {Function} props.onChangeSummaryMemo - 全体メモ変更コールバック
  * @param {boolean} props.isSubmittingPatrolCheck - 登録中フラグ
  * @param {Function} props.onSubmitPatrolCheck - 登録ボタン押下コールバック
  * @param {Array} props.recentPatrolChecks - 直近巡回チェック履歴配列
@@ -54,21 +92,55 @@ const PatrolCheckForm = ({
   selectedPatrolLocationId,
   onSelectLocation,
   patrolLocationText,
-  onChangeLocationText,
   patrolCheckItems,
-  onToggleCheckItem,
-  patrolCheckMemo,
+  onChangeCheckScore,
   onChangeCheckMemo,
+  patrolCheckMemo,
+  onChangeSummaryMemo,
   isSubmittingPatrolCheck,
   onSubmitPatrolCheck,
   recentPatrolChecks,
   isLoadingRecentPatrolChecks,
   onRefresh,
 }) => {
+  /** 団体名検索キーワード */
+  const [organizationSearch, setOrganizationSearch] = useState('');
+
+  /** 選択中企画 */
+  const selectedLocation = useMemo(() => {
+    return patrolLocations.find((location) => String(location.id) === String(selectedPatrolLocationId)) || null;
+  }, [patrolLocations, selectedPatrolLocationId]);
+
+  /** 団体名で絞り込んだ企画候補 */
+  const filteredLocations = useMemo(() => {
+    /** 検索文字列 */
+    const keyword = normalizeOrganizationEventSearchValue(organizationSearch);
+
+    if (!keyword) {
+      return patrolLocations;
+    }
+
+    return patrolLocations.filter((location) => {
+      const organizationName = location.organizationName || '';
+      return matchesOrganizationEventSearchKeyword(organizationName, keyword);
+    });
+  }, [organizationSearch, patrolLocations]);
+
+  /** 現在入力している巡回対象 */
+  const currentLocationLabel =
+    patrolLocationText.trim() ||
+    selectedLocation?.label ||
+    '企画を選択してください';
+
   return (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>定常巡回チェック</Text>
+        <View style={styles.sectionTitleBlock}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>定常巡回チェック</Text>
+          <Text style={[styles.sectionSubTitle, { color: theme.textSecondary }]}>
+            団体名で絞り込み、企画を1件選んでから各項目を 5 段階で評価します。
+          </Text>
+        </View>
         <TouchableOpacity
           style={[styles.refreshButton, { borderColor: theme.border }]}
           onPress={onRefresh}
@@ -76,87 +148,162 @@ const PatrolCheckForm = ({
           <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
         </TouchableOpacity>
       </View>
-      <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-        企画を訪問した際の状況をチェックします。問題があった項目はチェックせずメモに詳細を記録してください。
-      </Text>
 
-      <Text style={[styles.label, { color: theme.text }]}>巡回場所</Text>
+      <View
+        style={[
+          styles.locationSummaryCard,
+          { borderColor: theme.border, backgroundColor: theme.background },
+        ]}
+      >
+        <Text style={[styles.locationSummaryLabel, { color: theme.textSecondary }]}>
+          選択中の企画
+        </Text>
+        <Text style={[styles.locationSummaryValue, { color: theme.text }]}>
+          {currentLocationLabel}
+        </Text>
+      </View>
+
+      <Text style={[styles.label, { color: theme.text }]}>団体名で絞り込み</Text>
       <TextInput
-        value={patrolLocationText}
-        onChangeText={onChangeLocationText}
-        placeholder="例: A棟 3F 301教室"
+        value={organizationSearch}
+        onChangeText={setOrganizationSearch}
+        placeholder="例: 情祭"
         placeholderTextColor={theme.textSecondary}
         style={[
-          styles.memoInput,
+          styles.searchInput,
           {
             borderColor: theme.border,
             backgroundColor: theme.background,
             color: theme.text,
-            minHeight: 52,
           },
         ]}
       />
 
-      {patrolLocations.length > 0 ? (
-        <View style={styles.optionGroup}>
-          {patrolLocations.slice(0, 18).map((location) => {
+      <Text style={[styles.subLabel, { color: theme.textSecondary }]}>対象企画を1件選択</Text>
+      {filteredLocations.length === 0 ? (
+        <Text style={[styles.emptyInlineText, { color: theme.textSecondary }]}>
+          該当する企画候補がありません
+        </Text>
+      ) : (
+        <View style={styles.locationList}>
+          {filteredLocations.slice(0, 18).map((location) => {
             /** 選択中かどうか */
-            const isActive = location.id === selectedPatrolLocationId;
+            const isActive = String(location.id) === String(selectedPatrolLocationId);
+
             return (
               <Pressable
                 key={location.id}
                 style={[
-                  styles.optionButton,
+                  styles.locationOption,
                   {
                     borderColor: isActive ? theme.primary : theme.border,
-                    backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
+                    backgroundColor: isActive ? `${theme.primary}12` : theme.background,
                   },
                 ]}
                 onPress={() => onSelectLocation(location)}
               >
-                <Text style={[styles.optionButtonText, { color: isActive ? theme.primary : theme.textSecondary }]}>
-                  {location.label || location.name}
+                <Text
+                  style={[
+                    styles.locationOptionOrg,
+                    { color: isActive ? theme.primary : theme.textSecondary },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {location.organizationName || '団体名未設定'}
+                </Text>
+                <Text
+                  style={[
+                    styles.locationOptionEvent,
+                    { color: isActive ? theme.primary : theme.text },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {location.eventName || '企画名未設定'}
                 </Text>
               </Pressable>
             );
           })}
         </View>
-      ) : null}
+      )}
 
-      <Text style={[styles.label, { color: theme.text }]}>チェック項目（問題なし＝タップして選択）</Text>
-      <View style={styles.optionGroup}>
+      <Text style={[styles.label, { color: theme.text }]}>チェック項目</Text>
+      <Text style={[styles.subLabel, { color: theme.textSecondary }]}>
+        1 が低評価、5 が高評価です。必要なら各項目にメモを残してください。
+      </Text>
+      <View style={styles.checkItemList}>
         {PATROL_CHECK_ITEM_OPTIONS.map((item) => {
-          /** 選択中かどうか */
-          const isActive = patrolCheckItems.includes(item);
+          /** 現在の評価値 */
+          const score = patrolCheckItems[item]?.score ?? null;
+          /** 現在の項目別メモ */
+          const memo = patrolCheckItems[item]?.memo || '';
+
           return (
-            <Pressable
+            <View
               key={item}
               style={[
-                styles.optionButton,
-                {
-                  borderColor: isActive ? theme.primary : theme.border,
-                  backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
-                },
+                styles.checkCard,
+                { borderColor: theme.border, backgroundColor: theme.background },
               ]}
-              onPress={() => onToggleCheckItem(item)}
             >
-              <Text style={[styles.optionButtonText, { color: isActive ? theme.primary : theme.textSecondary }]}>
-                {item}
-              </Text>
-            </Pressable>
+              <Text style={[styles.checkCardTitle, { color: theme.text }]}>{item}</Text>
+              <View style={styles.scoreRow}>
+                {SCORE_OPTIONS.map((value) => {
+                  /** 選択中かどうか */
+                  const isActive = value === score;
+
+                  return (
+                    <Pressable
+                      key={`${item}-${value}`}
+                      style={[
+                        styles.scoreButton,
+                        {
+                          borderColor: isActive ? theme.primary : theme.border,
+                          backgroundColor: isActive ? `${theme.primary}18` : theme.surface,
+                        },
+                      ]}
+                      onPress={() => onChangeCheckScore(item, value)}
+                    >
+                      <Text
+                        style={[
+                          styles.scoreButtonText,
+                          { color: isActive ? theme.primary : theme.textSecondary },
+                        ]}
+                      >
+                        {value}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <TextInput
+                value={memo}
+                onChangeText={(value) => onChangeCheckMemo(item, value)}
+                multiline
+                placeholder="この項目の気づきや補足"
+                placeholderTextColor={theme.textSecondary}
+                style={[
+                  styles.itemMemoInput,
+                  {
+                    borderColor: theme.border,
+                    backgroundColor: theme.surface,
+                    color: theme.text,
+                  },
+                ]}
+              />
+            </View>
           );
         })}
       </View>
 
-      <Text style={[styles.label, { color: theme.text }]}>メモ（問題あり項目の詳細・気づきなど）</Text>
+      <Text style={[styles.label, { color: theme.text }]}>全体メモ（任意）</Text>
       <TextInput
         value={patrolCheckMemo}
-        onChangeText={onChangeCheckMemo}
+        onChangeText={onChangeSummaryMemo}
         multiline
-        placeholder="例：体調不良者1名あり・311教室が無人で未施錠など"
+        placeholder="全体として残したい補足があれば入力"
         placeholderTextColor={theme.textSecondary}
         style={[
-          styles.memoInput,
+          styles.summaryMemoInput,
           {
             borderColor: theme.border,
             backgroundColor: theme.background,
@@ -164,8 +311,9 @@ const PatrolCheckForm = ({
           },
         ]}
       />
+
       <TouchableOpacity
-        style={[styles.actionButton, { backgroundColor: theme.primary, marginTop: 10 }]}
+        style={[styles.actionButton, { backgroundColor: theme.primary }]}
         onPress={onSubmitPatrolCheck}
         disabled={isSubmittingPatrolCheck}
       >
@@ -174,45 +322,61 @@ const PatrolCheckForm = ({
         </Text>
       </TouchableOpacity>
 
-      <Text style={[styles.label, { color: theme.text }]}>直近の巡回チェック</Text>
+      <View style={styles.historyHeader}>
+        <Text style={[styles.label, { color: theme.text }]}>直近の巡回チェック</Text>
+        <Text style={[styles.historyCount, { color: theme.textSecondary }]}>
+          {recentPatrolChecks.length}件
+        </Text>
+      </View>
       {isLoadingRecentPatrolChecks ? (
         <SkeletonLoader lines={3} baseColor={theme.border} />
       ) : recentPatrolChecks.length === 0 ? (
-        <EmptyState icon="🔍" title="まだ巡回チェックはありません" description="巡回チェックを記録すると履歴が表示されます" theme={theme} />
+        <EmptyState
+          icon="🔍"
+          title="まだ巡回チェックはありません"
+          description="巡回チェックを記録すると履歴が表示されます"
+          theme={theme}
+        />
       ) : (
-        <View style={styles.messageList}>
+        <View style={styles.historyList}>
           {recentPatrolChecks.map((check) => {
-            /** チェック済み項目（配列） */
-            const checkedItems = Array.isArray(check.check_items) ? check.check_items : [];
-            /** 未チェックの項目（問題があったもの） */
-            const uncheckedItems = PATROL_CHECK_ITEM_OPTIONS.filter(
-              (item) => !checkedItems.includes(item)
-            );
+            /** 表示用に正規化した履歴項目 */
+            const historyItems = normalizeHistoryCheckItems(check.check_items);
+
             return (
               <View
                 key={check.id}
                 style={[
-                  styles.messageItem,
+                  styles.historyItem,
                   { borderColor: theme.border, backgroundColor: theme.background },
                 ]}
               >
-                <Text style={[styles.messageAuthor, { color: theme.textSecondary }]}>
+                <Text style={[styles.historyItemTitle, { color: theme.text }]}>
                   {check.location_text}
                 </Text>
-                {checkedItems.length > 0 && (
-                  <Text style={[styles.checkOkText, { color: theme.primary }]}>
-                    ✓ {checkedItems.join('  ✓ ')}
-                  </Text>
-                )}
-                {uncheckedItems.length > 0 && (
-                  <Text style={[styles.checkNgText, { color: theme.error ?? '#e53e3e' }]}>
-                    ✗ {uncheckedItems.join('  ✗ ')}
-                  </Text>
-                )}
+                <View style={styles.historyCheckList}>
+                  {historyItems.map((item) => (
+                    <View key={`${check.id}-${item.key}`} style={styles.historyCheckRow}>
+                      <Text style={[styles.historyCheckLabel, { color: theme.text }]}>
+                        {item.label}
+                      </Text>
+                      <Text style={[styles.historyCheckScore, { color: theme.primary }]}>
+                        {item.score ? `${item.score} / 5` : '旧形式'}
+                      </Text>
+                      {item.memo ? (
+                        <Text style={[styles.historyCheckMemo, { color: theme.textSecondary }]}>
+                          {item.memo}
+                        </Text>
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
                 {check.memo ? (
-                  <Text style={[styles.messageBody, { color: theme.text }]}>{check.memo}</Text>
+                  <Text style={[styles.historySummaryMemo, { color: theme.textSecondary }]}>
+                    全体メモ: {check.memo}
+                  </Text>
                 ) : null}
-                <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
+                <Text style={[styles.historyDate, { color: theme.textSecondary }]}>
                   {new Date(check.checked_at || check.created_at).toLocaleString('ja-JP')}
                 </Text>
               </View>
@@ -227,27 +391,36 @@ const PatrolCheckForm = ({
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 18,
     padding: 16,
+    gap: 12,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  sectionTitleBlock: {
+    flex: 1,
+    gap: 4,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
   },
-  helpText: {
-    fontSize: 13,
-    lineHeight: 20,
+  sectionSubTitle: {
+    fontSize: 12,
+    lineHeight: 18,
   },
   label: {
     fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 6,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  subLabel: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   refreshButton: {
     borderWidth: 1,
@@ -259,35 +432,102 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  optionGroup: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 8,
-  },
-  optionButton: {
+  locationSummaryCard: {
     borderWidth: 1,
-    borderRadius: 999,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 4,
+  },
+  locationSummaryLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  locationSummaryValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    lineHeight: 24,
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderRadius: 14,
+    minHeight: 52,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 12,
+    fontSize: 14,
   },
-  optionButtonText: {
+  emptyInlineText: {
     fontSize: 12,
-    fontWeight: '600',
+    lineHeight: 18,
   },
-  memoInput: {
+  locationList: {
+    gap: 8,
+  },
+  locationOption: {
     borderWidth: 1,
-    borderRadius: 10,
-    minHeight: 96,
+    borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    gap: 3,
+  },
+  locationOptionOrg: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  locationOptionEvent: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  checkItemList: {
+    gap: 10,
+  },
+  checkCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  checkCardTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  scoreRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  scoreButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  scoreButtonText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  itemMemoInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    minHeight: 64,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    fontSize: 13,
+    textAlignVertical: 'top',
+  },
+  summaryMemoInput: {
+    borderWidth: 1,
+    borderRadius: 14,
+    minHeight: 88,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     fontSize: 14,
     textAlignVertical: 'top',
   },
   actionButton: {
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 12,
+    borderRadius: 14,
+    paddingVertical: 13,
     alignItems: 'center',
   },
   actionButtonText: {
@@ -295,40 +535,54 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  messageList: {
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  historyCount: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  historyList: {
     gap: 8,
     marginBottom: 12,
   },
-  messageItem: {
+  historyItem: {
     borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
   },
-  messageAuthor: {
-    fontSize: 11,
-    marginBottom: 2,
-  },
-  checkOkText: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  checkNgText: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 2,
-    lineHeight: 18,
-  },
-  messageBody: {
+  historyItemTitle: {
     fontSize: 14,
-    lineHeight: 20,
-    marginTop: 4,
+    fontWeight: '800',
   },
-  messageDate: {
+  historyCheckList: {
+    gap: 6,
+  },
+  historyCheckRow: {
+    gap: 2,
+  },
+  historyCheckLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  historyCheckScore: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  historyCheckMemo: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  historySummaryMemo: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  historyDate: {
     fontSize: 11,
-    marginTop: 4,
   },
 });
 

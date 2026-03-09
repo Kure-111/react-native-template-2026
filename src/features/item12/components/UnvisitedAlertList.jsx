@@ -30,10 +30,18 @@ const UnvisitedAlertList = ({
   onChangeAlertMinutes,
   onRefresh,
 }) => {
+  /** 閾値超過件数 */
+  const alertCount = unvisitedLocations.filter((location) => location.is_alert).length;
+
   return (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>未巡回アラート</Text>
+        <View style={styles.sectionTitleBlock}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>未巡回アラート</Text>
+          <Text style={[styles.sectionSubTitle, { color: theme.textSecondary }]}>
+            閾値を超えた場所を先頭に出し、見落としを減らします。
+          </Text>
+        </View>
         <TouchableOpacity
           style={[styles.refreshButton, { borderColor: theme.border }]}
           onPress={onRefresh}
@@ -41,9 +49,24 @@ const UnvisitedAlertList = ({
           <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
         </TouchableOpacity>
       </View>
-      <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-        設定した閾値以上巡回記録がない場所を先頭に表示します。
-      </Text>
+
+      <View
+        style={[
+          styles.alertSummaryCard,
+          {
+            borderColor: alertCount > 0 ? theme.error : theme.border,
+            backgroundColor: alertCount > 0 ? `${theme.error}12` : theme.background,
+          },
+        ]}
+      >
+        <Text style={[styles.alertSummaryValue, { color: alertCount > 0 ? theme.error : theme.text }]}>
+          {alertCount}
+        </Text>
+        <Text style={[styles.alertSummaryLabel, { color: theme.textSecondary }]}>
+          閾値超過の場所
+        </Text>
+      </View>
+
       <Text style={[styles.label, { color: theme.text }]}>アラート閾値</Text>
       <View style={styles.optionGroup}>
         {UNVISITED_ALERT_OPTIONS.map((minutes) => {
@@ -61,7 +84,12 @@ const UnvisitedAlertList = ({
               ]}
               onPress={() => onChangeAlertMinutes(minutes)}
             >
-              <Text style={[styles.optionButtonText, { color: isActive ? theme.primary : theme.textSecondary }]}>
+              <Text
+                style={[
+                  styles.optionButtonText,
+                  { color: isActive ? theme.primary : theme.textSecondary },
+                ]}
+              >
                 {minutes}分
               </Text>
             </Pressable>
@@ -72,35 +100,64 @@ const UnvisitedAlertList = ({
       {isLoadingUnvisitedLocations ? (
         <SkeletonLoader lines={3} baseColor={theme.border} />
       ) : unvisitedLocations.length === 0 ? (
-        <EmptyState icon="🚨" title="未巡回アラートはありません" description="すべての場所が閾値内に巡回されています" theme={theme} />
+        <EmptyState
+          icon="🚨"
+          title="未巡回アラートはありません"
+          description="すべての場所が閾値内に巡回されています"
+          theme={theme}
+        />
       ) : (
         <View style={styles.ticketList}>
-          {unvisitedLocations.slice(0, 24).map((row) => (
-            <View
-              key={row.location_id}
-              style={[
-                styles.ticketItem,
-                {
-                  borderColor: row.is_alert ? '#D1242F' : theme.border,
-                  backgroundColor: row.is_alert ? '#D1242F14' : theme.background,
-                },
-              ]}
-            >
-              <Text style={[styles.ticketTitle, { color: theme.text }]} numberOfLines={1}>
-                {row.location_label}
-              </Text>
-              <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
-                最終巡回:{' '}
-                {row.last_checked_at
-                  ? new Date(row.last_checked_at).toLocaleString('ja-JP')
-                  : '巡回記録なし'}
-              </Text>
-              <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
-                経過時間:{' '}
-                {row.elapsed_minutes === null ? '-' : `${Math.floor(row.elapsed_minutes / 60)}時間${row.elapsed_minutes % 60}分`}
-              </Text>
-            </View>
-          ))}
+          {unvisitedLocations.slice(0, 24).map((row) => {
+            /** 経過時間表示 */
+            const elapsedLabel =
+              row.elapsed_minutes === null
+                ? '-'
+                : `${Math.floor(row.elapsed_minutes / 60)}時間${row.elapsed_minutes % 60}分`;
+
+            return (
+              <View
+                key={row.location_id}
+                style={[
+                  styles.ticketItem,
+                  {
+                    borderColor: row.is_alert ? theme.error : theme.border,
+                    backgroundColor: row.is_alert ? `${theme.error}12` : theme.background,
+                  },
+                ]}
+              >
+                <View style={styles.ticketHeaderRow}>
+                  <Text style={[styles.ticketTitle, { color: theme.text }]} numberOfLines={1}>
+                    {row.location_label}
+                  </Text>
+                  <View
+                    style={[
+                      styles.alertBadge,
+                      {
+                        borderColor: row.is_alert ? theme.error : theme.border,
+                        backgroundColor: row.is_alert ? theme.error : theme.surface,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.alertBadgeText,
+                        { color: row.is_alert ? '#FFFFFF' : theme.textSecondary },
+                      ]}
+                    >
+                      {elapsedLabel}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>
+                  最終巡回:{' '}
+                  {row.last_checked_at
+                    ? new Date(row.last_checked_at).toLocaleString('ja-JP')
+                    : '巡回記録なし'}
+                </Text>
+              </View>
+            );
+          })}
         </View>
       )}
     </View>
@@ -110,27 +167,32 @@ const UnvisitedAlertList = ({
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 18,
     padding: 16,
+    gap: 12,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  sectionTitleBlock: {
+    flex: 1,
+    gap: 4,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
   },
-  helpText: {
-    fontSize: 13,
-    lineHeight: 20,
+  sectionSubTitle: {
+    fontSize: 12,
+    lineHeight: 18,
   },
   label: {
     fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 6,
+    fontWeight: '800',
+    marginBottom: 2,
   },
   refreshButton: {
     borderWidth: 1,
@@ -142,39 +204,71 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  alertSummaryCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 4,
+  },
+  alertSummaryValue: {
+    fontSize: 24,
+    fontWeight: '800',
+  },
+  alertSummaryLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
   optionGroup: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   optionButton: {
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 8,
   },
   optionButtonText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   ticketList: {
     gap: 8,
   },
   ticketItem: {
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    gap: 6,
+  },
+  ticketHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
   },
   ticketTitle: {
+    flex: 1,
     fontSize: 14,
+    fontWeight: '800',
+  },
+  alertBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  alertBadgeText: {
+    fontSize: 11,
     fontWeight: '700',
-    marginBottom: 4,
   },
   ticketMeta: {
     fontSize: 12,
-    marginTop: 2,
+    lineHeight: 18,
   },
 });
 

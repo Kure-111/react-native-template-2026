@@ -36,10 +36,6 @@ import {
   listPatrolLocations,
   listUnvisitedLocations,
 } from '../../../services/supabase/patrolCheckService';
-import {
-  createEvaluationCheck,
-  listEvaluationChecks,
-} from '../../../services/supabase/evaluationService';
 import { selectOrganizationEvents } from '../../../services/supabase/organizationEventService';
 import {
   ALL_ORGANIZATION_EVENT_FILTER,
@@ -50,9 +46,8 @@ import {
 } from '../../../shared/utils/organizationEventList';
 import PatrolTaskList from '../components/PatrolTaskList';
 import PatrolTaskDetail from '../components/PatrolTaskDetail';
-import PatrolCheckForm from '../components/PatrolCheckForm';
+import PatrolCheckForm, { PATROL_CHECK_ITEM_OPTIONS } from '../components/PatrolCheckForm';
 import UnvisitedAlertList from '../components/UnvisitedAlertList';
-import PatrolEvaluationForm from '../components/PatrolEvaluationForm';
 import ToastMessage from '../../../shared/components/ToastMessage';
 import OfflineBanner from '../../../shared/components/OfflineBanner';
 import { useManagedPushSubscription } from '../../notifications/hooks/useManagedPushSubscription';
@@ -116,6 +111,14 @@ const TASK_TYPE_LABELS = {
 
 /** 未巡回アラートのデフォルト閾値（分） */
 const DEFAULT_UNVISITED_ALERT_MINUTES = 90;
+
+/** タブごとの案内文 */
+const PATROL_TAB_DESCRIPTIONS = {
+  [PATROL_TAB_TYPES.DASHBOARD]: '件数と優先タスクだけを短く確認する巡回用の要約です。',
+  [PATROL_TAB_TYPES.TASKS]: '優先度の高い巡回依頼を選んで、そのまま対応まで進めます。',
+  [PATROL_TAB_TYPES.CHECK]: '定常巡回の記録と未巡回箇所の確認を同じ流れで行います。',
+  [PATROL_TAB_TYPES.EVENT_ORGS]: '団体別の企画一覧を絞り込みながら確認できます。',
+};
 
 /**
  * 巡回サポートのタブキーが有効か判定
@@ -187,7 +190,7 @@ const Item12Screen = ({ navigation, route }) => {
   const [patrolLocations, setPatrolLocations] = useState([]);
   const [selectedPatrolLocationId, setSelectedPatrolLocationId] = useState('');
   const [patrolLocationText, setPatrolLocationText] = useState('');
-  const [patrolCheckItems, setPatrolCheckItems] = useState([]);
+  const [patrolCheckItems, setPatrolCheckItems] = useState({});
   const [patrolCheckMemo, setPatrolCheckMemo] = useState('');
   const [isSubmittingPatrolCheck, setIsSubmittingPatrolCheck] = useState(false);
   const [recentPatrolChecks, setRecentPatrolChecks] = useState([]);
@@ -197,13 +200,6 @@ const Item12Screen = ({ navigation, route }) => {
   const [unvisitedLocations, setUnvisitedLocations] = useState([]);
   const [isLoadingUnvisitedLocations, setIsLoadingUnvisitedLocations] = useState(false);
   const [unvisitedAlertMinutes, setUnvisitedAlertMinutes] = useState(DEFAULT_UNVISITED_ALERT_MINUTES);
-
-  /* ---- 評価関連 ---- */
-  const [evaluationScore, setEvaluationScore] = useState(3);
-  const [evaluationComment, setEvaluationComment] = useState('');
-  const [isSubmittingEvaluation, setIsSubmittingEvaluation] = useState(false);
-  const [myEvaluationChecks, setMyEvaluationChecks] = useState([]);
-  const [isLoadingMyEvaluationChecks, setIsLoadingMyEvaluationChecks] = useState(false);
 
   /* ---- 自分の履歴関連 ---- */
   /** 自分が対応した過去タスク（完了・取消）一覧 */
@@ -298,6 +294,71 @@ const Item12Screen = ({ navigation, route }) => {
   const resultOptions = useMemo(() => {
     return getResultOptionsByTaskType(selectedTask?.task_type);
   }, [selectedTask?.task_type]);
+
+  /** 選択中タスクの場所表示 */
+  const selectedTaskLocationLabel = useMemo(() => {
+    return selectedTask?.event_location || selectedTask?.location_text || '場所未設定';
+  }, [selectedTask?.event_location, selectedTask?.location_text]);
+
+  /** 未割当を含む進行中タスク件数 */
+  const openTaskCount = useMemo(() => {
+    return tasks.length;
+  }, [tasks]);
+
+  /** 自分が担当している進行中タスク件数 */
+  const myActiveTaskCount = useMemo(() => {
+    if (!user?.id) {
+      return 0;
+    }
+
+    return tasks.filter((task) => task.assigned_to === user.id).length;
+  }, [tasks, user?.id]);
+
+  /** 緊急対応タスク件数 */
+  const emergencyTaskCount = useMemo(() => {
+    return tasks.filter((task) => task.task_type === PATROL_TASK_TYPES.EMERGENCY_SUPPORT).length;
+  }, [tasks]);
+
+  /** 閾値超過の未巡回場所件数 */
+  const overdueAlertCount = useMemo(() => {
+    return unvisitedLocations.filter((location) => location.is_alert).length;
+  }, [unvisitedLocations]);
+
+  /** ダッシュボード用の件数カード一覧 */
+  const dashboardMetrics = useMemo(() => {
+    return [
+      {
+        key: 'open',
+        label: '進行中',
+        value: openTaskCount,
+        helper: 'タスク対応へ',
+      },
+      {
+        key: 'mine',
+        label: 'あなた担当',
+        value: myActiveTaskCount,
+        helper: '現在の持ち件数',
+      },
+      {
+        key: 'emergency',
+        label: '緊急',
+        value: emergencyTaskCount,
+        helper: '最優先確認',
+      },
+      {
+        key: 'alert',
+        label: '未巡回',
+        value: overdueAlertCount,
+        helper: `${unvisitedAlertMinutes}分基準`,
+      },
+    ];
+  }, [
+    emergencyTaskCount,
+    myActiveTaskCount,
+    openTaskCount,
+    overdueAlertCount,
+    unvisitedAlertMinutes,
+  ]);
 
   /**
    * タスク一覧取得
@@ -418,8 +479,8 @@ const Item12Screen = ({ navigation, route }) => {
       return;
     }
 
-    setSelectedPatrolLocationId(nextLocations[0].id);
-    setPatrolLocationText(nextLocations[0].label || nextLocations[0].name || '');
+    setSelectedPatrolLocationId('');
+    setPatrolLocationText('');
   };
 
   /**
@@ -457,31 +518,6 @@ const Item12Screen = ({ navigation, route }) => {
     }
 
     setUnvisitedLocations(data || []);
-  };
-
-  /**
-   * 自分の評価入力履歴を取得
-   * @returns {Promise<void>} 取得処理
-   */
-  const loadMyEvaluationChecks = async () => {
-    if (!user?.id) {
-      setMyEvaluationChecks([]);
-      return;
-    }
-
-    setIsLoadingMyEvaluationChecks(true);
-    const { data, error } = await listEvaluationChecks({
-      evaluatorId: user.id,
-      limit: 20,
-    });
-    setIsLoadingMyEvaluationChecks(false);
-
-    if (error) {
-      console.error('評価入力履歴の取得に失敗:', error);
-      return;
-    }
-
-    setMyEvaluationChecks(data || []);
   };
 
   /**
@@ -569,19 +605,39 @@ const Item12Screen = ({ navigation, route }) => {
       loadPatrolLocations(),
       loadRecentPatrolChecks(),
       loadUnvisitedAlerts(),
-      loadMyEvaluationChecks(),
     ]);
   };
 
   /**
-   * 巡回チェック項目を切替
+   * 巡回チェック項目の評価点を更新
    * @param {string} item - 項目名
+   * @param {number} score - 評価点
    * @returns {void}
    */
-  const togglePatrolCheckItem = (item) => {
-    setPatrolCheckItems((prev) =>
-      prev.includes(item) ? prev.filter((value) => value !== item) : [...prev, item]
-    );
+  const handleChangePatrolCheckScore = (item, score) => {
+    setPatrolCheckItems((prev) => ({
+      ...prev,
+      [item]: {
+        ...(prev[item] || {}),
+        score,
+      },
+    }));
+  };
+
+  /**
+   * 巡回チェック項目のメモを更新
+   * @param {string} item - 項目名
+   * @param {string} memo - 項目別メモ
+   * @returns {void}
+   */
+  const handleChangePatrolCheckMemo = (item, memo) => {
+    setPatrolCheckItems((prev) => ({
+      ...prev,
+      [item]: {
+        ...(prev[item] || {}),
+        memo,
+      },
+    }));
   };
 
   /**
@@ -591,7 +647,7 @@ const Item12Screen = ({ navigation, route }) => {
    */
   const handleSelectLocation = (location) => {
     setSelectedPatrolLocationId(location.id);
-    setPatrolLocationText(location.label || location.name || '');
+    setPatrolLocationText(location.label || '');
   };
 
   /**
@@ -605,19 +661,37 @@ const Item12Screen = ({ navigation, route }) => {
     }
 
     const selectedLocation = patrolLocations.find((location) => location.id === selectedPatrolLocationId) || null;
-    const locationText = patrolLocationText.trim() || selectedLocation?.label || selectedLocation?.name || '';
+    const locationText = patrolLocationText.trim() || selectedLocation?.label || '';
+
+    if (!selectedLocation?.id) {
+      showToast('対象企画を選択してください', 'error');
+      return;
+    }
 
     if (!locationText) {
-      showToast('巡回場所を入力してください', 'error');
+      showToast('対象企画を選択してください', 'error');
+      return;
+    }
+
+    /** 保存するチェック項目配列 */
+    const checkItems = PATROL_CHECK_ITEM_OPTIONS.map((item) => ({
+      key: item,
+      label: item,
+      score: patrolCheckItems[item]?.score ?? null,
+      memo: (patrolCheckItems[item]?.memo || '').trim(),
+    }));
+
+    if (checkItems.some((item) => !(item.score >= 1 && item.score <= 5))) {
+      showToast('すべてのチェック項目を5段階で評価してください', 'error');
       return;
     }
 
     setIsSubmittingPatrolCheck(true);
     const { error } = await createPatrolCheck({
       patrolUserId: user.id,
-      locationId: selectedLocation?.id || null,
+      locationId: selectedLocation.id,
       locationText,
-      checkItems: patrolCheckItems,
+      checkItems,
       memo: patrolCheckMemo,
     });
     setIsSubmittingPatrolCheck(false);
@@ -628,56 +702,9 @@ const Item12Screen = ({ navigation, route }) => {
     }
 
     setPatrolCheckMemo('');
-    setPatrolCheckItems([]);
+    setPatrolCheckItems({});
     await Promise.all([loadRecentPatrolChecks(), loadUnvisitedAlerts()]);
     showToast('巡回チェックを記録しました');
-  };
-
-  /**
-   * 企画評価を登録（承認待ち）
-   * @returns {Promise<void>} 登録処理
-   */
-  const handleSubmitEvaluation = async () => {
-    if (!user?.id) {
-      showToast('ログイン情報が取得できません', 'error');
-      return;
-    }
-    if (!selectedTask) {
-      showToast('評価対象のタスクを選択してください', 'error');
-      return;
-    }
-    if (selectedTask.task_status !== PATROL_TASK_STATUSES.DONE) {
-      showToast('評価はタスク完了後に入力してください', 'error');
-      return;
-    }
-    if (evaluationComment.trim().length < 4) {
-      showToast('評価コメントを4文字以上で入力してください', 'error');
-      return;
-    }
-
-    const sourceTicket = Array.isArray(selectedTask.source_ticket)
-      ? selectedTask.source_ticket[0] || null
-      : selectedTask.source_ticket || null;
-
-    setIsSubmittingEvaluation(true);
-    const { error } = await createEvaluationCheck({
-      eventId: sourceTicket?.event_id || null,
-      ticketId: selectedTask.source_ticket_id || null,
-      taskId: selectedTask.id,
-      evaluatorId: user.id,
-      score: evaluationScore,
-      comment: evaluationComment,
-    });
-    setIsSubmittingEvaluation(false);
-
-    if (error) {
-      showToast(error.message || '評価入力に失敗しました', 'error');
-      return;
-    }
-
-    setEvaluationComment('');
-    await loadMyEvaluationChecks();
-    showToast('評価を承認待ちとして登録しました');
   };
 
   /**
@@ -866,6 +893,16 @@ const Item12Screen = ({ navigation, route }) => {
     [selectedTask, isMineOrUnassigned]
   );
 
+  /** ダッシュボードに表示する直近履歴 */
+  const recentHistoryItems = useMemo(() => {
+    return myHistory.slice(0, 3);
+  }, [myHistory]);
+
+  /** ダッシュボードに表示する未巡回上位 */
+  const topAlertLocations = useMemo(() => {
+    return unvisitedLocations.slice(0, 3);
+  }, [unvisitedLocations]);
+
   useEffect(() => {
     loadTasks();
     refreshPatrolCheckData();
@@ -949,6 +986,133 @@ const Item12Screen = ({ navigation, route }) => {
             />
           ) : null}
 
+          {/* ダッシュボードタブ */}
+          {activeTab === PATROL_TAB_TYPES.DASHBOARD && (
+            <View style={[dashboardStyles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={dashboardStyles.header}>
+                <View style={dashboardStyles.headerTextBlock}>
+                  <Text style={[dashboardStyles.title, { color: theme.text }]}>ダッシュボード</Text>
+                  <Text style={[dashboardStyles.helpText, { color: theme.textSecondary }]}>
+                    {PATROL_TAB_DESCRIPTIONS[PATROL_TAB_TYPES.DASHBOARD]}
+                  </Text>
+                </View>
+                <Pressable
+                  style={[dashboardStyles.refreshButton, { borderColor: theme.border }]}
+                  onPress={async () => {
+                    await Promise.all([
+                      loadTasks(selectedTaskId),
+                      refreshPatrolCheckData(),
+                      loadMyHistory(),
+                    ]);
+                  }}
+                >
+                  <Text style={[dashboardStyles.refreshButtonText, { color: theme.textSecondary }]}>
+                    更新
+                  </Text>
+                </Pressable>
+              </View>
+
+              <View style={dashboardStyles.metricGrid}>
+                {dashboardMetrics.map((metric) => (
+                  <View
+                    key={metric.key}
+                    style={[
+                      dashboardStyles.metricCard,
+                      { borderColor: theme.border, backgroundColor: theme.background },
+                    ]}
+                  >
+                    <Text style={[dashboardStyles.metricValue, { color: theme.text }]}>{metric.value}</Text>
+                    <Text style={[dashboardStyles.metricLabel, { color: theme.textSecondary }]}>
+                      {metric.label}
+                    </Text>
+                    <Text style={[dashboardStyles.metricHelper, { color: theme.textSecondary }]}>
+                      {metric.helper}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              <View
+                style={[
+                  dashboardStyles.focusCard,
+                  { borderColor: theme.border, backgroundColor: theme.background },
+                ]}
+              >
+                <Text style={[dashboardStyles.sectionLabel, { color: theme.textSecondary }]}>
+                  次に見るべきタスク
+                </Text>
+                <Text style={[dashboardStyles.focusTitle, { color: theme.text }]}>
+                  {selectedTask
+                    ? selectedTask.event_name || TASK_TYPE_LABELS[selectedTask.task_type] || '巡回タスク'
+                    : 'タスクを選択してください'}
+                </Text>
+                <Text style={[dashboardStyles.focusBody, { color: theme.textSecondary }]}>
+                  {selectedTask
+                    ? `${TASK_TYPE_LABELS[selectedTask.task_type] || selectedTask.task_type} / ${selectedTaskLocationLabel}`
+                    : '下のタブでタスクを開くと、受諾と完了登録に進めます。'}
+                </Text>
+              </View>
+
+              <View style={dashboardStyles.columnGroup}>
+                <View
+                  style={[
+                    dashboardStyles.sectionCard,
+                    { borderColor: theme.border, backgroundColor: theme.background },
+                  ]}
+                >
+                  <Text style={[dashboardStyles.sectionTitle, { color: theme.text }]}>未巡回の上位</Text>
+                  {topAlertLocations.length === 0 ? (
+                    <Text style={[dashboardStyles.emptyText, { color: theme.textSecondary }]}>
+                      未巡回アラートはありません
+                    </Text>
+                  ) : (
+                    topAlertLocations.map((location) => (
+                      <View key={location.location_id} style={dashboardStyles.compactItem}>
+                        <Text style={[dashboardStyles.compactTitle, { color: theme.text }]} numberOfLines={1}>
+                          {location.location_label}
+                        </Text>
+                        <Text style={[dashboardStyles.compactMeta, { color: theme.textSecondary }]}>
+                          {location.elapsed_minutes === null
+                            ? '巡回記録なし'
+                            : `${Math.floor(location.elapsed_minutes / 60)}時間${location.elapsed_minutes % 60}分`}
+                        </Text>
+                      </View>
+                    ))
+                  )}
+                </View>
+
+                <View
+                  style={[
+                    dashboardStyles.sectionCard,
+                    { borderColor: theme.border, backgroundColor: theme.background },
+                  ]}
+                >
+                  <Text style={[dashboardStyles.sectionTitle, { color: theme.text }]}>最近の対応</Text>
+                  {isLoadingHistory ? (
+                    <Text style={[dashboardStyles.emptyText, { color: theme.textSecondary }]}>読み込み中...</Text>
+                  ) : recentHistoryItems.length === 0 ? (
+                    <Text style={[dashboardStyles.emptyText, { color: theme.textSecondary }]}>
+                      対応履歴はまだありません
+                    </Text>
+                  ) : (
+                    recentHistoryItems.map((task) => (
+                      <View key={task.id} style={dashboardStyles.compactItem}>
+                        <Text style={[dashboardStyles.compactTitle, { color: theme.text }]} numberOfLines={1}>
+                          {task.event_name || TASK_TYPE_LABELS[task.task_type] || '巡回対応'}
+                        </Text>
+                        <Text style={[dashboardStyles.compactMeta, { color: theme.textSecondary }]}>
+                          {task.done_at
+                            ? new Date(task.done_at).toLocaleString('ja-JP')
+                            : new Date(task.updated_at || task.created_at).toLocaleString('ja-JP')}
+                        </Text>
+                      </View>
+                    ))
+                  )}
+                </View>
+              </View>
+            </View>
+          )}
+
           {/* タスクタブ */}
           {activeTab === PATROL_TAB_TYPES.TASKS && (
             <>
@@ -998,11 +1162,11 @@ const Item12Screen = ({ navigation, route }) => {
                 selectedPatrolLocationId={selectedPatrolLocationId}
                 onSelectLocation={handleSelectLocation}
                 patrolLocationText={patrolLocationText}
-                onChangeLocationText={setPatrolLocationText}
                 patrolCheckItems={patrolCheckItems}
-                onToggleCheckItem={togglePatrolCheckItem}
+                onChangeCheckScore={handleChangePatrolCheckScore}
+                onChangeCheckMemo={handleChangePatrolCheckMemo}
                 patrolCheckMemo={patrolCheckMemo}
-                onChangeCheckMemo={setPatrolCheckMemo}
+                onChangeSummaryMemo={setPatrolCheckMemo}
                 isSubmittingPatrolCheck={isSubmittingPatrolCheck}
                 onSubmitPatrolCheck={handleSubmitPatrolCheck}
                 recentPatrolChecks={recentPatrolChecks}
@@ -1019,94 +1183,6 @@ const Item12Screen = ({ navigation, route }) => {
                 onRefresh={loadUnvisitedAlerts}
               />
             </>
-          )}
-
-          {/* 評価タブ */}
-          {activeTab === PATROL_TAB_TYPES.EVALUATION && (
-            <>
-              <PatrolEvaluationForm
-                theme={theme}
-                selectedTask={selectedTask}
-                evaluationScore={evaluationScore}
-                onChangeScore={setEvaluationScore}
-                evaluationComment={evaluationComment}
-                onChangeComment={setEvaluationComment}
-                isSubmittingEvaluation={isSubmittingEvaluation}
-                onSubmitEvaluation={handleSubmitEvaluation}
-                myEvaluationChecks={myEvaluationChecks}
-                isLoadingMyEvaluationChecks={isLoadingMyEvaluationChecks}
-                onRefresh={loadMyEvaluationChecks}
-              />
-            </>
-          )}
-
-          {/* 履歴タブ */}
-          {activeTab === PATROL_TAB_TYPES.HISTORY && (
-            <View style={[historyStyles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <View style={historyStyles.header}>
-                <Text style={[historyStyles.title, { color: theme.text }]}>自分の対応履歴</Text>
-                <Pressable
-                  style={[historyStyles.refreshButton, { borderColor: theme.border }]}
-                  onPress={loadMyHistory}
-                >
-                  <Text style={[historyStyles.refreshButtonText, { color: theme.textSecondary }]}>
-                    {isLoadingHistory ? '読込中...' : '更新'}
-                  </Text>
-                </Pressable>
-              </View>
-
-              {isLoadingHistory ? (
-                <Text style={[historyStyles.emptyText, { color: theme.textSecondary }]}>読み込み中...</Text>
-              ) : myHistory.length === 0 ? (
-                <Text style={[historyStyles.emptyText, { color: theme.textSecondary }]}>
-                  完了・取消済みの巡回履歴はありません
-                </Text>
-              ) : (
-                myHistory.map((task) => {
-                  /** タスク種別の表示名 */
-                  const taskLabel = TASK_TYPE_LABELS[task.task_type] || task.task_type;
-                  /** ステータス表示名（完了/取消） */
-                  const isDone = task.task_status === PATROL_TASK_STATUSES.DONE;
-                  const statusLabel = isDone ? '完了' : '取消';
-                  /** 対応日時（完了日時 or 最終更新日時） */
-                  const dateStr = task.done_at
-                    ? new Date(task.done_at).toLocaleString('ja-JP')
-                    : new Date(task.updated_at || task.created_at).toLocaleString('ja-JP');
-
-                  return (
-                    <View
-                      key={task.id}
-                      style={[
-                        historyStyles.item,
-                        { borderColor: theme.border, backgroundColor: theme.background },
-                      ]}
-                    >
-                      <View style={historyStyles.itemRow}>
-                        <Text style={[historyStyles.itemLabel, { color: theme.text }]} numberOfLines={1}>
-                          {taskLabel}
-                        </Text>
-                        <View
-                          style={[
-                            historyStyles.statusBadge,
-                            { backgroundColor: isDone ? '#22C55E18' : '#9CA3AF18' },
-                          ]}
-                        >
-                          <Text style={[historyStyles.statusText, { color: isDone ? '#22C55E' : '#9CA3AF' }]}>
-                            {statusLabel}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={[historyStyles.itemSub, { color: theme.textSecondary }]} numberOfLines={1}>
-                        {task.event_name || '-'} / {task.event_location || task.location_text || '-'}
-                      </Text>
-                      <Text style={[historyStyles.itemDate, { color: theme.textSecondary }]}>
-                        {dateStr}
-                      </Text>
-                    </View>
-                  );
-                })
-              )}
-            </View>
           )}
 
           {/* 企画一覧タブ */}
@@ -1305,94 +1381,141 @@ const Item12Screen = ({ navigation, route }) => {
   );
 };
 
-/** 履歴タブ専用スタイル */
-const historyStyles = StyleSheet.create({
+/** ダッシュボードタブ専用スタイル */
+const dashboardStyles = StyleSheet.create({
   card: {
-    borderRadius: 12,
+    borderRadius: 18,
     borderWidth: 1,
-    padding: 14,
-    gap: 10,
+    padding: 16,
+    gap: 12,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
+    gap: 10,
+  },
+  headerTextBlock: {
+    flex: 1,
+    gap: 4,
   },
   title: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  helpText: {
+    fontSize: 12,
+    lineHeight: 18,
   },
   refreshButton: {
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 999,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
   },
   refreshButtonText: {
     fontSize: 12,
     fontWeight: '600',
   },
-  emptyText: {
-    fontSize: 13,
-    textAlign: 'center',
-    paddingVertical: 16,
+  metricGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
   },
-  item: {
+  metricCard: {
+    minWidth: '47%',
+    flexGrow: 1,
     borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 3,
+  },
+  metricValue: {
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  metricLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  metricHelper: {
+    fontSize: 11,
+  },
+  focusCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     gap: 4,
   },
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  focusTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    lineHeight: 24,
+  },
+  focusBody: {
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  columnGroup: {
+    gap: 10,
+  },
+  sectionCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     gap: 8,
   },
-  itemLabel: {
+  sectionTitle: {
     fontSize: 14,
+    fontWeight: '800',
+  },
+  emptyText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  compactItem: {
+    gap: 2,
+    paddingTop: 2,
+  },
+  compactTitle: {
+    fontSize: 13,
     fontWeight: '700',
-    flex: 1,
   },
-  statusBadge: {
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  itemSub: {
+  compactMeta: {
     fontSize: 12,
-  },
-  itemDate: {
-    fontSize: 11,
   },
 });
 
 /** 企画一覧タブ専用スタイル */
 const eventOrgStyles = StyleSheet.create({
   card: {
-    borderRadius: 12,
+    borderRadius: 18,
     borderWidth: 1,
-    padding: 14,
-    gap: 10,
+    padding: 16,
+    gap: 12,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
+    gap: 10,
   },
   title: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
   },
   refreshButton: {
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 999,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
   },
   refreshButtonText: {
     fontSize: 12,
@@ -1404,14 +1527,14 @@ const eventOrgStyles = StyleSheet.create({
   },
   searchInput: {
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     fontSize: 14,
   },
   selectedSummaryCard: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 12,
     flexDirection: 'row',
@@ -1443,13 +1566,13 @@ const eventOrgStyles = StyleSheet.create({
   },
   dropdownOptionList: {
     borderWidth: 1,
-    borderRadius: 10,
-    padding: 8,
+    borderRadius: 14,
+    padding: 10,
     gap: 8,
   },
   dropdownOptionItem: {
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
@@ -1476,13 +1599,13 @@ const eventOrgStyles = StyleSheet.create({
   },
   item: {
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
   itemName: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
   },
   itemMeta: {
     fontSize: 12,
@@ -1507,7 +1630,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    paddingBottom: 24,
+    paddingBottom: 28,
     gap: 12,
   },
   /** 下部タブバーエリア */
@@ -1520,18 +1643,19 @@ const styles = StyleSheet.create({
   /** iOS スタイルのタブバー pill */
   iosTabBar: {
     borderWidth: 1,
-    borderRadius: 18,
+    borderRadius: 20,
     flexDirection: 'row',
     padding: 4,
     gap: 4,
   },
   tabButton: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 16,
+    minHeight: 58,
     paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    gap: 4,
   },
   tabButtonActive: {
     borderWidth: 1,
@@ -1542,11 +1666,12 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   tabButtonIcon: {
-    fontSize: 16,
+    fontSize: 17,
   },
   tabButtonText: {
     fontSize: 11,
     fontWeight: '700',
+    textAlign: 'center',
   },
 });
 

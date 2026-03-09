@@ -272,11 +272,25 @@ const OVERVIEW_REPORT_TYPE_FILTERS = [
   { key: 'confirm_end', label: '終了確認' },
 ];
 
-/** 概況ダッシュボード: 両セクション共通のステータスフィルター */
+/** 概況ダッシュボード: 企画報告セクションのステータスフィルター */
 const OVERVIEW_STATUS_FILTERS = [
   { key: 'active', label: '対応中' },
   { key: 'all', label: 'すべて' },
   { key: 'done', label: '完了済み' },
+];
+
+/** 概況ダッシュボード: 施錠確認セクションの担当フィルター */
+const OVERVIEW_LOCK_ASSIGNEE_FILTERS = [
+  { key: 'all', label: 'すべて' },
+  { key: 'assigned', label: '担当あり' },
+  { key: 'unassigned', label: '担当なし' },
+];
+
+/** 概況ダッシュボード: 施錠確認セクションの確認状況フィルター */
+const OVERVIEW_LOCK_CONFIRMATION_FILTERS = [
+  { key: 'all', label: 'すべて' },
+  { key: 'confirmed', label: '確認済み' },
+  { key: 'unconfirmed', label: '未確認' },
 ];
 
 /** 巡回タスクステータス別カラー（バッジ・左ボーダーで使用） */
@@ -531,8 +545,16 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   const [overviewProfileMap, setOverviewProfileMap] = useState({});
   /** 概況ダッシュボード: 企画報告種別フィルター（'all' | 'confirm_start' | 'confirm_end'） */
   const [overviewReportTypeFilter, setOverviewReportTypeFilter] = useState('all');
-  /** 概況ダッシュボード: ステータスフィルター（'active' | 'all' | 'done'） */
+  /** 概況ダッシュボード: 企画報告ステータスフィルター（'active' | 'all' | 'done'） */
   const [overviewStatusFilter, setOverviewStatusFilter] = useState('active');
+  /** 概況ダッシュボード: 企画報告確認セクションの展開状態 */
+  const [isOverviewReportSectionExpanded, setIsOverviewReportSectionExpanded] = useState(true);
+  /** 概況ダッシュボード: 施錠確認セクションの展開状態 */
+  const [isOverviewLockSectionExpanded, setIsOverviewLockSectionExpanded] = useState(true);
+  /** 概況ダッシュボード: 施錠確認の担当フィルター */
+  const [overviewLockAssigneeFilter, setOverviewLockAssigneeFilter] = useState('all');
+  /** 概況ダッシュボード: 施錠確認の確認状況フィルター */
+  const [overviewLockConfirmationFilter, setOverviewLockConfirmationFilter] = useState('all');
 
   /** 団体別企画一覧（organizations_events）- HQ向け */
   const [hqOrganizationEvents, setHqOrganizationEvents] = useState([]);
@@ -905,22 +927,37 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   }, [hqPatrolTasks, overviewStatusFilter, overviewReportTypeFilter]);
 
   /**
-   * 概況ダッシュボード: ステータスフィルター適用後の施錠確認タスク
+   * 概況ダッシュボード: 担当・確認状況フィルター適用後の施錠確認タスク
    */
   const overviewLockTasks = useMemo(() => {
     /** 施錠確認タスクに限定 */
     const base = hqPatrolTasks.filter((t) => t.task_type === PATROL_TASK_TYPES.LOCK_CHECK);
-    /** ステータスフィルター */
-    return base.filter((t) => {
-      if (overviewStatusFilter === 'active') {
-        return t.task_status === 'open' || t.task_status === 'accepted' || t.task_status === 'en_route';
+    /** 担当フィルターを適用した一覧 */
+    const assigneeFiltered = base.filter((t) => {
+      /** 担当者が設定されているか */
+      const hasAssignee = Boolean(t.assigned_to);
+      if (overviewLockAssigneeFilter === 'assigned') {
+        return hasAssignee;
       }
-      if (overviewStatusFilter === 'done') {
-        return t.task_status === 'done' || t.task_status === 'canceled';
+      if (overviewLockAssigneeFilter === 'unassigned') {
+        return !hasAssignee;
       }
       return true;
     });
-  }, [hqPatrolTasks, overviewStatusFilter]);
+
+    /** 確認状況フィルターを適用した一覧 */
+    return assigneeFiltered.filter((t) => {
+      /** 完了済みなら確認済みとみなす */
+      const isConfirmed = t.task_status === PATROL_TASK_STATUSES.DONE;
+      if (overviewLockConfirmationFilter === 'confirmed') {
+        return isConfirmed;
+      }
+      if (overviewLockConfirmationFilter === 'unconfirmed') {
+        return !isConfirmed;
+      }
+      return true;
+    });
+  }, [hqPatrolTasks, overviewLockAssigneeFilter, overviewLockConfirmationFilter]);
 
   /**
    * AsyncStorageから最終閲覧時刻を読み込む
@@ -1777,6 +1814,22 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   }, [filteredTickets, selectedTicketId]);
 
   /**
+   * 企画報告確認セクションの折りたたみ状態を切り替える
+   * @returns {void}
+   */
+  const toggleOverviewReportSection = () => {
+    setIsOverviewReportSectionExpanded((currentValue) => !currentValue);
+  };
+
+  /**
+   * 施錠確認セクションの折りたたみ状態を切り替える
+   * @returns {void}
+   */
+  const toggleOverviewLockSection = () => {
+    setIsOverviewLockSectionExpanded((currentValue) => !currentValue);
+  };
+
+  /**
    * HQ企画一覧の団体候補検索を更新
    * @param {string} value - 入力値
    * @returns {void}
@@ -2468,164 +2521,277 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
             <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <View style={styles.sectionHeader}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>企画報告確認</Text>
-                <TouchableOpacity
-                  style={[styles.refreshButton, { borderColor: theme.border }]}
-                  onPress={loadHqPatrolTasks}
-                >
-                  <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-                </TouchableOpacity>
+                <View style={styles.sectionHeaderActions}>
+                  <TouchableOpacity
+                    style={[styles.refreshButton, { borderColor: theme.border }]}
+                    onPress={loadHqPatrolTasks}
+                  >
+                    <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.refreshButton, { borderColor: theme.border }]}
+                    onPress={toggleOverviewReportSection}
+                  >
+                    <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>
+                      {isOverviewReportSectionExpanded ? '折りたたむ' : '開く'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
-              {/* ステータスフィルター（両セクション共通） */}
-              <Text style={[styles.label, { color: theme.text }]}>状態</Text>
-              <View style={styles.filterRow}>
-                {OVERVIEW_STATUS_FILTERS.map((f) => {
-                  /** このフィルターが選択中かどうか */
-                  const isActive = overviewStatusFilter === f.key;
-                  return (
-                    <Pressable
-                      key={f.key}
-                      style={[
-                        styles.filterChip,
-                        {
-                          borderColor: isActive ? theme.primary : theme.border,
-                          backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
-                        },
-                      ]}
-                      onPress={() => setOverviewStatusFilter(f.key)}
-                    >
-                      <Text style={[styles.filterChipText, { color: isActive ? theme.primary : theme.textSecondary }]}>
-                        {f.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              {/* 種別フィルター（企画報告セクション専用） */}
-              <Text style={[styles.label, { color: theme.text }]}>種別</Text>
-              <View style={styles.filterRow}>
-                {OVERVIEW_REPORT_TYPE_FILTERS.map((f) => {
-                  /** このフィルターが選択中かどうか */
-                  const isActive = overviewReportTypeFilter === f.key;
-                  return (
-                    <Pressable
-                      key={f.key}
-                      style={[
-                        styles.filterChip,
-                        {
-                          borderColor: isActive ? '#0969DA' : theme.border,
-                          backgroundColor: isActive ? '#0969DA1A' : theme.background,
-                        },
-                      ]}
-                      onPress={() => setOverviewReportTypeFilter(f.key)}
-                    >
-                      <Text style={[styles.filterChipText, { color: isActive ? '#0969DA' : theme.textSecondary }]}>
-                        {f.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              {/* タスクリスト */}
-              {isLoadingHqPatrolTasks ? (
-                <SkeletonLoader lines={3} baseColor={theme.border} />
-              ) : overviewReportTasks.length === 0 ? (
-                <EmptyState
-                  icon={'\u{1F4CB}'}
-                  title="該当する報告確認はありません"
-                  description="状態フィルターを変更するか、更新ボタンで再取得してください。"
-                  theme={theme}
-                />
+              {!isOverviewReportSectionExpanded ? (
+                <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+                  {isLoadingHqPatrolTasks
+                    ? '読み込み中です。'
+                    : `折りたたみ中です。現在 ${overviewReportTasks.length} 件あります。`}
+                </Text>
               ) : (
-                overviewReportTasks.map((task) => {
-                  /** 担当者名（プロフィールマップから取得。未割当の場合は表示） */
-                  const assigneeName = overviewProfileMap[task.assigned_to] || (task.assigned_to ? '読込中...' : '未割当');
-                  /** ステータス色 */
-                  const statusColor = PATROL_STATUS_BADGE_COLORS[task.task_status] || '#57606A';
-                  /** 時刻文字列 */
-                  const timeStr = formatOverviewTaskTime(task);
-                  return (
-                    <View
-                      key={task.id}
-                      style={[
-                        styles.overviewTaskCard,
-                        { borderColor: theme.border, backgroundColor: theme.background, borderLeftColor: statusColor },
-                      ]}
-                    >
-                      <View style={styles.overviewTaskHeader}>
-                        <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-                          <Text style={styles.statusBadgeText}>
-                            {PATROL_TASK_STATUS_LABELS[task.task_status] || task.task_status}
+                <>
+                  {/* ステータスフィルター（企画報告セクション専用） */}
+                  <Text style={[styles.label, { color: theme.text }]}>状態</Text>
+                  <View style={styles.filterRow}>
+                    {OVERVIEW_STATUS_FILTERS.map((f) => {
+                      /** このフィルターが選択中かどうか */
+                      const isActive = overviewStatusFilter === f.key;
+                      return (
+                        <Pressable
+                          key={f.key}
+                          style={[
+                            styles.filterChip,
+                            {
+                              borderColor: isActive ? theme.primary : theme.border,
+                              backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
+                            },
+                          ]}
+                          onPress={() => setOverviewStatusFilter(f.key)}
+                        >
+                          <Text
+                            style={[styles.filterChipText, { color: isActive ? theme.primary : theme.textSecondary }]}
+                          >
+                            {f.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  {/* 種別フィルター（企画報告セクション専用） */}
+                  <Text style={[styles.label, { color: theme.text }]}>種別</Text>
+                  <View style={styles.filterRow}>
+                    {OVERVIEW_REPORT_TYPE_FILTERS.map((f) => {
+                      /** このフィルターが選択中かどうか */
+                      const isActive = overviewReportTypeFilter === f.key;
+                      return (
+                        <Pressable
+                          key={f.key}
+                          style={[
+                            styles.filterChip,
+                            {
+                              borderColor: isActive ? '#0969DA' : theme.border,
+                              backgroundColor: isActive ? '#0969DA1A' : theme.background,
+                            },
+                          ]}
+                          onPress={() => setOverviewReportTypeFilter(f.key)}
+                        >
+                          <Text style={[styles.filterChipText, { color: isActive ? '#0969DA' : theme.textSecondary }]}>
+                            {f.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  {/* タスクリスト */}
+                  {isLoadingHqPatrolTasks ? (
+                    <SkeletonLoader lines={3} baseColor={theme.border} />
+                  ) : overviewReportTasks.length === 0 ? (
+                    <EmptyState
+                      icon={'\u{1F4CB}'}
+                      title="該当する報告確認はありません"
+                      description="状態フィルターを変更するか、更新ボタンで再取得してください。"
+                      theme={theme}
+                    />
+                  ) : (
+                    overviewReportTasks.map((task) => {
+                      /** 担当者名（プロフィールマップから取得。未割当の場合は表示） */
+                      const assigneeName =
+                        overviewProfileMap[task.assigned_to] || (task.assigned_to ? '読込中...' : '未割当');
+                      /** ステータス色 */
+                      const statusColor = PATROL_STATUS_BADGE_COLORS[task.task_status] || '#57606A';
+                      /** 時刻文字列 */
+                      const timeStr = formatOverviewTaskTime(task);
+                      return (
+                        <View
+                          key={task.id}
+                          style={[
+                            styles.overviewTaskCard,
+                            {
+                              borderColor: theme.border,
+                              backgroundColor: theme.background,
+                              borderLeftColor: statusColor,
+                            },
+                          ]}
+                        >
+                          <View style={styles.overviewTaskHeader}>
+                            <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+                              <Text style={styles.statusBadgeText}>
+                                {PATROL_TASK_STATUS_LABELS[task.task_status] || task.task_status}
+                              </Text>
+                            </View>
+                            <Text style={[styles.overviewTaskType, { color: theme.text }]}>
+                              {PATROL_TASK_TYPE_LABELS[task.task_type] || task.task_type}
+                            </Text>
+                          </View>
+                          <Text style={[styles.overviewTaskLocation, { color: theme.text }]} numberOfLines={1}>
+                            {task.event_name || '-'} / {task.event_location || task.location_text || '-'}
+                          </Text>
+                          <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
+                            担当: {assigneeName} / {timeStr}
                           </Text>
                         </View>
-                        <Text style={[styles.overviewTaskType, { color: theme.text }]}>
-                          {PATROL_TASK_TYPE_LABELS[task.task_type] || task.task_type}
-                        </Text>
-                      </View>
-                      <Text style={[styles.overviewTaskLocation, { color: theme.text }]} numberOfLines={1}>
-                        {task.event_name || '-'} / {task.event_location || task.location_text || '-'}
-                      </Text>
-                      <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
-                        担当: {assigneeName} / {timeStr}
-                      </Text>
-                    </View>
-                  );
-                })
+                      );
+                    })
+                  )}
+                </>
               )}
             </View>
 
             {/* ── 施錠確認セクション ── */}
             <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>施錠確認</Text>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>施錠確認</Text>
+                <View style={styles.sectionHeaderActions}>
+                  <TouchableOpacity
+                    style={[styles.refreshButton, { borderColor: theme.border }]}
+                    onPress={loadHqPatrolTasks}
+                  >
+                    <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.refreshButton, { borderColor: theme.border }]}
+                    onPress={toggleOverviewLockSection}
+                  >
+                    <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>
+                      {isOverviewLockSectionExpanded ? '折りたたむ' : '開く'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
               <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-                状態フィルターは上の「企画報告確認」と共有されます。
+                担当有無と確認状況で絞り込めます。
               </Text>
 
-              {isLoadingHqPatrolTasks ? (
-                <SkeletonLoader lines={2} baseColor={theme.border} />
-              ) : overviewLockTasks.length === 0 ? (
-                <EmptyState
-                  icon={'\u{1F510}'}
-                  title="該当する施錠確認はありません"
-                  description="状態フィルターを変更するか、更新ボタンで再取得してください。"
-                  theme={theme}
-                />
+              {!isOverviewLockSectionExpanded ? (
+                <Text style={[styles.helpText, { color: theme.textSecondary, marginTop: 8 }]}>
+                  {isLoadingHqPatrolTasks
+                    ? '読み込み中です。'
+                    : `折りたたみ中です。現在 ${overviewLockTasks.length} 件あります。`}
+                </Text>
               ) : (
-                overviewLockTasks.map((task) => {
-                  /** 担当者名（プロフィールマップから取得。未割当の場合は表示） */
-                  const assigneeName = overviewProfileMap[task.assigned_to] || (task.assigned_to ? '読込中...' : '未割当');
-                  /** ステータス色 */
-                  const statusColor = PATROL_STATUS_BADGE_COLORS[task.task_status] || '#57606A';
-                  /** 時刻文字列 */
-                  const timeStr = formatOverviewTaskTime(task);
-                  return (
-                    <View
-                      key={task.id}
-                      style={[
-                        styles.overviewTaskCard,
-                        { borderColor: theme.border, backgroundColor: theme.background, borderLeftColor: statusColor },
-                      ]}
-                    >
-                      <View style={styles.overviewTaskHeader}>
-                        <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-                          <Text style={styles.statusBadgeText}>
-                            {PATROL_TASK_STATUS_LABELS[task.task_status] || task.task_status}
+                <>
+                  <Text style={[styles.label, { color: theme.text }]}>担当</Text>
+                  <View style={styles.filterRow}>
+                    {OVERVIEW_LOCK_ASSIGNEE_FILTERS.map((filter) => {
+                      /** このフィルターが選択中かどうか */
+                      const isActive = overviewLockAssigneeFilter === filter.key;
+                      return (
+                        <Pressable
+                          key={filter.key}
+                          style={[
+                            styles.filterChip,
+                            {
+                              borderColor: isActive ? theme.primary : theme.border,
+                              backgroundColor: isActive ? `${theme.primary}1A` : theme.background,
+                            },
+                          ]}
+                          onPress={() => setOverviewLockAssigneeFilter(filter.key)}
+                        >
+                          <Text
+                            style={[styles.filterChipText, { color: isActive ? theme.primary : theme.textSecondary }]}
+                          >
+                            {filter.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={[styles.label, { color: theme.text }]}>確認状況</Text>
+                  <View style={styles.filterRow}>
+                    {OVERVIEW_LOCK_CONFIRMATION_FILTERS.map((filter) => {
+                      /** このフィルターが選択中かどうか */
+                      const isActive = overviewLockConfirmationFilter === filter.key;
+                      return (
+                        <Pressable
+                          key={filter.key}
+                          style={[
+                            styles.filterChip,
+                            {
+                              borderColor: isActive ? '#1A7F37' : theme.border,
+                              backgroundColor: isActive ? '#1A7F371A' : theme.background,
+                            },
+                          ]}
+                          onPress={() => setOverviewLockConfirmationFilter(filter.key)}
+                        >
+                          <Text
+                            style={[styles.filterChipText, { color: isActive ? '#1A7F37' : theme.textSecondary }]}
+                          >
+                            {filter.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  {isLoadingHqPatrolTasks ? (
+                    <SkeletonLoader lines={2} baseColor={theme.border} />
+                  ) : overviewLockTasks.length === 0 ? (
+                    <EmptyState
+                      icon={'\u{1F510}'}
+                      title="該当する施錠確認はありません"
+                      description="担当か確認状況のフィルターを変更するか、更新ボタンで再取得してください。"
+                      theme={theme}
+                    />
+                  ) : (
+                    overviewLockTasks.map((task) => {
+                      /** 担当者名（プロフィールマップから取得。未割当の場合は表示） */
+                      const assigneeName =
+                        overviewProfileMap[task.assigned_to] || (task.assigned_to ? '読込中...' : '未割当');
+                      /** ステータス色 */
+                      const statusColor = PATROL_STATUS_BADGE_COLORS[task.task_status] || '#57606A';
+                      /** 時刻文字列 */
+                      const timeStr = formatOverviewTaskTime(task);
+                      return (
+                        <View
+                          key={task.id}
+                          style={[
+                            styles.overviewTaskCard,
+                            {
+                              borderColor: theme.border,
+                              backgroundColor: theme.background,
+                              borderLeftColor: statusColor,
+                            },
+                          ]}
+                        >
+                          <View style={styles.overviewTaskHeader}>
+                            <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+                              <Text style={styles.statusBadgeText}>
+                                {PATROL_TASK_STATUS_LABELS[task.task_status] || task.task_status}
+                              </Text>
+                            </View>
+                            <Text style={[styles.overviewTaskType, { color: theme.text }]}>施錠確認</Text>
+                          </View>
+                          <Text style={[styles.overviewTaskLocation, { color: theme.text }]} numberOfLines={1}>
+                            {task.event_name || task.location_text || '-'} / {task.event_location || '-'}
+                          </Text>
+                          <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
+                            担当: {assigneeName} / {timeStr}
                           </Text>
                         </View>
-                        <Text style={[styles.overviewTaskType, { color: theme.text }]}>施錠確認</Text>
-                      </View>
-                      {/* 場所: event_name / event_location が優先、なければ location_text */}
-                      <Text style={[styles.overviewTaskLocation, { color: theme.text }]} numberOfLines={1}>
-                        {task.event_name || task.location_text || '-'} / {task.event_location || '-'}
-                      </Text>
-                      <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
-                        担当: {assigneeName} / {timeStr}
-                      </Text>
-                    </View>
-                  );
-                })
+                      );
+                    })
+                  )}
+                </>
               )}
             </View>
           </>
@@ -3963,6 +4129,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 10,
+  },
+  sectionHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   sectionTitle: {
     fontSize: 16,
