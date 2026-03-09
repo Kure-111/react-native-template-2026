@@ -15,7 +15,8 @@ import {
 import { DrawerContentScrollView } from '@react-navigation/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../shared/contexts/AuthContext';
-import { canAccessScreen } from '../../services/supabase/permissionService';
+import { useTheme } from '../../shared/hooks/useTheme';
+import { canAccessScreen, isAdmin } from '../../services/supabase/permissionService';
 
 /**
  * ドロワーアイテムコンポーネント
@@ -23,16 +24,28 @@ import { canAccessScreen } from '../../services/supabase/permissionService';
  * @param {string} props.label - 表示ラベル
  * @param {boolean} props.isActive - アクティブ状態かどうか
  * @param {Function} props.onPress - タップ時のコールバック
+ * @param {Object} props.theme - テーマオブジェクト
  * @returns {JSX.Element} ドロワーアイテム
  */
-const DrawerItem = ({ label, isActive, onPress }) => {
+const DrawerItem = ({ label, isActive, onPress, theme }) => {
   return (
     <TouchableOpacity
-      style={[styles.drawerItem, isActive && styles.drawerItemActive]}
+      style={[
+        styles.drawerItem,
+        {
+          backgroundColor: isActive ? theme.primary : 'transparent',
+        }
+      ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <Text style={[styles.drawerItemText, isActive && styles.drawerItemTextActive]}>
+      <Text style={[
+        styles.drawerItemText,
+        {
+          color: isActive ? '#FFFFFF' : theme.textSecondary,
+          fontWeight: isActive ? '600' : 'normal',
+        }
+      ]}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -53,6 +66,8 @@ const CustomDrawerContent = (props) => {
   const currentRouteName = props.state.routeNames[props.state.index];
   /** 認証コンテキスト */
   const { userInfo, logout } = useAuth();
+  /** テーマコンテキスト */
+  const { theme } = useTheme();
 
   /**
    * 画面遷移処理
@@ -84,7 +99,11 @@ const CustomDrawerContent = (props) => {
    * 項目番号に対応する表示名を定義
    */
   const ITEM_LABELS = {
+    1: '企画・屋台一覧',
     3: 'チケット配布率',
+    4: '落とし物検索',
+    9: '実長機能',
+    10: '本部',
     11: '当日部員',
   };
 
@@ -96,6 +115,7 @@ const CustomDrawerContent = (props) => {
    * 項目番号に対応するナビゲーション画面名を定義
    */
   const SCREEN_NAME_MAP = {
+    1: '01_Events&Stalls_list',
     11: 'JimuShift',
   };
 
@@ -104,6 +124,8 @@ const CustomDrawerContent = (props) => {
    * Supabaseのpermissions.screensに格納されている名前と対応
    */
   const PERMISSION_NAME_MAP = {
+    1: '企画・屋台一覧',
+    4: '落とし物検索',
     11: '当日部員',
   };
 
@@ -125,17 +147,19 @@ const CustomDrawerContent = (props) => {
     };
   }).filter((item) => item.isAccessible);
 
+  const canAccessAdmin = isAdmin(userInfo?.roles || []);
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.surface }]}>
       {/* ヘッダー */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>生駒祭 ERP</Text>
-        <Text style={styles.headerSubtitle}>2026</Text>
+      <View style={[styles.header, { borderBottomColor: theme.border }]}>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>生駒祭 ERP</Text>
+        <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>2026</Text>
         {userInfo && (
-          <View style={styles.userInfo}>
-            <Text style={styles.userName}>{userInfo.name}</Text>
+          <View style={[styles.userInfo, { borderTopColor: theme.border }]}>
+            <Text style={[styles.userName, { color: theme.text }]}>{userInfo.name}</Text>
             {userInfo.roles && userInfo.roles.length > 0 && (
-              <Text style={styles.userOrganization}>
+              <Text style={[styles.userOrganization, { color: theme.textSecondary }]}>
                 {userInfo.roles.map((role) => role.name).join(', ')}
               </Text>
             )}
@@ -157,24 +181,44 @@ const CustomDrawerContent = (props) => {
               label={item.label}
               isActive={currentRouteName === item.screenName}
               onPress={() => navigateTo(item.screenName)}
+              theme={theme}
             />
           ))
         ) : (
           <View style={styles.noAccessContainer}>
-            <Text style={styles.noAccessText}>
+            <Text style={[styles.noAccessText, { color: theme.textSecondary }]}>
               アクセス可能な項目がありません
             </Text>
           </View>
         )}
+
+        {/* 設定セクション */}
+        <View style={[styles.settingsSection, { borderTopColor: theme.border }]}>
+          <Text style={[styles.settingsSectionTitle, { color: theme.textSecondary }]}>設定</Text>
+          <DrawerItem
+            label="⚙️ テーマ設定"
+            isActive={currentRouteName === 'SettingsTheme'}
+            onPress={() => navigateTo('SettingsTheme')}
+            theme={theme}
+          />
+          {canAccessAdmin && (
+            <DrawerItem
+              label="🔔 通知送信（管理者）"
+              isActive={currentRouteName === 'AdminTestNotification'}
+              onPress={() => navigateTo('AdminTestNotification')}
+              theme={theme}
+            />
+          )}
+        </View>
       </ScrollView>
 
       {/* フッター */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 16, borderTopColor: theme.border }]}>
         {/* ログアウトボタン */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+        <TouchableOpacity style={[styles.logoutButton, { backgroundColor: theme.error }]} onPress={handleLogout}>
           <Text style={styles.logoutButtonText}>ログアウト</Text>
         </TouchableOpacity>
-        <Text style={styles.footerText}>v1.0.0</Text>
+        <Text style={[styles.footerText, { color: theme.textSecondary }]}>v1.0.0</Text>
       </View>
     </View>
   );
@@ -183,38 +227,31 @@ const CustomDrawerContent = (props) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a2e',
   },
   header: {
     paddingHorizontal: 20,
     paddingVertical: 24,
     borderBottomWidth: 1,
-    borderBottomColor: '#2d2d44',
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#FFFFFF',
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#888899',
     marginTop: 4,
   },
   userInfo: {
     marginTop: 16,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#2d2d44',
   },
   userName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#FFFFFF',
   },
   userOrganization: {
     fontSize: 12,
-    color: '#888899',
     marginTop: 4,
   },
   menuContainer: {
@@ -230,16 +267,8 @@ const styles = StyleSheet.create({
     marginVertical: 2,
     borderRadius: 8,
   },
-  drawerItemActive: {
-    backgroundColor: '#4a4a6a',
-  },
   drawerItemText: {
     fontSize: 16,
-    color: '#CCCCDD',
-  },
-  drawerItemTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '600',
   },
   noAccessContainer: {
     paddingHorizontal: 20,
@@ -248,17 +277,25 @@ const styles = StyleSheet.create({
   },
   noAccessText: {
     fontSize: 14,
-    color: '#888899',
     textAlign: 'center',
+  },
+  settingsSection: {
+    marginTop: 20,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  settingsSectionTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 20,
+    marginBottom: 8,
   },
   footer: {
     paddingHorizontal: 20,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: '#2d2d44',
   },
   logoutButton: {
-    backgroundColor: '#ff3b30',
     borderRadius: 8,
     padding: 12,
     alignItems: 'center',
@@ -271,7 +308,6 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 12,
-    color: '#666677',
   },
 });
 

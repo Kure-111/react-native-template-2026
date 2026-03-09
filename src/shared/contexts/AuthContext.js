@@ -3,7 +3,7 @@
  * アプリケーション全体で認証状態を管理します
  */
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import {
   signIn,
   signOut,
@@ -11,6 +11,8 @@ import {
   onAuthStateChange,
 } from '../../services/supabase/authService.js';
 import { selectUserInfo } from '../../services/supabase/userService.js';
+import { checkIsFirstLogin } from '../../features/auth/services/passwordService.js';
+import { initializeWebPushSubscription } from '../services/webPushService.js';
 
 /**
  * 認証コンテキスト
@@ -21,8 +23,11 @@ const AuthContext = createContext({
   session: null,
   isLoading: true,
   isAuthenticated: false,
+  isFirstLogin: false,
   login: async () => {},
   logout: async () => {},
+  refreshUserInfo: async () => {},
+  setFirstLoginHandled: () => {},
 });
 
 /**
@@ -39,6 +44,8 @@ export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   // ローディング状態
   const [isLoading, setIsLoading] = useState(true);
+  // 初回ログイン処理済みフラグ（セッション中のみ有効）
+  const [firstLoginHandled, setFirstLoginHandled] = useState(false);
 
   /**
    * 初回マウント時にセッションをチェック
@@ -69,6 +76,17 @@ export const AuthProvider = ({ children }) => {
       subscription?.unsubscribe();
     };
   }, []);
+
+  /**
+   * 認証後にWeb Push購読を初期化
+   */
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    initializeWebPushSubscription(user.id);
+  }, [user?.id]);
 
   /**
    * 現在のセッションをチェック
@@ -114,6 +132,15 @@ export const AuthProvider = ({ children }) => {
       setUserInfo(userInfo);
     } catch (error) {
       console.error('ユーザー情報読み込み処理でエラーが発生:', error);
+    }
+  };
+
+  /**
+   * ユーザー情報を再取得（パスワード変更後などに使用）
+   */
+  const refreshUserInfo = async () => {
+    if (user?.id) {
+      await loadUserInfo(user.id);
     }
   };
 
@@ -174,6 +201,17 @@ export const AuthProvider = ({ children }) => {
   const isAuthenticated = !!user && !!session;
 
   /**
+   * 初回ログインかどうかを判定（useMemoで最適化）
+   * password_changed_at が null で、まだ処理済みでない場合に true
+   */
+  const isFirstLogin = useMemo(() => {
+    if (!userInfo || firstLoginHandled) {
+      return false;
+    }
+    return checkIsFirstLogin(userInfo);
+  }, [userInfo, firstLoginHandled]);
+
+  /**
    * コンテキストの値
    */
   const value = {
@@ -182,12 +220,17 @@ export const AuthProvider = ({ children }) => {
     session,
     isLoading,
     isAuthenticated,
+    isFirstLogin,
     login,
     logout,
+    refreshUserInfo,
+    setFirstLoginHandled,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
+
+export { AuthContext };
 
 /**
  * 認証コンテキストを使用するカスタムフック

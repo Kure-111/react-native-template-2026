@@ -5,19 +5,20 @@
  */
 
 /** シフト用スプレッドシートID（環境変数から取得） */
-const SPREADSHEET_ID = process.env.EXPO_PUBLIC_SHIFT_SPREADSHEET_ID;
+const SHIFT_SPREADSHEET_ID = process.env.EXPO_PUBLIC_SHIFT_SPREADSHEET_ID;
 
 /** デフォルトタイムアウト時間（ミリ秒） */
 const DEFAULT_TIMEOUT = 10000;
 
 /**
  * CSV取得用のURLを生成
+ * @param {string} spreadsheetId - スプレッドシートID
  * @param {string} sheetName - シート名
  * @returns {string} CSV取得URL
  */
-const buildCsvUrl = (sheetName) => {
+const buildCsvUrl = (spreadsheetId, sheetName) => {
   const encodedSheetName = encodeURIComponent(sheetName);
-  return `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodedSheetName}`;
+  return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodedSheetName}`;
 };
 
 /**
@@ -51,18 +52,21 @@ const parseCsvRow = (row) => {
 };
 
 /**
- * 指定日のシフトデータをCSV形式で取得
- * @param {string} date - シート名（例: "11月3日"）※ゼロ埋めなし
- * @returns {Promise<Object>} シフトデータ { sheetName, exists, values }
+ * 任意のスプレッドシートから指定シートのCSVデータを取得する汎用関数
+ * @param {string} spreadsheetId - スプレッドシートID
+ * @param {string} sheetName - シート名
+ * @returns {Promise<Object>} CSVデータ { sheetName, exists, values }
  */
-export const fetchShiftData = async (date) => {
-  if (!SPREADSHEET_ID) {
-    throw new Error('EXPO_PUBLIC_SHIFT_SPREADSHEET_IDが設定されていません');
+export const fetchCsvData = async (spreadsheetId, sheetName) => {
+  if (!spreadsheetId) {
+    throw new Error('スプレッドシートIDが指定されていません');
   }
 
   try {
-    const url = buildCsvUrl(date);
+    const url = buildCsvUrl(spreadsheetId, sheetName);
+    /** タイムアウト制御用のAbortController */
     const controller = new AbortController();
+    /** タイムアウトタイマーID */
     const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
 
     const response = await fetch(url, {
@@ -76,7 +80,7 @@ export const fetchShiftData = async (date) => {
       // シートが存在しない場合は404エラー
       if (response.status === 404) {
         return {
-          sheetName: date,
+          sheetName: sheetName,
           exists: false,
           values: [],
         };
@@ -84,14 +88,17 @@ export const fetchShiftData = async (date) => {
       throw new Error(`HTTPエラー: ${response.status}`);
     }
 
+    /** 取得したCSVテキスト */
     const csvText = await response.text();
+    /** 空行を除いた行の配列 */
     const lines = csvText.split('\n').filter((line) => line.trim());
 
     // CSV行を2次元配列に変換
+    /** パース済みの2次元配列データ */
     const values = lines.map((line) => parseCsvRow(line));
 
     return {
-      sheetName: date,
+      sheetName: sheetName,
       exists: true,
       values: values,
     };
@@ -102,4 +109,17 @@ export const fetchShiftData = async (date) => {
     console.error('CSV取得エラー:', error);
     throw error;
   }
+};
+
+/**
+ * 指定日のシフトデータをCSV形式で取得（後方互換用ラッパー）
+ * @param {string} date - シート名（例: "11月3日"）※ゼロ埋めなし
+ * @returns {Promise<Object>} シフトデータ { sheetName, exists, values }
+ */
+export const fetchShiftData = async (date) => {
+  if (!SHIFT_SPREADSHEET_ID) {
+    throw new Error('EXPO_PUBLIC_SHIFT_SPREADSHEET_IDが設定されていません');
+  }
+
+  return fetchCsvData(SHIFT_SPREADSHEET_ID, date);
 };

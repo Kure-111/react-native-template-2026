@@ -1,0 +1,36 @@
+# MCP サーバー設定
+# 各サーバーの用途は .codex/instructions.md の「利用可能な MCP サーバー」を参照
+
+[mcp_servers.supabase]
+url = "https://mcp.supabase.com/mcp"
+
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+
+[mcp_servers.chrome-devtools]
+command = "npx"
+args = ["-y", "chrome-devtools-mcp@latest"]
+
+[mcp_servers.serena]
+command = "uvx"
+args = ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "ide-assistant", "--project-from-cwd"]
+
+[mcp_servers.drawio]
+command = "npx"
+args = ["-y", "@drawio/mcp"]
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["-y", "@playwright/mcp@latest"]
+
+[mcp_servers.sequential-thinking]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+
+# セキュリティ設定
+[sandbox]
+# .env ファイルへのアクセスを制限
+deny_read = [".env", ".env.*"]
+# 破壊的操作を制限
+deny_exec = ["rm -rf", "git push --force", "git push -f", "git push origin main", "git push origin develop"]

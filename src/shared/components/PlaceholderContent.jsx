@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useTheme } from '../hooks/useTheme';
 
 /**
  * プレースホルダーコンテンツコンポーネント
@@ -15,6 +16,8 @@ import { View, Text, StyleSheet } from 'react-native';
  * @returns {JSX.Element} プレースホルダーコンテンツ
  */
 const PlaceholderContent = ({ title, message, isError = false }) => {
+  const { theme } = useTheme();
+  
   /** デフォルトメッセージ */
   const defaultMessage = isError
     ? 'エラーが発生しました。しばらくしてから再度お試しください。'
@@ -25,10 +28,14 @@ const PlaceholderContent = ({ title, message, isError = false }) => {
 
   return (
     <View style={styles.content}>
-      <View style={[styles.placeholderBox, isError && styles.errorBox]}>
+      <View style={[
+        styles.placeholderBox, 
+        { backgroundColor: theme.surface },
+        isError && { borderWidth: 2, borderColor: theme.error }
+      ]}>
         <Text style={styles.placeholderIcon}>{icon}</Text>
-        <Text style={styles.placeholderTitle}>{title}</Text>
-        <Text style={styles.placeholderDescription}>
+        <Text style={[styles.placeholderTitle, { color: theme.text }]}>{title}</Text>
+        <Text style={[styles.placeholderDescription, { color: theme.textSecondary }]}>
           {message || defaultMessage}
         </Text>
       </View>
@@ -46,17 +53,12 @@ const styles = StyleSheet.create({
   placeholderBox: {
     alignItems: 'center',
     padding: 40,
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
-  },
-  errorBox: {
-    borderWidth: 2,
-    borderColor: '#ff6b6b',
   },
   placeholderIcon: {
     fontSize: 48,
@@ -65,12 +67,10 @@ const styles = StyleSheet.create({
   placeholderTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#333333',
     marginBottom: 8,
   },
   placeholderDescription: {
     fontSize: 16,
-    color: '#666666',
     textAlign: 'center',
   },
 });
