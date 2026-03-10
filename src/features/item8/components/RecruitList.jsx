@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, Button } from 'react-native';
-import { OPTIONAL_FIELD_DEFAULTS, RINJI_STATUS } from '../constants.js';
+import { OPTIONAL_FIELD_DEFAULTS, RINJI_STATUS, RINJI_CLOSE_REASON } from '../constants.js';
 import { useTheme } from '../../../shared/hooks/useTheme';
 
 const TITLE_SEPARATOR = '\n\n---\n\n';
@@ -137,6 +137,38 @@ const parseTitleAndDescription = (raw) => {
 const getStatusLabel = (status) => STATUS_LABELS[status] || status;
 
 /**
+ * 募集人数表示を「応募数 / 募集人数」の形式に整える。
+ *
+ * @param {Record<string, any>} recruit
+ * @returns {string}
+ */
+const formatHeadcountValue = (recruit) => {
+  const required = recruit?.headcount ?? '—';
+  const applicants = Number.isFinite(Number(recruit?.applicant_count))
+    ? Number(recruit.applicant_count)
+    : 0;
+  return `${applicants} / ${required}`;
+};
+
+/**
+ * 応募日時を「YYYY/MM/DD HH:mm」形式へ変換する。
+ *
+ * @param {string | null | undefined} value
+ * @returns {string}
+ */
+const formatAppliedAt = (value) => {
+  if (!value) return '日時不明';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '日時不明';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${y}/${m}/${d} ${hh}:${mm}`;
+};
+
+/**
  * 募集カード内の情報行を描画する。
  *
  * @param {{
@@ -178,15 +210,33 @@ const RecruitCard = ({
   recruit,
   isManager,
   onApply,
+  onCancelApply,
   onEdit,
   onClose,
   onReopen,
+  onFinalizeAutoClose,
+  onToggleApplicants,
   theme,
   showStatus = false,
   themeMode,
+  showApplyButton = true,
+  showCancelButton = false,
+  isAlreadyApplied = false,
+  applications = [],
+  isApplicantsOpen = false,
+  applicantsLoading = false,
+  showApplicantsToggle = false,
+  showAutoClosedBadge = false,
 }) => {
   const optional = formatOptional(recruit);
   const text = parseTitleAndDescription(recruit.description);
+  const shouldShowActions = isManager || showApplyButton || showCancelButton;
+  const shouldShowApplicants = isManager && showApplicantsToggle && isApplicantsOpen;
+  const isAutoClosedByCapacity =
+    recruit.status === RINJI_STATUS.CLOSED && recruit.close_reason === RINJI_CLOSE_REASON.AUTO_FULL;
+  const isAutoClosedByDate =
+    recruit.status === RINJI_STATUS.CLOSED &&
+    recruit.close_reason === RINJI_CLOSE_REASON.AUTO_DATE_PASSED;
 
   return (
     <View
@@ -215,6 +265,20 @@ const RecruitCard = ({
             <Text style={[styles.lateJoinBadgeText, { color: theme.success }]}>途中参加可</Text>
           </View>
         ) : null}
+        {recruit.head_organization ? (
+          <View
+            style={[
+              styles.organizationBadge,
+              {
+                backgroundColor: '#FFFFFF',
+                borderColor: withAlpha(theme.text, '33'),
+                borderRadius: theme.borderRadius,
+              },
+            ]}
+          >
+            <Text style={[styles.organizationBadgeText, { color: '#1F2937' }]}>{recruit.head_organization}</Text>
+          </View>
+        ) : null}
         {text.lateJoin === LATE_JOIN_DENY ? (
           <View
             style={[
@@ -229,6 +293,34 @@ const RecruitCard = ({
             <Text style={[styles.lateJoinBadgeDenyText, { color: theme.primary }]}>途中参加不可</Text>
           </View>
         ) : null}
+        {showAutoClosedBadge && isAutoClosedByCapacity ? (
+          <View
+            style={[
+              styles.autoCloseBadge,
+              {
+                backgroundColor: withAlpha(theme.error, '22'),
+                borderColor: theme.error,
+                borderRadius: theme.borderRadius,
+              },
+            ]}
+          >
+            <Text style={[styles.autoCloseBadgeText, { color: theme.error }]}>募集人数到達済み</Text>
+          </View>
+        ) : null}
+        {showAutoClosedBadge && isAutoClosedByDate ? (
+          <View
+            style={[
+              styles.autoDateBadge,
+              {
+                backgroundColor: withAlpha(theme.primary, '22'),
+                borderColor: theme.primary,
+                borderRadius: theme.borderRadius,
+              },
+            ]}
+          >
+            <Text style={[styles.autoDateBadgeText, { color: theme.primary }]}>募集日経過</Text>
+          </View>
+        ) : null}
       </View>
 
       {/* 行1: 募集人数 / 場所 / 集合場所 */}
@@ -236,7 +328,7 @@ const RecruitCard = ({
         size="third"
         theme={theme}
         items={[
-          { label: '募集人数', value: recruit.headcount },
+          { label: '募集人数', value: formatHeadcountValue(recruit) },
           { label: '場所', value: recruit.location },
           { label: '集合場所', value: optional.meet_place },
         ]}
@@ -274,25 +366,78 @@ const RecruitCard = ({
         </Text>
       ) : null}
 
-      <View style={styles.actions}>
-        {isManager ? (
-          <>
-            <Button title="編集" color={theme.primary} onPress={() => onEdit?.(recruit)} />
-            {recruit.status === RINJI_STATUS.OPEN ? (
-              <Button title="終了" color={theme.error} onPress={() => onClose?.(recruit.id)} />
-            ) : (
-              <Button title="再開" color={theme.success} onPress={() => onReopen?.(recruit.id)} />
-            )}
-          </>
-        ) : (
-          <Button
-            title="応募する"
-            color={theme.primary}
-            onPress={() => onApply?.(recruit.id)}
-            disabled={recruit.status !== RINJI_STATUS.OPEN}
-          />
-        )}
-      </View>
+      {shouldShowActions ? (
+        <View style={styles.actions}>
+          {isManager ? (
+            <>
+              <Button title="編集" color={theme.primary} onPress={() => onEdit?.(recruit)} />
+              {recruit.status === RINJI_STATUS.OPEN ? (
+                <Button title="終了" color={theme.error} onPress={() => onClose?.(recruit.id)} />
+              ) : isAutoClosedByCapacity && onFinalizeAutoClose ? (
+                <Button title="募集を終了" color={theme.error} onPress={() => onFinalizeAutoClose?.(recruit.id)} />
+              ) : (
+                <Button title="再開" color={theme.success} onPress={() => onReopen?.(recruit.id)} />
+              )}
+              {showApplicantsToggle ? (
+                <Button
+                  title={isApplicantsOpen ? '応募者一覧を閉じる' : '応募者一覧を開く'}
+                  color={theme.textSecondary}
+                  onPress={() => onToggleApplicants?.(recruit.id)}
+                />
+              ) : null}
+            </>
+          ) : (
+            <>
+              {showApplyButton ? (
+                <Button
+                  title={isAlreadyApplied ? '応募済み' : '応募する'}
+                  color={theme.primary}
+                  onPress={() => onApply?.(recruit.id)}
+                  disabled={recruit.status !== RINJI_STATUS.OPEN || isAlreadyApplied}
+                />
+              ) : null}
+              {showCancelButton ? (
+                <Button
+                  title="応募取り消し"
+                  color={theme.error}
+                  onPress={() => onCancelApply?.(recruit.id)}
+                />
+              ) : null}
+            </>
+          )}
+        </View>
+      ) : null}
+      {shouldShowApplicants ? (
+        <View
+          style={[
+            styles.applicantsBox,
+            {
+              borderColor: theme.border,
+              backgroundColor: theme.background,
+              borderRadius: theme.borderRadius,
+            },
+          ]}
+        >
+          <Text style={[styles.applicantsTitle, { color: theme.text, fontWeight: theme.fontWeight }]}>
+            応募者一覧
+          </Text>
+          {applicantsLoading ? (
+            <Text style={[styles.applicantsRow, { color: theme.textSecondary }]}>読み込み中...</Text>
+          ) : null}
+          {!applicantsLoading && applications.length === 0 ? (
+            <Text style={[styles.applicantsRow, { color: theme.textSecondary }]}>応募者がいません</Text>
+          ) : null}
+          {!applicantsLoading &&
+            applications.map((application) => (
+              <Text
+                key={application.id || `${recruit.id}-${application.applicant_user_id}`}
+                style={[styles.applicantsRow, { color: theme.text }]}
+              >
+                ・{application.applicant_organization || '所属不明'}　{application.applicant_name || application.applicant_user_id || '不明なユーザー'}　{formatAppliedAt(application.created_at)}
+              </Text>
+            ))}
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -307,13 +452,24 @@ export const RecruitList = ({
   data,
   isManager = false,
   onApply,
+  onCancelApply,
   onEdit,
   onClose,
   onReopen,
+  onFinalizeAutoClose,
+  onToggleApplicants,
   refreshing = false,
   onRefresh,
   emptyText = '募集がありません',
   showStatus = false,
+  showApplyButton = true,
+  showCancelButton = false,
+  appliedRecruitIds = [],
+  applicationsByRecruitId = {},
+  openApplicantsByRecruitId = {},
+  loadingApplicantsByRecruitId = {},
+  showApplicantsToggle = false,
+  showAutoClosedBadge = false,
 }) => {
   const { theme, themeMode } = useTheme();
 
@@ -329,12 +485,23 @@ export const RecruitList = ({
           recruit={item}
           isManager={isManager}
           onApply={onApply}
+          onCancelApply={onCancelApply}
           onEdit={onEdit}
           onClose={onClose}
           onReopen={onReopen}
+          onFinalizeAutoClose={onFinalizeAutoClose}
+          onToggleApplicants={onToggleApplicants}
           theme={theme}
           showStatus={showStatus}
           themeMode={themeMode}
+          showApplyButton={showApplyButton}
+          showCancelButton={showCancelButton}
+          isAlreadyApplied={appliedRecruitIds.includes(item.id)}
+          applications={applicationsByRecruitId[item.id] || []}
+          isApplicantsOpen={Boolean(openApplicantsByRecruitId[item.id])}
+          applicantsLoading={Boolean(loadingApplicantsByRecruitId[item.id])}
+          showApplicantsToggle={showApplicantsToggle}
+          showAutoClosedBadge={showAutoClosedBadge}
         />
       )}
     />
@@ -376,6 +543,33 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  autoCloseBadge: {
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  autoCloseBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  autoDateBadge: {
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  autoDateBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  organizationBadge: {
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  organizationBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
   label: {
     fontSize: 12,
     marginBottom: 2,
@@ -408,6 +602,19 @@ const styles = StyleSheet.create({
     marginTop: 4,
     flexDirection: 'row',
     gap: 8,
+  },
+  applicantsBox: {
+    marginTop: 8,
+    borderWidth: 1,
+    padding: 8,
+    gap: 4,
+  },
+  applicantsTitle: {
+    fontSize: 13,
+  },
+  applicantsRow: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   empty: {
     textAlign: 'center',
