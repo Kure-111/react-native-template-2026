@@ -10,6 +10,24 @@ import {
   sendNotificationToUser,
 } from '../../shared/services/notificationService.js';
 
+const DEPARTMENT_ROLE_NAME_TARGETS = {
+  hq: ['管理者', 'Admin', 'Administrator'],
+  accounting: ['会計部', '会計', 'Accounting', '管理者', 'Admin', 'Administrator'],
+  property: ['物品部', '物品', 'Property', '管理者', 'Admin', 'Administrator'],
+  patrol: [
+    '警備部',
+    '巡回',
+    'Patrol',
+    '企画管理部',
+    '本部',
+    'HQ',
+    'Headquarters',
+    '管理者',
+    'Admin',
+    'Administrator',
+  ],
+};
+
 /** ロール名ベースの通知先 */
 const ROLE_NAME_TARGETS = {
   hq: ['企画管理部', '管理者'],
@@ -178,22 +196,22 @@ const getRoleNamesForTicket = (ticket) => {
   const notifyTarget = normalizeText(ticket?.notify_target);
 
   if (ticketType === 'start_report' || ticketType === 'end_report') {
-    return unique([...ROLE_NAME_TARGETS.hq, ...ROLE_NAME_TARGETS.patrol]);
+    return unique([...DEPARTMENT_ROLE_NAME_TARGETS.hq, ...DEPARTMENT_ROLE_NAME_TARGETS.patrol]);
   }
 
   if (ticketType === 'emergency') {
-    return unique([...ROLE_NAME_TARGETS.hq, ...ROLE_NAME_TARGETS.patrol]);
+    return unique([...DEPARTMENT_ROLE_NAME_TARGETS.hq, ...DEPARTMENT_ROLE_NAME_TARGETS.patrol]);
   }
 
   if (notifyTarget === 'accounting') {
-    return ROLE_NAME_TARGETS.accounting;
+    return DEPARTMENT_ROLE_NAME_TARGETS.accounting;
   }
 
   if (notifyTarget === 'property') {
-    return ROLE_NAME_TARGETS.property;
+    return DEPARTMENT_ROLE_NAME_TARGETS.property;
   }
 
-  return ROLE_NAME_TARGETS.hq;
+  return DEPARTMENT_ROLE_NAME_TARGETS.hq;
 };
 
 /**

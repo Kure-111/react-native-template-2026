@@ -110,6 +110,9 @@ const ContactHistory = ({
   contactAttachments,
   onOpenAttachment,
   onRefreshDetail,
+  canCloseLatestContact,
+  isClosingLatestContact,
+  onCloseLatestContact,
 }) => {
   /**
    * 折りたたみ中の種別キー集合
@@ -257,12 +260,25 @@ const ContactHistory = ({
             <Text style={[styles.sectionTitle, styles.historyTitle, { color: theme.text }]}>
               質問詳細
             </Text>
-            <TouchableOpacity
-              style={[styles.refreshButton, { borderColor: theme.border }]}
-              onPress={onRefreshDetail}
-            >
-              <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-            </TouchableOpacity>
+            <View style={styles.detailHeaderActions}>
+              {canCloseLatestContact ? (
+                <TouchableOpacity
+                  style={[styles.closeButton, { borderColor: theme.border }]}
+                  onPress={onCloseLatestContact}
+                  disabled={isClosingLatestContact}
+                >
+                  <Text style={[styles.closeButtonText, { color: theme.textSecondary }]}>
+                    {isClosingLatestContact ? 'クローズ中...' : '最新案件を閉じる'}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity
+                style={[styles.refreshButton, { borderColor: theme.border }]}
+                onPress={onRefreshDetail}
+              >
+                <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <Text style={[styles.historyItemTitle, { color: theme.text }]}>{selectedContact.title}</Text>
@@ -392,11 +408,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
+  detailHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   refreshButton: {
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
+  },
+  closeButton: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  closeButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   refreshButtonText: {
     fontSize: 12,

@@ -6,6 +6,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -34,6 +35,8 @@ import { exhibitorSupportService } from '../services/exhibitorSupportService';
 import { useAuth } from '../../../shared/contexts/AuthContext';
 import {
   listTicketMessages,
+  SUPPORT_TICKET_STATUSES,
+  updateTicketStatus,
 } from '../../../services/supabase/supportTicketService';
 import { KEY_BUILDINGS, KEY_CATALOG } from '../data/keyCatalog';
 import { ensureKeysSeededFromCatalog } from '../../../services/supabase/keyMasterService';
@@ -182,6 +185,26 @@ const formatFileSize = (fileSizeBytes) => {
 };
 
 /**
+ * 画像添付かどうかを判定
+ * @param {File|Blob|null|undefined} file - 添付ファイル
+ * @returns {boolean} 画像の場合 true
+ */
+const isImageAttachment = (file) => {
+  return normalizeText(file?.type).startsWith('image/');
+};
+
+/**
+ * JPEGへ変換したファイル名を組み立てる
+ * @param {string|null|undefined} fileName - 元ファイル名
+ * @returns {string} 変換後ファイル名
+ */
+const buildCompressedImageFileName = (fileName) => {
+  const normalizedFileName = normalizeText(fileName) || 'attachment';
+  const baseName = normalizedFileName.replace(/\.[^.]+$/, '');
+  return `${baseName}.jpg`;
+};
+
+/**
  * ユーザーごとのローカル保存キーを生成
  * @param {string} baseKey - ベースキー
  * @param {string|null|undefined} userId - ユーザーID
@@ -254,6 +277,7 @@ const Item16Screen = ({ navigation, route }) => {
   const [isLoadingContactMessages, setIsLoadingContactMessages] = useState(false);
   const [contactAttachments, setContactAttachments] = useState([]);
   const [isLoadingContactAttachments, setIsLoadingContactAttachments] = useState(false);
+  const [isClosingLatestContact, setIsClosingLatestContact] = useState(false);
 
   /**
    * メッセージ表示
@@ -396,6 +420,69 @@ const Item16Screen = ({ navigation, route }) => {
       console.error('添付表示エラー:', error);
       showMessage('添付表示エラー', '添付ファイルを開けませんでした。');
     }
+  };
+
+  /**
+   * 送信先ラベルを表示用に組み立てる
+   * @returns {string} 送信先ラベル
+   */
+  const getSubmitDestinationLabel = () => {
+    if (activeTab === SUPPORT_TAB_TYPES.QUESTION) {
+      return selectedQuestionConfig?.targetLabel || '担当部署';
+    }
+
+    if (activeTab === SUPPORT_TAB_TYPES.EMERGENCY) {
+      return '本部・警備部';
+    }
+
+    return '本部';
+  };
+
+  /**
+   * 最新案件をクローズする
+   * @returns {void}
+   */
+  const handleCloseLatestContact = () => {
+    if (!canCloseLatestContact || !selectedContact?.id || !user?.id) {
+      return;
+    }
+
+    const executeClose = async () => {
+      setIsClosingLatestContact(true);
+      const result = await updateTicketStatus({
+        ticketId: selectedContact.id,
+        status: SUPPORT_TICKET_STATUSES.CLOSED,
+        notifyActorUserId: user.id,
+      });
+      setIsClosingLatestContact(false);
+
+      if (result.error) {
+        showMessage('クローズエラー', result.error.message || '最新案件をクローズできませんでした。');
+        return;
+      }
+
+      showMessage('クローズ完了', '最新の連絡案件を閉じました。');
+      loadMyContacts();
+    };
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (!window.confirm('最新の連絡案件をクローズしますか？')) {
+        return;
+      }
+      executeClose();
+      return;
+    }
+
+    Alert.alert('最新案件を閉じますか？', '一度クローズすると一覧上は対応済みとして扱われます。', [
+      { text: 'キャンセル', style: 'cancel' },
+      {
+        text: '閉じる',
+        style: 'destructive',
+        onPress: () => {
+          executeClose();
+        },
+      },
+    ]);
   };
 
   /**
@@ -595,6 +682,29 @@ const Item16Screen = ({ navigation, route }) => {
   }, [myContacts, selectedContactId]);
 
   /**
+   * 選択中の質問種別設定
+   */
+  const selectedQuestionConfig = useMemo(() => {
+    return QUESTION_TYPES.find((item) => item.key === questionType) || QUESTION_TYPES[0];
+  }, [questionType]);
+
+  /**
+   * 最新案件ID
+   */
+  const latestContactId = useMemo(() => {
+    return myContacts[0]?.id || null;
+  }, [myContacts]);
+
+  /**
+   * 最新案件をクローズできるか
+   */
+  const canCloseLatestContact = Boolean(
+    selectedContact &&
+      selectedContact.id === latestContactId &&
+      selectedContact.ticket_status !== SUPPORT_TICKET_STATUSES.CLOSED
+  );
+
+  /**
    * 棟プルダウン選択に応じた鍵候補
    */
   const filteredKeyCatalog = useMemo(() => {
@@ -666,6 +776,7 @@ const Item16Screen = ({ navigation, route }) => {
    */
   const clearAttachment = () => {
     setAttachmentFile(null);
+    setAttachmentCaption('');
   };
 
   /**
@@ -677,7 +788,11 @@ const Item16Screen = ({ navigation, route }) => {
    */
   const compressImageFile = async (file) => {
     // 画像以外（PDF等）はそのまま返す
-    if (!file.type.startsWith('image/')) {
+    if (!isImageAttachment(file)) {
+      return file;
+    }
+
+    if (Platform.OS !== 'web' || typeof document === 'undefined') {
       return file;
     }
     try {
@@ -721,7 +836,55 @@ const Item16Screen = ({ navigation, route }) => {
    * @returns {void}
    */
   const pickFileFromDevice = (onSelected, capture = null) => {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') {
+    if (Platform.OS !== 'web') {
+      const pickNativeImage = async () => {
+        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permissionResult.granted) {
+          showMessage('添付権限エラー', '写真ライブラリへのアクセスを許可してください。');
+          return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: false,
+          quality: 0.7,
+          selectionLimit: 1,
+        });
+
+        if (result.canceled || !result.assets?.[0]?.uri) {
+          return;
+        }
+
+        const asset = result.assets[0];
+        const response = await fetch(asset.uri);
+        const blob = await response.blob();
+        const fileName = normalizeText(asset.fileName) || buildCompressedImageFileName('attachment.jpg');
+        const uploadableFile = Object.assign(blob, {
+          name: fileName,
+          lastModified: Date.now(),
+        });
+
+        if ((uploadableFile.size || 0) > MAX_ATTACHMENT_FILE_BYTES) {
+          showMessage(
+            '容量超過',
+            `添付は${MAX_ATTACHMENT_FILE_SIZE_MB}MB以下にしてください。現在: ${formatFileSize(
+              uploadableFile.size
+            )}`
+          );
+          return;
+        }
+
+        onSelected(uploadableFile);
+      };
+
+      pickNativeImage().catch((error) => {
+        console.error('写真添付の選択に失敗しました。', error);
+        showMessage('添付エラー', '写真の選択に失敗しました。');
+      });
+      return;
+    }
+
+    if (typeof document === 'undefined') {
       showMessage('添付不可', '現在の端末ではファイル選択に未対応です。');
       return;
     }
@@ -759,7 +922,7 @@ const Item16Screen = ({ navigation, route }) => {
         return;
       }
       // 画像は圧縮してからサイズチェック（圧縮後に5MB を超えることはほぼないが念のため）
-      const processedFile = selectedFile.type.startsWith('image/')
+      const processedFile = isImageAttachment(selectedFile)
         ? await compressImageFile(selectedFile)
         : selectedFile;
       if (processedFile.size > MAX_ATTACHMENT_FILE_BYTES) {
@@ -936,7 +1099,7 @@ const Item16Screen = ({ navigation, route }) => {
       if (result.warning) {
         showMessage('送信完了（一部警告）', `連絡案件を登録しました。\n${result.warning}`);
       } else {
-        showMessage('送信完了', '本部に申請を送信しました。');
+        showMessage('送信完了', `${getSubmitDestinationLabel()}に連絡案件を送信しました。`);
       }
       loadMyContacts();
     };
@@ -1080,7 +1243,8 @@ const Item16Screen = ({ navigation, route }) => {
             />
           ) : null}
           {/* よくある質問セクション（常時表示） */}
-          <View style={[styles.card, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}>
+          {false ? (
+            <View style={[styles.card, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}>
             <Text style={[styles.sectionTitle, { color: '#0369A1' }]}>
               {'\u2753'} よくある質問
             </Text>
@@ -1118,16 +1282,13 @@ const Item16Screen = ({ navigation, route }) => {
                 </Text>
               </View>
             </View>
-          </View>
+            </View>
+          ) : null}
 
           <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <View style={styles.historyHeader}>
               <Text style={[styles.sectionTitle, styles.historyTitle, { color: theme.text }]}>企画情報</Text>
             </View>
-            <Text style={[styles.questionTargetHint, { color: theme.textSecondary }]}>
-              記述式で入力できます。入力内容はこのアカウントに自動保存され、次回ログイン時に復元されます。
-            </Text>
-
             <Text style={[styles.label, { color: theme.text }]}>企画名</Text>
             <TextInput
               value={eventName}
@@ -1169,12 +1330,6 @@ const Item16Screen = ({ navigation, route }) => {
             {activeTab !== SUPPORT_TAB_TYPES.KEY_PREAPPLY ? (
               <>
                 <Text style={[styles.label, { color: theme.text }]}>添付情報（任意）</Text>
-                <Text style={[styles.questionTargetHint, { color: theme.textSecondary }]}>
-                  画像/PDFを1件添付できます（最大 {MAX_ATTACHMENT_FILE_SIZE_MB}MB）。画像は自動圧縮されます。
-                </Text>
-                <Text style={[styles.attachDiscordHint, { color: theme.textSecondary }]}>
-                  ファイルが大きい場合はDiscordで送ってください。
-                </Text>
                 <TouchableOpacity
                   style={[
                     styles.attachPickerButton,
@@ -1260,6 +1415,9 @@ const Item16Screen = ({ navigation, route }) => {
               loadContactMessages(selectedContact.id);
               loadContactAttachments(selectedContact.id);
             }}
+            canCloseLatestContact={canCloseLatestContact}
+            isClosingLatestContact={isClosingLatestContact}
+            onCloseLatestContact={handleCloseLatestContact}
           />
         </ScrollView>
 
@@ -1338,11 +1496,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   /** 添付エリアのDiscord誘導注意文 */
-  attachDiscordHint: {
-    fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 6,
-  },
   attachPickerButton: {
     borderWidth: 1,
     borderRadius: 10,
@@ -1396,10 +1549,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 11,
     fontWeight: '500',
-  },
-  questionTargetHint: {
-    fontSize: 12,
-    marginTop: -2,
   },
   submitButton: {
     borderRadius: 12,

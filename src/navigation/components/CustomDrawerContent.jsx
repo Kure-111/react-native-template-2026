@@ -16,7 +16,11 @@ import { DrawerContentScrollView } from '@react-navigation/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../shared/contexts/AuthContext';
 import { useTheme } from '../../shared/hooks/useTheme';
-import { canAccessScreen, isAdmin } from '../../services/supabase/permissionService';
+import {
+  canAccessManagementSupportScreen,
+  canAccessScreen,
+  isAdmin,
+} from '../../services/supabase/permissionService';
 
 /**
  * ドロワーアイテムコンポーネント
@@ -135,7 +139,10 @@ const CustomDrawerContent = (props) => {
     const itemNumber = index + 1;
     // カスタム権限名があればそれを使用、なければデフォルト
     const permissionName = PERMISSION_NAME_MAP[itemNumber] || `item${itemNumber}`;
-    const isAccessible = canAccessScreen(userInfo?.roles || [], permissionName);
+    const isManagementSupportScreen = ['item12', 'item13', 'item14', 'item15'].includes(permissionName);
+    const isAccessible = isManagementSupportScreen
+      ? canAccessManagementSupportScreen(userInfo?.roles || [], permissionName)
+      : canAccessScreen(userInfo?.roles || [], permissionName);
     // カスタムラベルがあればそれを使用、なければデフォルト
     const label = ITEM_LABELS[itemNumber] || `項目${itemNumber}`;
     // カスタム画面名があればそれを使用、なければデフォルト

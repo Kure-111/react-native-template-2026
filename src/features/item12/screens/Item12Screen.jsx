@@ -20,6 +20,7 @@ import { useTheme } from '../../../shared/hooks/useTheme';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
 import { PATROL_TABS, PATROL_TAB_TYPES, SCREEN_NAME } from '../constants';
 import { useAuth } from '../../../shared/contexts/AuthContext';
+import { canAccessManagementSupportScreen } from '../../../services/supabase/permissionService';
 import {
   acceptPatrolTask,
   completePatrolTask,
@@ -52,6 +53,7 @@ import ToastMessage from '../../../shared/components/ToastMessage';
 import OfflineBanner from '../../../shared/components/OfflineBanner';
 import { useManagedPushSubscription } from '../../notifications/hooks/useManagedPushSubscription';
 import WebPushStatusCard from '../../notifications/components/WebPushStatusCard';
+import SupportScreenAccessGuard from '../../support/components/SupportScreenAccessGuard';
 
 /** 種別ごとの完了結果候補 */
 const RESULT_OPTIONS_BY_TASK_TYPE = {
@@ -156,7 +158,9 @@ const getGoMessageByTaskType = (taskType) => {
  */
 const Item12Screen = ({ navigation, route }) => {
   const { theme } = useTheme();
-  const { user } = useAuth();
+  const { user, userInfo } = useAuth();
+  const isRoleReady = Array.isArray(userInfo?.roles);
+  const canAccess = !isRoleReady || canAccessManagementSupportScreen(userInfo?.roles || [], 'item12');
   /** 通知タップなどで指定された初期タブ */
   const initialTab = route?.params?.initialTab || null;
   /** 画面単位のPush購読状態 */
@@ -165,6 +169,17 @@ const Item12Screen = ({ navigation, route }) => {
     userId: user?.id,
     enabled: Boolean(user?.id),
   });
+
+  if (!canAccess) {
+    return (
+      <SupportScreenAccessGuard
+        canAccess={false}
+        navigation={navigation}
+        title={SCREEN_NAME}
+        message="巡回サポートは企画管理部または警備部の担当者だけが閲覧できます。"
+      />
+    );
+  }
 
   /* ---- タブ切替 ---- */
   /** 現在表示中のタブ（デフォルト: タスク一覧） */

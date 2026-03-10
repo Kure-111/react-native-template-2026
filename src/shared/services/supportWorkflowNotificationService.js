@@ -5,6 +5,24 @@
 
 import { getRoles, getUserProfilesByIds, sendNotificationToRoles } from './notificationService.js';
 
+const DEPARTMENT_ROLE_NAME_TARGETS = {
+  hq: ['管理者', 'Admin', 'Administrator'],
+  accounting: ['会計部', '会計', 'Accounting', '管理者', 'Admin', 'Administrator'],
+  property: ['物品部', '物品', 'Property', '管理者', 'Admin', 'Administrator'],
+  patrol: [
+    '警備部',
+    '巡回',
+    'Patrol',
+    '企画管理部',
+    '本部',
+    'HQ',
+    'Headquarters',
+    '管理者',
+    'Admin',
+    'Administrator',
+  ],
+};
+
 const ROLE_NAME_TARGETS = {
   hq: ['企画管理部', '管理者'],
   accounting: ['会計部', '管理者'],
@@ -105,21 +123,21 @@ const getRoleNamesForTicket = (ticket) => {
   const notifyTarget = normalizeText(ticket?.notify_target);
 
   if (ticketType === 'start_report' || ticketType === 'end_report') {
-    return unique([...ROLE_NAME_TARGETS.hq, ...ROLE_NAME_TARGETS.patrol]);
+    return unique([...DEPARTMENT_ROLE_NAME_TARGETS.hq, ...DEPARTMENT_ROLE_NAME_TARGETS.patrol]);
   }
 
   if (ticketType === 'emergency') {
-    return unique([...ROLE_NAME_TARGETS.hq, ...ROLE_NAME_TARGETS.patrol]);
+    return unique([...DEPARTMENT_ROLE_NAME_TARGETS.hq, ...DEPARTMENT_ROLE_NAME_TARGETS.patrol]);
   }
 
   if (notifyTarget === 'accounting') {
-    return ROLE_NAME_TARGETS.accounting;
+    return DEPARTMENT_ROLE_NAME_TARGETS.accounting;
   }
   if (notifyTarget === 'property') {
-    return ROLE_NAME_TARGETS.property;
+    return DEPARTMENT_ROLE_NAME_TARGETS.property;
   }
 
-  return ROLE_NAME_TARGETS.hq;
+  return DEPARTMENT_ROLE_NAME_TARGETS.hq;
 };
 
 /**
@@ -276,7 +294,7 @@ export const notifyPatrolTaskAccepted = async ({ task, senderUserId = null }) =>
 
   /** 管理部全員（警備部 + 企画管理部 + 管理者）へ通知 */
   return sendNotificationToRoleNames({
-    roleNames: ROLE_NAME_TARGETS.patrol,
+    roleNames: DEPARTMENT_ROLE_NAME_TARGETS.patrol,
     title: `巡回受諾: ${taskLabel}`,
     body: `${eventName} / ${eventLocation}`,
     metadata: {
@@ -310,7 +328,7 @@ export const notifyPatrolTaskCompleted = async ({ task, resultCode, senderUserId
   const eventLocation = normalizeText(task.event_location || task.location_text) || '場所未設定';
 
   return sendNotificationToRoleNames({
-    roleNames: ROLE_NAME_TARGETS.hq,
+    roleNames: DEPARTMENT_ROLE_NAME_TARGETS.hq,
     title: `巡回完了: ${taskLabel}`,
     body: `${eventName} / ${eventLocation}\n結果: ${normalizeText(resultCode) || '未設定'}`,
     metadata: {
@@ -344,7 +362,7 @@ export const notifyLockCheckTaskCreated = async ({ task, loan = null, senderUser
   const eventName = normalizeText(task?.event_name || loan?.event_name) || '企画名未設定';
 
   return sendNotificationToRoleNames({
-    roleNames: ROLE_NAME_TARGETS.patrol,
+    roleNames: DEPARTMENT_ROLE_NAME_TARGETS.patrol,
     title: '施錠確認タスクが作成されました',
     body: `${eventName} / ${keyLabel}`,
     metadata: {
