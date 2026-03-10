@@ -22,6 +22,7 @@ import { sendNotificationToUser } from '../../../shared/services/notificationSer
 const TITLE_SEPARATOR = '\n\n---\n\n';
 const META_SEPARATOR = '\n\n::META::\n\n';
 const RECRUIT_APPLIED_NOTIFICATION_TYPE = 'rinji_help_recruit_applied';
+const RECRUIT_CANCELLED_NOTIFICATION_TYPE = 'rinji_help_recruit_apply_cancelled';
 const supabase = getSupabaseClient();
 
 /**
@@ -223,6 +224,73 @@ export const useRinjiHelp = () => {
   );
 
   /**
+   * 応募取り消し時に、募集作成者へ通知する。
+   *
+   * @param {{ recruitId: string, cancelledApplicationIds?: string[], applicantUserId: string }} params
+   * @returns {Promise<void>}
+   */
+  const notifyRecruitOwnerOnCancelApply = useCallback(
+    async ({ recruitId, cancelledApplicationIds = [], applicantUserId }) => {
+      if (!recruitId || !applicantUserId) return;
+
+      const { data: recruit, error: recruitError } = await supabase
+        .from('rinji_help_recruits')
+        .select('id, head_user_id, description')
+        .eq('id', recruitId)
+        .single();
+      if (recruitError || !recruit?.head_user_id) {
+        console.warn('[item8] recruit cancel notify recruit fetch failed:', recruitError?.message || recruitError);
+        return;
+      }
+
+      const creatorUserId = recruit.head_user_id;
+      if (creatorUserId === applicantUserId) {
+        // 自分の操作で自分に通知しない
+        return;
+      }
+
+      const { data: applicantProfile, error: applicantProfileError } = await supabase
+        .from('user_profiles')
+        .select('name, organization')
+        .eq('user_id', applicantUserId)
+        .single();
+      if (applicantProfileError) {
+        console.warn(
+          '[item8] recruit cancel notify applicant profile fetch failed:',
+          applicantProfileError?.message || applicantProfileError
+        );
+      }
+
+      const recruitTitle = parseRecruitTitle(recruit.description);
+      const applicantName = applicantProfile?.name || userInfo?.name || applicantUserId;
+      const applicantOrganization = applicantProfile?.organization || userInfo?.organization || '所属不明';
+      const title = `[臨時ヘルプ]「${recruitTitle}」の応募が取り消されました`;
+      const body = `募集タイトル: ${recruitTitle}\n取消者: ${applicantOrganization} ${applicantName}`;
+      const metadata = {
+        type: RECRUIT_CANCELLED_NOTIFICATION_TYPE,
+        source: 'item8_rinji_help',
+        event: 'recruit_apply_cancelled',
+        recruit_id: recruitId,
+        cancelled_application_ids: cancelledApplicationIds,
+        applicant_user_id: applicantUserId,
+        creator_user_id: creatorUserId,
+      };
+
+      const { error: notifyError } = await sendNotificationToUser(
+        creatorUserId,
+        title,
+        body,
+        metadata,
+        applicantUserId
+      );
+      if (notifyError) {
+        console.warn('[item8] recruit cancel notify failed:', notifyError?.message || notifyError);
+      }
+    },
+    [userInfo?.name, userInfo?.organization]
+  );
+
+  /**
    * 募集データを取得して、通常一覧または履歴一覧に振り分ける。
    *
    * @param {{ includeClosed?: boolean }} params
@@ -409,10 +477,17 @@ export const useRinjiHelp = () => {
         setError('応募の取り消しに失敗しました。時間をおいて再度お試しください。');
         return false;
       }
+      notifyRecruitOwnerOnCancelApply({
+        recruitId: id,
+        cancelledApplicationIds: (data || []).map((row) => row?.id).filter(Boolean),
+        applicantUserId: user?.id,
+      }).catch((notifyError) => {
+        console.warn('[item8] recruit cancel notify skipped:', notifyError?.message || notifyError);
+      });
       await refresh();
       return true;
     },
-    [refresh, user?.id]
+    [notifyRecruitOwnerOnCancelApply, refresh, user?.id]
   );
 
   /**
