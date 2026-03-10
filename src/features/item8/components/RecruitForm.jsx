@@ -3,7 +3,7 @@
  * 必須入力の検証、日付/時刻ピッカー、送信 payload の組み立てを担当する。
  */
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, TextInput, StyleSheet, Button, ScrollView, Pressable } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Button, ScrollView, Pressable, Switch } from 'react-native';
 import { OPTIONAL_FIELD_DEFAULTS } from '../constants.js';
 import { useTheme } from '../../../shared/hooks/useTheme';
 
@@ -66,6 +66,7 @@ export const RecruitForm = ({
 }) => {
   const { theme } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const isEditing = Boolean(initialValues?.id);
 
   const [form, setForm] = useState({ ...emptyForm, ...initialValues });
   const [errors, setErrors] = useState({});
@@ -84,6 +85,7 @@ export const RecruitForm = ({
   const [meetMinute, setMeetMinute] = useState('');
   const [isImmediateMeetTime, setIsImmediateMeetTime] = useState(false);
   const [containerLayout, setContainerLayout] = useState(null);
+  const [notifyAllOnCreate, setNotifyAllOnCreate] = useState(false);
 
   const dateOptions = [
     { label: '2026/11/1', value: '2026-11-01' },
@@ -173,6 +175,7 @@ export const RecruitForm = ({
     setIsImmediateMeetTime(Boolean(parsedMeet?.immediate));
     setMeetHour(parsedMeet?.hour || '');
     setMeetMinute(parsedMeet?.minute || '');
+    setNotifyAllOnCreate(Boolean(initialValues?.notify_all_on_create));
   }, [initialValues]);
 
   const updateField = (key, value) => {
@@ -271,6 +274,7 @@ export const RecruitForm = ({
         form.meet_time ||
         (isImmediateTime ? IMMEDIATE_TIME_LABEL : `${startHour}:${startMinute}`),
       belongings: form.belongings || OPTIONAL_FIELD_DEFAULTS.belongings,
+      notify_all_on_create: notifyAllOnCreate,
     };
     onSubmit?.(payload);
   };
@@ -505,6 +509,18 @@ export const RecruitForm = ({
 
       {/* 行5: 業務内容 */}
       {renderInput('業務内容', 'description', { multiline: true, inputStyle: styles.textarea })}
+      {!isEditing ? (
+        <View style={styles.notifyToggleRow}>
+          <Text style={styles.notifyToggleLabel}>作成時に全員への通知を行う</Text>
+          <Switch
+            value={notifyAllOnCreate}
+            onValueChange={setNotifyAllOnCreate}
+            disabled={disabled}
+            trackColor={{ false: withAlpha(theme.textSecondary, '55'), true: withAlpha(theme.primary, '88') }}
+            thumbColor={notifyAllOnCreate ? theme.primary : theme.surface}
+          />
+        </View>
+      ) : null}
       <Button title={submitLabel} onPress={handleSubmit} disabled={disabled} color={theme.primary} />
       {datePickerOpen && (
         <>
@@ -760,6 +776,21 @@ const createStyles = (theme) =>
     textarea: {
       minHeight: 100,
       textAlignVertical: 'top',
+    },
+    notifyToggleRow: {
+      marginTop: 2,
+      marginBottom: 10,
+      paddingVertical: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+      gap: 8,
+      borderTopWidth: 1,
+      borderTopColor: withAlpha(theme.border, 'BB'),
+    },
+    notifyToggleLabel: {
+      fontSize: 13,
+      color: theme.text,
     },
     dropdownItem: {
       paddingVertical: 8,

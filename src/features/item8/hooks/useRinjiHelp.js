@@ -3,6 +3,7 @@
  */
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useAuth } from '../../../shared/contexts/AuthContext.js';
+import { getSupabaseClient } from '../../../services/supabase/client.js';
 import {
   fetchRecruits,
   createRecruit,
@@ -16,6 +17,29 @@ import {
   syncExpiredRecruitStatuses,
 } from '../services/rinjiHelpService.js';
 import { isManager, RINJI_STATUS } from '../constants.js';
+import { sendNotificationToUser } from '../../../shared/services/notificationService.js';
+
+const TITLE_SEPARATOR = '\n\n---\n\n';
+const META_SEPARATOR = '\n\n::META::\n\n';
+const supabase = getSupabaseClient();
+
+/**
+ * description から募集タイトルを抽出する。
+ *
+ * @param {string | null | undefined} rawDescription
+ * @returns {string}
+ */
+const parseRecruitTitle = (rawDescription) => {
+  if (!rawDescription || typeof rawDescription !== 'string') {
+    return '新しい臨時ヘルプ募集';
+  }
+  const plain = rawDescription.split(META_SEPARATOR)[0] || '';
+  const idx = plain.indexOf(TITLE_SEPARATOR);
+  if (idx === -1) {
+    return plain.trim() || '新しい臨時ヘルプ募集';
+  }
+  return plain.slice(0, idx).trim() || '新しい臨時ヘルプ募集';
+};
 
 /**
  * 募集一覧・履歴・応募操作を管理し、画面から利用しやすい API を返す。
@@ -64,6 +88,70 @@ export const useRinjiHelp = () => {
   }, [user, userInfo]);
 
   const manager = managerFlag;
+
+  /**
+   * 募集作成時に、作成者以外の全ユーザーへ通知する。
+   *
+   * @param {Record<string, any> | null} createdRecruit
+   * @param {Record<string, any>} payload
+   * @returns {Promise<void>}
+   */
+  const notifyRecruitCreatedToOthers = useCallback(
+    async (createdRecruit, payload) => {
+      const creatorUserId = user?.id;
+      if (!creatorUserId) return;
+
+      const { data: profiles, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('user_id')
+        .neq('user_id', creatorUserId);
+      if (profileError) {
+        console.warn('[item8] notify recipients fetch failed:', profileError.message || profileError);
+        return;
+      }
+
+      const recipientUserIds = [
+        ...new Set((profiles || []).map((row) => row?.user_id).filter(Boolean)),
+      ];
+      if (recipientUserIds.length === 0) return;
+
+      const recruitTitle = parseRecruitTitle(createdRecruit?.description || payload?.description);
+      const workDate = createdRecruit?.work_date || payload?.work_date || '未設定';
+      const workTime = createdRecruit?.work_time || payload?.work_time || '未設定';
+      const location = createdRecruit?.location || payload?.location || '未設定';
+      const body = `${recruitTitle}\n募集日時: ${workDate} ${workTime}\n場所: ${location}`;
+      const metadata = {
+        type: 'rinji_help_recruit_created',
+        source: 'item8_rinji_help',
+        event: 'recruit_created',
+        recruit_id: createdRecruit?.id || null,
+        creator_user_id: creatorUserId,
+      };
+
+      const results = await Promise.allSettled(
+        recipientUserIds.map((recipientUserId) =>
+          sendNotificationToUser(
+            recipientUserId,
+            '新しい臨時ヘルプ募集が作成されました',
+            body,
+            metadata,
+            creatorUserId
+          )
+        )
+      );
+
+      let failedCount = 0;
+      results.forEach((result) => {
+        if (result.status === 'rejected' || result?.value?.error) {
+          failedCount += 1;
+        }
+      });
+      if (failedCount > 0) {
+        console.warn(`[item8] recruit create notification failed: ${failedCount}/${recipientUserIds.length}`);
+      }
+    },
+    [user?.id]
+  );
 
   /**
    * 募集データを取得して、通常一覧または履歴一覧に振り分ける。
@@ -126,15 +214,24 @@ export const useRinjiHelp = () => {
    */
   const handleCreate = useCallback(
     async (payload) => {
-      const { error } = await createRecruit({ ...payload, head_user_id: user?.id });
+      const { notify_all_on_create: notifyAllOnCreate = false, ...createPayload } = payload || {};
+      const { data: createdRecruit, error } = await createRecruit({
+        ...createPayload,
+        head_user_id: user?.id,
+      });
       if (error) {
         setError(error.message);
         return false;
       }
+      if (notifyAllOnCreate) {
+        notifyRecruitCreatedToOthers(createdRecruit || null, createPayload).catch((notifyError) => {
+          console.warn('[item8] recruit create notify skipped:', notifyError?.message || notifyError);
+        });
+      }
       await refresh();
       return true;
     },
-    [refresh, user?.id]
+    [notifyRecruitCreatedToOthers, refresh, user?.id]
   );
 
   /**
