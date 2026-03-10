@@ -21,6 +21,7 @@ import { sendNotificationToUser } from '../../../shared/services/notificationSer
 
 const TITLE_SEPARATOR = '\n\n---\n\n';
 const META_SEPARATOR = '\n\n::META::\n\n';
+const RECRUIT_APPLIED_NOTIFICATION_TYPE = 'rinji_help_recruit_applied';
 const supabase = getSupabaseClient();
 
 /**
@@ -151,6 +152,74 @@ export const useRinjiHelp = () => {
       }
     },
     [user?.id]
+  );
+
+  /**
+   * 募集応募時に、募集作成者へ通知する。
+   * 応募登録は DB の一意制約で重複を防いでいるため、同一応募の重複通知は発生しない。
+   *
+   * @param {{ recruitId: string, applicationId?: string | null, applicantUserId: string }} params
+   * @returns {Promise<void>}
+   */
+  const notifyRecruitOwnerOnApply = useCallback(
+    async ({ recruitId, applicationId = null, applicantUserId }) => {
+      if (!recruitId || !applicantUserId) return;
+
+      const { data: recruit, error: recruitError } = await supabase
+        .from('rinji_help_recruits')
+        .select('id, head_user_id, description')
+        .eq('id', recruitId)
+        .single();
+      if (recruitError || !recruit?.head_user_id) {
+        console.warn('[item8] recruit apply notify recruit fetch failed:', recruitError?.message || recruitError);
+        return;
+      }
+
+      const creatorUserId = recruit.head_user_id;
+      if (creatorUserId === applicantUserId) {
+        // 自分の操作で自分に通知しない
+        return;
+      }
+
+      const { data: applicantProfile, error: applicantProfileError } = await supabase
+        .from('user_profiles')
+        .select('name, organization')
+        .eq('user_id', applicantUserId)
+        .single();
+      if (applicantProfileError) {
+        console.warn(
+          '[item8] recruit apply notify applicant profile fetch failed:',
+          applicantProfileError?.message || applicantProfileError
+        );
+      }
+
+      const recruitTitle = parseRecruitTitle(recruit.description);
+      const applicantName = applicantProfile?.name || userInfo?.name || applicantUserId;
+      const applicantOrganization = applicantProfile?.organization || userInfo?.organization || '所属不明';
+      const title = `[臨時ヘルプ]「${recruitTitle}」に応募がありました`;
+      const body = `募集タイトル: ${recruitTitle}\n応募者: ${applicantOrganization} ${applicantName}`;
+      const metadata = {
+        type: RECRUIT_APPLIED_NOTIFICATION_TYPE,
+        source: 'item8_rinji_help',
+        event: 'recruit_applied',
+        recruit_id: recruitId,
+        application_id: applicationId,
+        applicant_user_id: applicantUserId,
+        creator_user_id: creatorUserId,
+      };
+
+      const { error: notifyError } = await sendNotificationToUser(
+        creatorUserId,
+        title,
+        body,
+        metadata,
+        applicantUserId
+      );
+      if (notifyError) {
+        console.warn('[item8] recruit apply notify failed:', notifyError?.message || notifyError);
+      }
+    },
+    [userInfo?.name, userInfo?.organization]
   );
 
   /**
@@ -301,7 +370,7 @@ export const useRinjiHelp = () => {
    */
   const handleApply = useCallback(
     async (id) => {
-      const { error } = await applyRecruit(id, user?.id);
+      const { data: application, error } = await applyRecruit(id, user?.id);
       if (error) {
         const duplicate =
           error?.code === '23505' ||
@@ -310,10 +379,17 @@ export const useRinjiHelp = () => {
         setError(duplicate ? 'すでに応募済みです。応募済みタブをご確認ください。' : error.message);
         return false;
       }
+      notifyRecruitOwnerOnApply({
+        recruitId: id,
+        applicationId: application?.id || null,
+        applicantUserId: user?.id,
+      }).catch((notifyError) => {
+        console.warn('[item8] recruit apply notify skipped:', notifyError?.message || notifyError);
+      });
       await refresh();
       return true;
     },
-    [refresh, user?.id]
+    [notifyRecruitOwnerOnApply, refresh, user?.id]
   );
 
   /**
