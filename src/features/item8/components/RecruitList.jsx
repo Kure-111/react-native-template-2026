@@ -169,6 +169,24 @@ const formatAppliedAt = (value) => {
 };
 
 /**
+ * 作成日時を「YYYY-MM-DD HH:mm」形式へ変換する。
+ *
+ * @param {string | null | undefined} value
+ * @returns {string}
+ */
+const formatCreatedDate = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${d} ${hh}:${mm}`;
+};
+
+/**
  * 募集カード内の情報行を描画する。
  *
  * @param {{
@@ -237,6 +255,7 @@ const RecruitCard = ({
   const isAutoClosedByDate =
     recruit.status === RINJI_STATUS.CLOSED &&
     recruit.close_reason === RINJI_CLOSE_REASON.AUTO_DATE_PASSED;
+  const createdDate = formatCreatedDate(recruit.created_at);
 
   return (
     <View
@@ -438,6 +457,9 @@ const RecruitCard = ({
             ))}
         </View>
       ) : null}
+      {createdDate ? (
+        <Text style={[styles.createdAt, { color: theme.textSecondary }]}>{createdDate}</Text>
+      ) : null}
     </View>
   );
 };
@@ -615,6 +637,11 @@ const styles = StyleSheet.create({
   applicantsRow: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  createdAt: {
+    marginTop: 6,
+    fontSize: 12,
+    alignSelf: 'flex-end',
   },
   empty: {
     textAlign: 'center',
