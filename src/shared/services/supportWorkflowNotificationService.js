@@ -3,7 +3,10 @@
  * item12〜16 の業務イベントを通知サービスへ橋渡しする
  */
 
-import { getRoles, getUserProfilesByIds, sendNotificationToRoles } from './notificationService.js';
+import {
+  getUserProfilesByIds,
+  sendNotificationToRoleNames as dispatchNotificationToRoleNames,
+} from './notificationService.js';
 
 const DEPARTMENT_ROLE_NAME_TARGETS = {
   hq: ['管理者', 'Admin', 'Administrator'],
@@ -50,53 +53,9 @@ const TASK_TYPE_LABELS = {
   other: 'その他',
 };
 
-const ROLE_CACHE_TTL_MS = 5 * 60 * 1000;
-
-let roleCache = null;
-let roleCacheExpiresAt = 0;
-
 const normalizeText = (value) => (typeof value === 'string' ? value.trim() : '');
 
 const unique = (values) => Array.from(new Set((values || []).filter(Boolean)));
-
-const loadRoles = async () => {
-  if (roleCache && roleCacheExpiresAt > Date.now()) {
-    return roleCache;
-  }
-
-  const { roles, error } = await getRoles();
-  if (error) {
-    return [];
-  }
-
-  roleCache = roles || [];
-  roleCacheExpiresAt = Date.now() + ROLE_CACHE_TTL_MS;
-  return roleCache;
-};
-
-const resolveRoleIdsByNames = async (roleNames) => {
-  const normalizedNames = unique((roleNames || []).map(normalizeText));
-  if (normalizedNames.length === 0) {
-    return { roleIds: [], error: new Error('通知先ロールが未指定です') };
-  }
-
-  const roles = await loadRoles();
-  const roleIds = unique(
-    roles
-      .filter((role) => {
-        const roleName = normalizeText(role.name);
-        const roleDisplayName = normalizeText(role.display_name);
-        return normalizedNames.includes(roleName) || normalizedNames.includes(roleDisplayName);
-      })
-      .map((role) => role.id)
-  );
-
-  if (roleIds.length === 0) {
-    return { roleIds: [], error: new Error('通知先ロールが見つかりません') };
-  }
-
-  return { roleIds, error: null };
-};
 
 const sendNotificationToRoleNames = async ({
   roleNames,
@@ -105,12 +64,7 @@ const sendNotificationToRoleNames = async ({
   metadata = {},
   senderUserId = null,
 }) => {
-  const { roleIds, error: resolveError } = await resolveRoleIdsByNames(roleNames);
-  if (resolveError) {
-    return { error: resolveError };
-  }
-
-  const result = await sendNotificationToRoles(roleIds, title, body, metadata, senderUserId);
+  const result = await dispatchNotificationToRoleNames(roleNames, title, body, metadata, senderUserId);
   if (result.error) {
     return { error: result.error };
   }

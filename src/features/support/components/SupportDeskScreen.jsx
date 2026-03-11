@@ -4,7 +4,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState,
   Alert,
@@ -263,7 +263,23 @@ const EVALUATION_STATUS_LABELS = {
   [EVALUATION_STATUSES.REWORK]: '差戻し',
 };
 
-const PATROL_ROLE_NAMES = ['警備部', '企画管理部'];
+const PATROL_ROLE_NAMES = ['企画管理部'];
+
+/** 部署向けステータス変更ボタンの配色 */
+const DEPARTMENT_STATUS_TONES = {
+  todo: {
+    borderColor: '#BF6A02',
+    backgroundColor: '#FFF1E5',
+  },
+  working: {
+    borderColor: '#0969DA',
+    backgroundColor: '#EAF2FF',
+  },
+  done: {
+    borderColor: '#1A7F37',
+    backgroundColor: '#EAF8ED',
+  },
+};
 
 /** 概況ダッシュボード: 企画報告セクションの種別フィルター */
 const OVERVIEW_REPORT_TYPE_FILTERS = [
@@ -487,6 +503,8 @@ const matchesPrizeSearchKeyword = (source, keyword) => {
 const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType, initialTab }) => {
   const { theme } = useTheme();
   const { user } = useAuth();
+  /** 部署向け画面のスクロール制御 */
+  const departmentScrollViewRef = useRef(null);
   /** 画面単位のPush購読状態 */
   const pushNotice = useManagedPushSubscription({
     navigation,
@@ -497,6 +515,10 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   const [tickets, setTickets] = useState([]);
   const [isLoadingTickets, setIsLoadingTickets] = useState(false);
   const [selectedTicketId, setSelectedTicketId] = useState(null);
+  /** 案件詳細カードのY座標 */
+  const [departmentDetailSectionY, setDepartmentDetailSectionY] = useState(0);
+  /** 部署案件選択時の自動スクロール要求 */
+  const [shouldScrollToDepartmentDetail, setShouldScrollToDepartmentDetail] = useState(false);
   const [messages, setMessages] = useState([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [ticketAttachments, setTicketAttachments] = useState([]);
@@ -551,6 +573,12 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   const [isOverviewReportSectionExpanded, setIsOverviewReportSectionExpanded] = useState(true);
   /** 概況ダッシュボード: 施錠確認セクションの展開状態 */
   const [isOverviewLockSectionExpanded, setIsOverviewLockSectionExpanded] = useState(true);
+  /** 対象連絡案件セクションの展開状態 */
+  const [isDepartmentTicketListExpanded, setIsDepartmentTicketListExpanded] = useState(true);
+  /** 案件詳細セクションの展開状態 */
+  const [isDepartmentTicketDetailExpanded, setIsDepartmentTicketDetailExpanded] = useState(true);
+  /** 景品配布基準セクションの展開状態 */
+  const [isPrizeDistributionSectionExpanded, setIsPrizeDistributionSectionExpanded] = useState(true);
   /** 概況ダッシュボード: 施錠確認の担当フィルター */
   const [overviewLockAssigneeFilter, setOverviewLockAssigneeFilter] = useState('all');
   /** 概況ダッシュボード: 施錠確認の確認状況フィルター */
@@ -623,6 +651,8 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   const isDepartmentRole =
     isAccountingRole || roleType === SUPPORT_DESK_ROLE_TYPES.PROPERTY;
   const isPropertyRole = roleType === SUPPORT_DESK_ROLE_TYPES.PROPERTY;
+  /** 部署向け説明カードを表示するかどうか */
+  const shouldShowDepartmentDescription = Boolean(screenDescription);
   const departmentTicketStatusFilters = isAccountingRole
     ? ACCOUNTING_TICKET_STATUS_FILTERS
     : isPropertyRole
@@ -860,6 +890,18 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   const selectedTicket = useMemo(() => {
     return filteredTickets.find((ticket) => ticket.id === selectedTicketId) || null;
   }, [filteredTickets, selectedTicketId]);
+
+  /** 部署向けステータス変更候補 */
+  const departmentStatusOptions = isAccountingRole
+    ? ACCOUNTING_STATUS_OPTIONS
+    : isPropertyRole
+      ? PROPERTY_STATUS_OPTIONS
+      : [];
+
+  /** 部署向け表示ステータス */
+  const selectedDepartmentStatus = selectedTicket
+    ? getDepartmentStatusBucket(selectedTicket.ticket_status)
+    : '';
 
   const isEventStatusTicket =
     selectedTicket?.ticket_type === 'start_report' || selectedTicket?.ticket_type === 'end_report';
@@ -1182,6 +1224,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
       await updateTicketStatus({
         ticketId: selectedTicket.id,
         status: SUPPORT_TICKET_STATUSES.IN_PROGRESS,
+        notifyActorUserId: user.id,
       });
     }
 
@@ -1200,25 +1243,6 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
       return;
     }
 
-    /** 確認ダイアログを表示 */
-    const statusLabel = getTicketStatusLabelForRole({ ticket_status: nextStatus }, roleType);
-    const confirmMessage = `ステータスを「${statusLabel}」に更新しますか？`;
-    if (Platform.OS === 'web') {
-      if (!window.confirm(confirmMessage)) {
-        return;
-      }
-    } else {
-      const confirmed = await new Promise((resolve) => {
-        Alert.alert('確認', confirmMessage, [
-          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
-          { text: '更新', onPress: () => resolve(true) },
-        ]);
-      });
-      if (!confirmed) {
-        return;
-      }
-    }
-
     setIsUpdatingStatus(true);
     const result = await updateTicketStatus({
       ticketId: selectedTicket.id,
@@ -1233,7 +1257,6 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     }
 
     await loadTickets(selectedTicket.id);
-    showMessage('更新完了', 'ステータスを更新しました');
   };
 
   /**
@@ -1347,6 +1370,12 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
         return PATROL_ROLE_NAMES.includes(name) || PATROL_ROLE_NAMES.includes(displayName);
       })
       .map((role) => role.id);
+
+    if (roleIds.length === 0) {
+      setIsLoadingPatrolAssignees(false);
+      setPatrolAssignees([]);
+      return;
+    }
 
     const { users, error: usersError } = await getUsersByRoles(roleIds);
     if (usersError) {
@@ -1803,6 +1832,13 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   }, [selectedPrizeDistribution?.distribution_criteria, selectedPrizeDistribution?.id]);
 
   useEffect(() => {
+    if (!isDepartmentRole || !selectedTicket?.id) {
+      return;
+    }
+    setIsDepartmentTicketDetailExpanded(true);
+  }, [isDepartmentRole, selectedTicket?.id]);
+
+  useEffect(() => {
     if (filteredTickets.length === 0) {
       setSelectedTicketId(null);
       return;
@@ -1827,6 +1863,44 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
    */
   const toggleOverviewLockSection = () => {
     setIsOverviewLockSectionExpanded((currentValue) => !currentValue);
+  };
+
+  /**
+   * 対象連絡案件セクションの展開状態を切り替える
+   * @returns {void}
+   */
+  const toggleDepartmentTicketListSection = () => {
+    setIsDepartmentTicketListExpanded((currentValue) => !currentValue);
+  };
+
+  /**
+   * 案件詳細セクションの展開状態を切り替える
+   * @returns {void}
+   */
+  const toggleDepartmentTicketDetailSection = () => {
+    setIsDepartmentTicketDetailExpanded((currentValue) => !currentValue);
+  };
+
+  /**
+   * 部署案件一覧から案件を選択し、詳細へ自動スクロールする
+   * @param {string} ticketId - 案件ID
+   * @returns {void}
+   */
+  const handleSelectDepartmentTicket = (ticketId) => {
+    if (!ticketId) {
+      return;
+    }
+    setSelectedTicketId(ticketId);
+    setIsDepartmentTicketDetailExpanded(true);
+    setShouldScrollToDepartmentDetail(true);
+  };
+
+  /**
+   * 景品配布基準セクションの展開状態を切り替える
+   * @returns {void}
+   */
+  const togglePrizeDistributionSection = () => {
+    setIsPrizeDistributionSectionExpanded((currentValue) => !currentValue);
   };
 
   /**
@@ -1976,6 +2050,39 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     loadMessages(selectedTicketId);
     loadTicketAttachedFiles(selectedTicketId);
   }, [selectedTicketId]);
+
+  /**
+   * 部署向け画面で一覧から案件を選んだら案件詳細まで自動スクロールする
+   */
+  useEffect(() => {
+    if (
+      !isDepartmentRole ||
+      !shouldScrollToDepartmentDetail ||
+      !selectedTicket?.id ||
+      !isDepartmentTicketDetailExpanded ||
+      departmentDetailSectionY <= 0
+    ) {
+      return;
+    }
+
+    const timerId = setTimeout(() => {
+      departmentScrollViewRef.current?.scrollTo({
+        y: Math.max(departmentDetailSectionY - 12, 0),
+        animated: true,
+      });
+      setShouldScrollToDepartmentDetail(false);
+    }, 60);
+
+    return () => {
+      clearTimeout(timerId);
+    };
+  }, [
+    departmentDetailSectionY,
+    isDepartmentRole,
+    isDepartmentTicketDetailExpanded,
+    selectedTicket?.id,
+    shouldScrollToDepartmentDetail,
+  ]);
 
   useEffect(() => {
     if (!selectedPatrolTask) {
@@ -2499,18 +2606,11 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
 
       {/* その他タブのScrollViewエリア（HQ tickets タブ以外で表示） */}
       {!(isHQRole && activeTab === 'tickets') ? (
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView ref={departmentScrollViewRef} contentContainerStyle={styles.content}>
         {/* 説明カード（HQ以外のロールのみ表示） */}
-        {!isHQRole ? (
+        {!isHQRole && shouldShowDepartmentDescription ? (
           <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            {screenDescription ? (
-              <Text style={[styles.description, { color: theme.textSecondary }]}>{screenDescription}</Text>
-            ) : null}
-            {roleType === SUPPORT_DESK_ROLE_TYPES.PROPERTY ? (
-              <Text style={[styles.roleHint, { color: theme.textSecondary }]}>
-                物品破損連絡の添付写真は、案件詳細の「添付」から確認できます。
-              </Text>
-            ) : null}
+            <Text style={[styles.description, { color: theme.textSecondary }]}>{screenDescription}</Text>
           </View>
         ) : null}
 
@@ -3378,17 +3478,29 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>対象連絡案件</Text>
-            <TouchableOpacity
-              style={[styles.refreshButton, { borderColor: theme.border }]}
-              onPress={async () => {
-                await saveLastViewedAt();
-                loadTickets(selectedTicketId);
-              }}
-            >
-              <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-            </TouchableOpacity>
+            <View style={styles.sectionHeaderActions}>
+              <TouchableOpacity
+                style={[styles.refreshButton, { borderColor: theme.border }]}
+                onPress={async () => {
+                  await saveLastViewedAt();
+                  loadTickets(selectedTicketId);
+                }}
+              >
+                <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.refreshButton, { borderColor: theme.border }]}
+                onPress={toggleDepartmentTicketListSection}
+              >
+                <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>
+                  {isDepartmentTicketListExpanded ? '折りたたむ' : '開く'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
+          {isDepartmentTicketListExpanded ? (
+            <>
           {isHQRole ? (
             <>
               {/* HQロール: 種別フィルター */}
@@ -3550,7 +3662,7 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
                         borderLeftColor: leftBorderColor,
                       },
                     ]}
-                    onPress={() => setSelectedTicketId((prev) => (prev === ticket.id ? null : ticket.id))}
+                    onPress={() => handleSelectDepartmentTicket(ticket.id)}
                   >
                     <View style={styles.ticketTitleRow}>
                       {isUnread ? (
@@ -3585,251 +3697,313 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
               })}
             </View>
           )}
+            </>
+          ) : null}
         </View>
 
         {selectedTicket ? (
-          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}> 
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>案件詳細</Text>
-            <Text style={[styles.ticketDetailTitle, { color: theme.text }]}>{selectedTicket.title}</Text>
-            <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>受付番号: {selectedTicket.ticket_no || '-'}</Text>
-            <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}> 
-              種別: {TICKET_TYPE_LABELS[selectedTicket.ticket_type] || selectedTicket.ticket_type} / 状態:{' '}
-              {getTicketStatusLabelForRole(selectedTicket, roleType)}
-            </Text>
-            <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}> 
-              企画: {selectedTicket.event_name}（{selectedTicket.event_location}）
-            </Text>
-            {isEventStatusTicket ? (
-              <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}> 
-                巡回の「確認に向かう/確認完了」はこの案件のメッセージに反映されます
-              </Text>
-            ) : null}
-
-            <Text style={[styles.label, { color: theme.text }]}>ステータス</Text>
-            <View
-              style={[
-                styles.statusPickerContainer,
-                { borderColor: theme.border, backgroundColor: theme.background },
-              ]}
-            >
-              <Text style={[styles.statusPickerLabel, { color: theme.textSecondary }]}>
-                {isUpdatingStatus ? 'ステータス更新中...' : 'ステータスを変更'}
-              </Text>
-              <Picker
-                selectedValue={
-                  isDepartmentRole
-                    ? getDepartmentStatusBucket(selectedTicket.ticket_status)
-                    : selectedTicket.ticket_status
-                }
-                onValueChange={(value) => {
-                  const currentValue = isDepartmentRole
-                    ? getDepartmentStatusBucket(selectedTicket.ticket_status)
-                    : selectedTicket.ticket_status;
-                  if (value === currentValue) {
-                    return;
-                  }
-                  handleStatusUpdate(value);
-                }}
-                enabled={!isUpdatingStatus}
-                style={[styles.picker, { color: theme.text, backgroundColor: theme.background }]}
-              >
-                {isAccountingRole ? (
-                  ACCOUNTING_STATUS_OPTIONS.map((option) => (
-                    <Picker.Item key={option.key} label={option.label} value={option.key} />
-                  ))
-                ) : isPropertyRole ? (
-                  PROPERTY_STATUS_OPTIONS.map((option) => (
-                    <Picker.Item key={option.key} label={option.label} value={option.key} />
-                  ))
-                ) : (
-                  <>
-                    <Picker.Item
-                      label={`受領 (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.ACKNOWLEDGED]})`}
-                      value={SUPPORT_TICKET_STATUSES.ACKNOWLEDGED}
-                    />
-                    <Picker.Item
-                      label={`対応中 (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.IN_PROGRESS]})`}
-                      value={SUPPORT_TICKET_STATUSES.IN_PROGRESS}
-                    />
-                    {isEventStatusTicket ? (
-                      <Picker.Item
-                        label={`巡回確認待ち (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL]})`}
-                        value={SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL}
-                      />
-                    ) : null}
-                    <Picker.Item
-                      label={`解決済み (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.RESOLVED]})`}
-                      value={SUPPORT_TICKET_STATUSES.RESOLVED}
-                    />
-                    <Picker.Item
-                      label={`クローズ (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.CLOSED]})`}
-                      value={SUPPORT_TICKET_STATUSES.CLOSED}
-                    />
-                  </>
-                )}
-              </Picker>
-            </View>
-
-            <Text style={[styles.label, { color: theme.text }]}>依頼内容</Text>
-            <Text
-              style={[
-                styles.requestBody,
-                { color: theme.text, borderColor: theme.border, backgroundColor: theme.background },
-              ]}
-            >
-              {selectedTicket.description}
-            </Text>
-
+          <View
+            style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}
+            onLayout={(event) => {
+              setDepartmentDetailSectionY(event.nativeEvent.layout.y);
+            }}
+          >
             <View style={styles.sectionHeader}>
-              <Text style={[styles.label, { color: theme.text }]}>添付</Text>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>案件詳細</Text>
               <TouchableOpacity
                 style={[styles.refreshButton, { borderColor: theme.border }]}
-                onPress={() => loadTicketAttachedFiles(selectedTicket.id)}
+                onPress={toggleDepartmentTicketDetailSection}
               >
-                <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-              </TouchableOpacity>
-            </View>
-
-            {isLoadingAttachments ? (
-              <Text style={[styles.helpText, { color: theme.textSecondary }]}>添付を読み込み中...</Text>
-            ) : ticketAttachments.length === 0 ? (
-              <Text style={[styles.helpText, { color: theme.textSecondary }]}>添付はありません</Text>
-            ) : (
-              <View style={styles.attachmentList}>
-                {ticketAttachments.map((attachment) => {
-                  const isImage = normalizeText(attachment.mime_type).startsWith('image/');
-                  const fileName = normalizeText(attachment.storage_path).split('/').pop() || '添付ファイル';
-                  return (
-                    <View
-                      key={attachment.id}
-                      style={[
-                        styles.attachmentItem,
-                        { borderColor: theme.border, backgroundColor: theme.background },
-                      ]}
-                    >
-                      <Text style={[styles.attachmentName, { color: theme.text }]} numberOfLines={1}>
-                        {attachment.caption || fileName}
-                      </Text>
-                      <Text style={[styles.attachmentMeta, { color: theme.textSecondary }]}>
-                        {fileName} / {formatFileSize(attachment.file_size_bytes)} /{' '}
-                        {attachment.mime_type || 'application/octet-stream'}
-                      </Text>
-                      {isImage && attachment.signedUrl ? (
-                        <Image
-                          source={{ uri: attachment.signedUrl }}
-                          style={styles.attachmentPreview}
-                          resizeMode="cover"
-                        />
-                      ) : null}
-                      <TouchableOpacity
-                        style={[
-                          styles.attachmentOpenButton,
-                          {
-                            borderColor: attachment.signedUrl ? theme.border : '#9CA3AF',
-                            backgroundColor: theme.surface,
-                          },
-                        ]}
-                        disabled={!attachment.signedUrl}
-                        onPress={() => openAttachment(attachment)}
-                      >
-                        <Text
-                          style={[
-                            styles.attachmentOpenButtonText,
-                            { color: attachment.signedUrl ? theme.textSecondary : '#9CA3AF' },
-                          ]}
-                        >
-                          {attachment.signedUrl ? '添付を開く' : 'URL生成失敗'}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
-
-            {isHQRole && ['accounting', 'property'].includes(selectedTicket.notify_target) ? (
-              <TouchableOpacity
-                style={[styles.statusButton, { borderColor: theme.border, backgroundColor: theme.background }]}
-                onPress={handleRenotifyDepartment}
-                disabled={isRenotifying}
-              >
-                <Text style={[styles.statusButtonText, { color: theme.textSecondary }]}> 
-                  {isRenotifying ? '再通知中...' : '部署へ再通知'}
+                <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>
+                  {isDepartmentTicketDetailExpanded ? '折りたたむ' : '開く'}
                 </Text>
               </TouchableOpacity>
-            ) : null}
-
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.label, { color: theme.text }]}>対応メッセージ</Text>
-              <TouchableOpacity
-                style={[styles.refreshButton, { borderColor: theme.border }]}
-                onPress={() => loadMessages(selectedTicket.id)}
-              >
-                <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-              </TouchableOpacity>
             </View>
 
-            {isLoadingMessages ? (
-              <SkeletonLoader lines={3} baseColor={theme.border} />
-            ) : messages.length === 0 ? (
-              <EmptyState
-                icon={'\u{1F4AC}'}
-                title="まだ対応メッセージはありません"
-                description="回答を送信するとここに表示されます。"
-                theme={theme}
-              />
-            ) : (
-              <View style={styles.messageList}>
-                {messages.map((message) => {
-                  const isMine = message.author_id === user?.id;
-                  /** ロール別色分け: 自分=青、相手=グレー */
-                  const roleColor = isMine ? MESSAGE_ROLE_COLORS.self : MESSAGE_ROLE_COLORS.other;
-                  return (
-                    <View
-                      key={message.id}
-                      style={[
-                        styles.messageItem,
-                        {
-                          borderColor: isMine ? theme.primary : theme.border,
-                          backgroundColor: isMine ? `${theme.primary}14` : theme.background,
-                          borderLeftWidth: 3,
-                          borderLeftColor: roleColor,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.messageAuthor, { color: roleColor }]}>
-                        {isMine ? 'あなた' : '相手'}
-                      </Text>
-                      <Text style={[styles.messageBody, { color: theme.text }]}>{message.body}</Text>
-                      <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
-                        {new Date(message.created_at).toLocaleString('ja-JP')}
-                      </Text>
+            {isDepartmentTicketDetailExpanded ? (
+              <>
+                <Text style={[styles.ticketDetailTitle, { color: theme.text }]}>{selectedTicket.title}</Text>
+                <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}>受付番号: {selectedTicket.ticket_no || '-'}</Text>
+                <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}> 
+                  種別: {TICKET_TYPE_LABELS[selectedTicket.ticket_type] || selectedTicket.ticket_type} / 状態:{' '}
+                  {getTicketStatusLabelForRole(selectedTicket, roleType)}
+                </Text>
+                <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}> 
+                  企画: {selectedTicket.event_name}（{selectedTicket.event_location}）
+                </Text>
+                {isEventStatusTicket ? (
+                  <Text style={[styles.ticketMeta, { color: theme.textSecondary }]}> 
+                    巡回の「確認に向かう/確認完了」はこの案件のメッセージに反映されます
+                  </Text>
+                ) : null}
+
+                <Text style={[styles.label, { color: theme.text }]}>ステータス</Text>
+                {isDepartmentRole ? (
+                  <View
+                    style={[
+                      styles.departmentStatusPanel,
+                      { borderColor: theme.border, backgroundColor: theme.background },
+                    ]}
+                  >
+                    <Text style={[styles.statusPickerLabel, { color: theme.textSecondary }]}>
+                      {isUpdatingStatus ? 'ステータス更新中...' : 'ステータスを変更'}
+                    </Text>
+                    <View style={styles.departmentStatusActions}>
+                      {departmentStatusOptions.map((option) => {
+                        const tone = DEPARTMENT_STATUS_TONES[option.key] || {
+                          borderColor: theme.primary,
+                          backgroundColor: `${theme.primary}14`,
+                        };
+                        const isActive = selectedDepartmentStatus === option.key;
+                        return (
+                          <Pressable
+                            key={option.key}
+                            style={[
+                              styles.departmentStatusButton,
+                              {
+                                borderColor: isActive ? tone.borderColor : theme.border,
+                                backgroundColor: isActive ? tone.backgroundColor : theme.surface,
+                                opacity: isUpdatingStatus && !isActive ? 0.72 : 1,
+                              },
+                            ]}
+                            onPress={() => {
+                              if (isUpdatingStatus || isActive) {
+                                return;
+                              }
+                              handleStatusUpdate(option.key);
+                            }}
+                            disabled={isUpdatingStatus}
+                          >
+                            <Text
+                              style={[
+                                styles.departmentStatusButtonLabel,
+                                { color: isActive ? tone.borderColor : theme.text },
+                              ]}
+                            >
+                              {option.label}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.departmentStatusButtonMeta,
+                                { color: isActive ? tone.borderColor : theme.textSecondary },
+                              ]}
+                            >
+                              {isActive ? '選択中' : 'この状態に変更'}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
                     </View>
-                  );
-                })}
-              </View>
-            )}
+                  </View>
+                ) : (
+                  <View
+                    style={[
+                      styles.statusPickerContainer,
+                      { borderColor: theme.border, backgroundColor: theme.background },
+                    ]}
+                  >
+                    <Text style={[styles.statusPickerLabel, { color: theme.textSecondary }]}>
+                      {isUpdatingStatus ? 'ステータス更新中...' : 'ステータスを変更'}
+                    </Text>
+                    <Picker
+                      selectedValue={selectedTicket.ticket_status}
+                      onValueChange={(value) => {
+                        if (value === selectedTicket.ticket_status) {
+                          return;
+                        }
+                        handleStatusUpdate(value);
+                      }}
+                      enabled={!isUpdatingStatus}
+                      style={[styles.picker, { color: theme.text, backgroundColor: theme.background }]}
+                    >
+                      <Picker.Item
+                        label={`受領 (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.ACKNOWLEDGED]})`}
+                        value={SUPPORT_TICKET_STATUSES.ACKNOWLEDGED}
+                      />
+                      <Picker.Item
+                        label={`対応中 (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.IN_PROGRESS]})`}
+                        value={SUPPORT_TICKET_STATUSES.IN_PROGRESS}
+                      />
+                      {isEventStatusTicket ? (
+                        <Picker.Item
+                          label={`巡回確認待ち (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL]})`}
+                          value={SUPPORT_TICKET_STATUSES.WAITING_EXTERNAL}
+                        />
+                      ) : null}
+                      <Picker.Item
+                        label={`解決済み (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.RESOLVED]})`}
+                        value={SUPPORT_TICKET_STATUSES.RESOLVED}
+                      />
+                      <Picker.Item
+                        label={`クローズ (${STATUS_LABELS[SUPPORT_TICKET_STATUSES.CLOSED]})`}
+                        value={SUPPORT_TICKET_STATUSES.CLOSED}
+                      />
+                    </Picker>
+                  </View>
+                )}
 
-            <Text style={[styles.label, { color: theme.text }]}>回答入力</Text>
-            <TextInput
-              value={replyBody}
-              onChangeText={setReplyBody}
-              multiline
-              placeholder={isDepartmentRole ? '回答/対応メモを入力してください' : '回答内容を入力してください'}
-              placeholderTextColor={theme.textSecondary}
-              style={[
-                styles.replyInput,
-                { borderColor: theme.border, backgroundColor: theme.background, color: theme.text },
-              ]}
-            />
+                <Text style={[styles.label, { color: theme.text }]}>依頼内容</Text>
+                <Text
+                  style={[
+                    styles.requestBody,
+                    { color: theme.text, borderColor: theme.border, backgroundColor: theme.background },
+                  ]}
+                >
+                  {selectedTicket.description}
+                </Text>
 
-            <TouchableOpacity
-              style={[styles.sendButton, { backgroundColor: theme.primary }]}
-              onPress={handleReplySubmit}
-              disabled={isSendingReply}
-            >
-              <Text style={styles.sendButtonText}>{isSendingReply ? '送信中...' : '回答を送信'}</Text>
-            </TouchableOpacity>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.label, { color: theme.text }]}>添付</Text>
+                  <TouchableOpacity
+                    style={[styles.refreshButton, { borderColor: theme.border }]}
+                    onPress={() => loadTicketAttachedFiles(selectedTicket.id)}
+                  >
+                    <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {isLoadingAttachments ? (
+                  <Text style={[styles.helpText, { color: theme.textSecondary }]}>添付を読み込み中...</Text>
+                ) : ticketAttachments.length === 0 ? (
+                  <Text style={[styles.helpText, { color: theme.textSecondary }]}>添付はありません</Text>
+                ) : (
+                  <View style={styles.attachmentList}>
+                    {ticketAttachments.map((attachment) => {
+                      const isImage = normalizeText(attachment.mime_type).startsWith('image/');
+                      const fileName = normalizeText(attachment.storage_path).split('/').pop() || '添付ファイル';
+                      return (
+                        <View
+                          key={attachment.id}
+                          style={[
+                            styles.attachmentItem,
+                            { borderColor: theme.border, backgroundColor: theme.background },
+                          ]}
+                        >
+                          <Text style={[styles.attachmentName, { color: theme.text }]} numberOfLines={1}>
+                            {attachment.caption || fileName}
+                          </Text>
+                          <Text style={[styles.attachmentMeta, { color: theme.textSecondary }]}>
+                            {fileName} / {formatFileSize(attachment.file_size_bytes)} /{' '}
+                            {attachment.mime_type || 'application/octet-stream'}
+                          </Text>
+                          {isImage && attachment.signedUrl ? (
+                            <Image
+                              source={{ uri: attachment.signedUrl }}
+                              style={styles.attachmentPreview}
+                              resizeMode="cover"
+                            />
+                          ) : null}
+                          <TouchableOpacity
+                            style={[
+                              styles.attachmentOpenButton,
+                              {
+                                borderColor: attachment.signedUrl ? theme.border : '#9CA3AF',
+                                backgroundColor: theme.surface,
+                              },
+                            ]}
+                            disabled={!attachment.signedUrl}
+                            onPress={() => openAttachment(attachment)}
+                          >
+                            <Text
+                              style={[
+                                styles.attachmentOpenButtonText,
+                                { color: attachment.signedUrl ? theme.textSecondary : '#9CA3AF' },
+                              ]}
+                            >
+                              {attachment.signedUrl ? '添付を開く' : 'URL生成失敗'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {isHQRole && ['accounting', 'property'].includes(selectedTicket.notify_target) ? (
+                  <TouchableOpacity
+                    style={[styles.statusButton, { borderColor: theme.border, backgroundColor: theme.background }]}
+                    onPress={handleRenotifyDepartment}
+                    disabled={isRenotifying}
+                  >
+                    <Text style={[styles.statusButtonText, { color: theme.textSecondary }]}> 
+                      {isRenotifying ? '再通知中...' : '部署へ再通知'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.label, { color: theme.text }]}>対応メッセージ</Text>
+                  <TouchableOpacity
+                    style={[styles.refreshButton, { borderColor: theme.border }]}
+                    onPress={() => loadMessages(selectedTicket.id)}
+                  >
+                    <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {isLoadingMessages ? (
+                  <SkeletonLoader lines={3} baseColor={theme.border} />
+                ) : messages.length === 0 ? (
+                  <EmptyState
+                    icon={'\u{1F4AC}'}
+                    title="まだ対応メッセージはありません"
+                    description="回答を送信するとここに表示されます。"
+                    theme={theme}
+                  />
+                ) : (
+                  <View style={styles.messageList}>
+                    {messages.map((message) => {
+                      const isMine = message.author_id === user?.id;
+                      /** ロール別色分け: 自分=青、相手=グレー */
+                      const roleColor = isMine ? MESSAGE_ROLE_COLORS.self : MESSAGE_ROLE_COLORS.other;
+                      return (
+                        <View
+                          key={message.id}
+                          style={[
+                            styles.messageItem,
+                            {
+                              borderColor: isMine ? theme.primary : theme.border,
+                              backgroundColor: isMine ? `${theme.primary}14` : theme.background,
+                              borderLeftWidth: 3,
+                              borderLeftColor: roleColor,
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.messageAuthor, { color: roleColor }]}>
+                            {isMine ? 'あなた' : '相手'}
+                          </Text>
+                          <Text style={[styles.messageBody, { color: theme.text }]}>{message.body}</Text>
+                          <Text style={[styles.messageDate, { color: theme.textSecondary }]}>
+                            {new Date(message.created_at).toLocaleString('ja-JP')}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+
+                <Text style={[styles.label, { color: theme.text }]}>回答入力</Text>
+                <TextInput
+                  value={replyBody}
+                  onChangeText={setReplyBody}
+                  multiline
+                  placeholder={isDepartmentRole ? '回答/対応メモを入力してください' : '回答内容を入力してください'}
+                  placeholderTextColor={theme.textSecondary}
+                  style={[
+                    styles.replyInput,
+                    { borderColor: theme.border, backgroundColor: theme.background, color: theme.text },
+                  ]}
+                />
+
+                <TouchableOpacity
+                  style={[styles.sendButton, { backgroundColor: theme.primary }]}
+                  onPress={handleReplySubmit}
+                  disabled={isSendingReply}
+                >
+                  <Text style={styles.sendButtonText}>{isSendingReply ? '送信中...' : '回答を送信'}</Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
           </View>
         ) : null}
           </>
@@ -3840,13 +4014,25 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
           <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>景品配布基準</Text>
-              <TouchableOpacity
-                style={[styles.refreshButton, { borderColor: theme.border }]}
-                onPress={loadPrizeDistributions}
-              >
-                <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-              </TouchableOpacity>
+              <View style={styles.sectionHeaderActions}>
+                <TouchableOpacity
+                  style={[styles.refreshButton, { borderColor: theme.border }]}
+                  onPress={loadPrizeDistributions}
+                >
+                  <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.refreshButton, { borderColor: theme.border }]}
+                  onPress={togglePrizeDistributionSection}
+                >
+                  <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>
+                    {isPrizeDistributionSectionExpanded ? '折りたたむ' : '開く'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
+            {isPrizeDistributionSectionExpanded ? (
+              <>
             <Text style={[styles.helpText, { color: theme.textSecondary }]}>
               団体を選び、変更したい景品配布基準をタップすると内容を編集できます。
             </Text>
@@ -4075,6 +4261,8 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
                 一覧から変更したい景品配布基準を選択してください。
               </Text>
             )}
+              </>
+            ) : null}
           </View>
         ) : null}
 
@@ -4477,6 +4665,40 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     paddingHorizontal: 8,
     marginBottom: 2,
+  },
+  /** 部署向けステータス変更カード */
+  departmentStatusPanel: {
+    borderWidth: 1,
+    borderRadius: 14,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  /** 部署向けステータス変更ボタン群 */
+  departmentStatusActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 8,
+  },
+  /** 部署向けステータス変更ボタン */
+  departmentStatusButton: {
+    flexGrow: 1,
+    flexBasis: 96,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  /** 部署向けステータス変更ボタンの見出し */
+  departmentStatusButtonLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  /** 部署向けステータス変更ボタンの補足 */
+  departmentStatusButtonMeta: {
+    fontSize: 11,
+    marginTop: 4,
   },
   /** ステータス変更Picker本体 */
   picker: {

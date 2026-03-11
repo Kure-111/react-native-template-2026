@@ -24,7 +24,7 @@ const PATROL_CHECK_COLUMNS =
   'id,patrol_user_id,location_id,location_text,check_items,memo,checked_at,created_at';
 
 /**
- * 5段階評価の値を正規化する
+ * 旧形式の5段階評価値を正規化する
  * @param {number|string|null|undefined} value - 入力値
  * @returns {number|null} 1-5 の範囲に収めた値
  */
@@ -79,6 +79,8 @@ const normalizeCheckItems = (rawCheckItems) => {
         return {
           key: label,
           label,
+          answerKey: '',
+          answerLabel: '',
           score: null,
           memo: null,
         };
@@ -94,7 +96,11 @@ const normalizeCheckItems = (rawCheckItems) => {
       const label = normalizeText(item.label || item.key);
       /** 項目別メモ */
       const memo = normalizeText(item.memo);
-      /** 項目別評価 */
+      /** 項目別回答 */
+      const answerKey = normalizeText(item.answerKey || item.value || item.answer);
+      /** 項目別回答ラベル */
+      const answerLabel = normalizeText(item.answerLabel || item.answer);
+      /** 旧形式の項目別評価 */
       const score = normalizeScore(item.score);
 
       if (!label) {
@@ -104,6 +110,8 @@ const normalizeCheckItems = (rawCheckItems) => {
       return {
         key: key || label,
         label,
+        answerKey,
+        answerLabel,
         score,
         memo: memo || null,
       };

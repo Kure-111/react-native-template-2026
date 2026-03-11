@@ -1,6 +1,6 @@
 /**
  * 定常巡回チェックフォームコンポーネント
- * organizations_events を巡回対象として選び、5段階評価と項目別メモを記録する
+ * organizations_events を巡回対象として選び、設問ごとの回答と項目別メモを記録する
  */
 
 import React, { useMemo, useState } from 'react';
@@ -22,18 +22,51 @@ import {
 /**
  * 巡回チェック項目の選択肢
  * DB の patrol_checks.check_items (jsonb) に
- * { key, label, score, memo } の配列として保存する
+ * { key, label, answerKey, answerLabel, memo } の配列として保存する
  */
 export const PATROL_CHECK_ITEM_OPTIONS = [
-  '企画書通り進行中',
-  '体調問題なし',
-  '困りごとなし',
-  '迷惑来場者なし',
-  '無人・未施錠教室なし',
+  {
+    key: 'progress_status',
+    label: '企画書通り進行中か',
+    options: [
+      { key: 'good', label: 'よく進行している' },
+      { key: 'normal', label: '普通に進行している' },
+      { key: 'bad', label: 'うまくいっていない' },
+    ],
+  },
+  {
+    key: 'health_issue',
+    label: '体調不良はいるか',
+    options: [
+      { key: 'present', label: 'いる' },
+      { key: 'none', label: 'いない' },
+    ],
+  },
+  {
+    key: 'trouble',
+    label: '困りごとはあるか',
+    options: [
+      { key: 'present', label: 'ある' },
+      { key: 'none', label: 'ない' },
+    ],
+  },
+  {
+    key: 'nuisance_visitor',
+    label: '迷惑来場者はいるか',
+    options: [
+      { key: 'present', label: 'いる' },
+      { key: 'none', label: 'いない' },
+    ],
+  },
+  {
+    key: 'unlocked_room',
+    label: '無人・未施錠教室はあるか',
+    options: [
+      { key: 'present', label: 'ある' },
+      { key: 'none', label: 'ない' },
+    ],
+  },
 ];
-
-/** 評価選択肢 */
-const SCORE_OPTIONS = [1, 2, 3, 4, 5];
 
 /**
  * 履歴の check_items を表示向けに正規化する
@@ -47,6 +80,8 @@ const normalizeHistoryCheckItems = (value) => {
         return {
           key: item,
           label: item,
+          answerKey: '',
+          answerLabel: '',
           score: null,
           memo: '',
         };
@@ -59,6 +94,8 @@ const normalizeHistoryCheckItems = (value) => {
       return {
         key: item.key || item.label,
         label: item.label || item.key || '項目名未設定',
+        answerKey: item.answerKey || '',
+        answerLabel: item.answerLabel || item.answer || '',
         score: Number.isFinite(Number(item.score)) ? Number(item.score) : null,
         memo: item.memo || '',
       };
@@ -75,8 +112,9 @@ const normalizeHistoryCheckItems = (value) => {
  * @param {Function} props.onSelectLocation - 企画選択コールバック
  * @param {string} props.patrolLocationText - 選択中企画表示文字列
  * @param {Object} props.patrolCheckItems - 項目別評価状態
- * @param {Function} props.onChangeCheckScore - 項目別評価変更コールバック
+ * @param {Function} props.onChangeCheckAnswer - 項目別回答変更コールバック
  * @param {Function} props.onChangeCheckMemo - 項目別メモ変更コールバック
+ * @param {Function} props.onClearSelectedLocation - 選択中企画の解除コールバック
  * @param {string} props.patrolCheckMemo - 全体メモ文字列
  * @param {Function} props.onChangeSummaryMemo - 全体メモ変更コールバック
  * @param {boolean} props.isSubmittingPatrolCheck - 登録中フラグ
@@ -93,8 +131,9 @@ const PatrolCheckForm = ({
   onSelectLocation,
   patrolLocationText,
   patrolCheckItems,
-  onChangeCheckScore,
+  onChangeCheckAnswer,
   onChangeCheckMemo,
+  onClearSelectedLocation,
   patrolCheckMemo,
   onChangeSummaryMemo,
   isSubmittingPatrolCheck,
@@ -138,15 +177,25 @@ const PatrolCheckForm = ({
         <View style={styles.sectionTitleBlock}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>定常巡回チェック</Text>
           <Text style={[styles.sectionSubTitle, { color: theme.textSecondary }]}>
-            団体名で絞り込み、企画を1件選んでから各項目を 5 段階で評価します。
+            団体名で絞り込み、企画を1件選んでから各項目の状況を記録します。
           </Text>
         </View>
-        <TouchableOpacity
-          style={[styles.refreshButton, { borderColor: theme.border }]}
-          onPress={onRefresh}
-        >
-          <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-        </TouchableOpacity>
+        <View style={styles.sectionHeaderActions}>
+          <TouchableOpacity
+            style={[styles.refreshButton, { borderColor: theme.border }]}
+            onPress={onRefresh}
+          >
+            <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+          </TouchableOpacity>
+          {selectedLocation ? (
+            <TouchableOpacity
+              style={[styles.cancelButton, { borderColor: theme.border }]}
+              onPress={onClearSelectedLocation}
+            >
+              <Text style={[styles.cancelButtonText, { color: theme.textSecondary }]}>キャンセル</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
 
       <View
@@ -163,113 +212,121 @@ const PatrolCheckForm = ({
         </Text>
       </View>
 
-      <Text style={[styles.label, { color: theme.text }]}>団体名で絞り込み</Text>
-      <TextInput
-        value={organizationSearch}
-        onChangeText={setOrganizationSearch}
-        placeholder="例: 情祭"
-        placeholderTextColor={theme.textSecondary}
-        style={[
-          styles.searchInput,
-          {
-            borderColor: theme.border,
-            backgroundColor: theme.background,
-            color: theme.text,
-          },
-        ]}
-      />
-
-      <Text style={[styles.subLabel, { color: theme.textSecondary }]}>対象企画を1件選択</Text>
-      {filteredLocations.length === 0 ? (
-        <Text style={[styles.emptyInlineText, { color: theme.textSecondary }]}>
-          該当する企画候補がありません
+      {selectedLocation ? (
+        <Text style={[styles.subLabel, { color: theme.textSecondary }]}>
+          選択中の企画だけ表示しています。別の企画を選ぶときはキャンセルしてください。
         </Text>
       ) : (
-        <View style={styles.locationList}>
-          {filteredLocations.slice(0, 18).map((location) => {
-            /** 選択中かどうか */
-            const isActive = String(location.id) === String(selectedPatrolLocationId);
+        <>
+          <Text style={[styles.label, { color: theme.text }]}>団体名で絞り込み</Text>
+          <TextInput
+            value={organizationSearch}
+            onChangeText={setOrganizationSearch}
+            placeholder="例: 情祭"
+            placeholderTextColor={theme.textSecondary}
+            style={[
+              styles.searchInput,
+              {
+                borderColor: theme.border,
+                backgroundColor: theme.background,
+                color: theme.text,
+              },
+            ]}
+          />
 
-            return (
-              <Pressable
-                key={location.id}
-                style={[
-                  styles.locationOption,
-                  {
-                    borderColor: isActive ? theme.primary : theme.border,
-                    backgroundColor: isActive ? `${theme.primary}12` : theme.background,
-                  },
-                ]}
-                onPress={() => onSelectLocation(location)}
-              >
-                <Text
-                  style={[
-                    styles.locationOptionOrg,
-                    { color: isActive ? theme.primary : theme.textSecondary },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {location.organizationName || '団体名未設定'}
-                </Text>
-                <Text
-                  style={[
-                    styles.locationOptionEvent,
-                    { color: isActive ? theme.primary : theme.text },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {location.eventName || '企画名未設定'}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+          <Text style={[styles.subLabel, { color: theme.textSecondary }]}>対象企画を1件選択</Text>
+          {filteredLocations.length === 0 ? (
+            <Text style={[styles.emptyInlineText, { color: theme.textSecondary }]}>
+              該当する企画候補がありません
+            </Text>
+          ) : (
+            <View style={styles.locationList}>
+              {filteredLocations.slice(0, 18).map((location) => {
+                /** 選択中かどうか */
+                const isActive = String(location.id) === String(selectedPatrolLocationId);
+
+                return (
+                  <Pressable
+                    key={location.id}
+                    style={[
+                      styles.locationOption,
+                      {
+                        borderColor: isActive ? theme.primary : theme.border,
+                        backgroundColor: isActive ? `${theme.primary}12` : theme.background,
+                      },
+                    ]}
+                    onPress={() => onSelectLocation(location)}
+                  >
+                    <Text
+                      style={[
+                        styles.locationOptionOrg,
+                        { color: isActive ? theme.primary : theme.textSecondary },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {location.organizationName || '団体名未設定'}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.locationOptionEvent,
+                        { color: isActive ? theme.primary : theme.text },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {location.eventName || '企画名未設定'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+        </>
       )}
 
       <Text style={[styles.label, { color: theme.text }]}>チェック項目</Text>
       <Text style={[styles.subLabel, { color: theme.textSecondary }]}>
-        1 が低評価、5 が高評価です。必要なら各項目にメモを残してください。
+        各項目について当てはまる選択肢を選んでください。必要なら各項目にメモを残せます。
       </Text>
       <View style={styles.checkItemList}>
         {PATROL_CHECK_ITEM_OPTIONS.map((item) => {
-          /** 現在の評価値 */
-          const score = patrolCheckItems[item]?.score ?? null;
+          /** 現在の回答 */
+          const answerKey = patrolCheckItems[item.key]?.answerKey || '';
           /** 現在の項目別メモ */
-          const memo = patrolCheckItems[item]?.memo || '';
+          const memo = patrolCheckItems[item.key]?.memo || '';
 
           return (
             <View
-              key={item}
+              key={item.key}
               style={[
                 styles.checkCard,
                 { borderColor: theme.border, backgroundColor: theme.background },
               ]}
             >
-              <Text style={[styles.checkCardTitle, { color: theme.text }]}>{item}</Text>
-              <View style={styles.scoreRow}>
-                {SCORE_OPTIONS.map((value) => {
+              <Text style={[styles.checkCardTitle, { color: theme.text }]}>{item.label}</Text>
+              <View style={styles.answerRow}>
+                {item.options.map((option) => {
                   /** 選択中かどうか */
-                  const isActive = value === score;
+                  const isActive = option.key === answerKey;
 
                   return (
                     <Pressable
-                      key={`${item}-${value}`}
+                      key={`${item.key}-${option.key}`}
                       style={[
-                        styles.scoreButton,
+                        styles.answerButton,
                         {
                           borderColor: isActive ? theme.primary : theme.border,
                           backgroundColor: isActive ? `${theme.primary}18` : theme.surface,
                         },
                       ]}
-                      onPress={() => onChangeCheckScore(item, value)}
+                      onPress={() => onChangeCheckAnswer(item.key, option.key, option.label)}
                     >
                       <Text
                         style={[
-                          styles.scoreButtonText,
+                          styles.answerButtonText,
                           { color: isActive ? theme.primary : theme.textSecondary },
                         ]}
                       >
-                        {value}
+                        {option.label}
                       </Text>
                     </Pressable>
                   );
@@ -277,7 +334,7 @@ const PatrolCheckForm = ({
               </View>
               <TextInput
                 value={memo}
-                onChangeText={(value) => onChangeCheckMemo(item, value)}
+                onChangeText={(value) => onChangeCheckMemo(item.key, value)}
                 multiline
                 placeholder="この項目の気づきや補足"
                 placeholderTextColor={theme.textSecondary}
@@ -361,7 +418,7 @@ const PatrolCheckForm = ({
                         {item.label}
                       </Text>
                       <Text style={[styles.historyCheckScore, { color: theme.primary }]}>
-                        {item.score ? `${item.score} / 5` : '旧形式'}
+                        {item.answerLabel || (item.score ? `${item.score} / 5` : '旧形式')}
                       </Text>
                       {item.memo ? (
                         <Text style={[styles.historyCheckMemo, { color: theme.textSecondary }]}>
@@ -401,6 +458,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 10,
   },
+  sectionHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   sectionTitleBlock: {
     flex: 1,
     gap: 4,
@@ -431,6 +493,16 @@ const styles = StyleSheet.create({
   refreshButtonText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  cancelButton: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  cancelButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   locationSummaryCard: {
     borderWidth: 1,
@@ -492,18 +564,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
   },
-  scoreRow: {
+  answerRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
-  scoreButton: {
-    flex: 1,
+  answerButton: {
     borderWidth: 1,
     borderRadius: 12,
+    paddingHorizontal: 12,
     paddingVertical: 9,
     alignItems: 'center',
   },
-  scoreButtonText: {
+  answerButtonText: {
     fontSize: 13,
     fontWeight: '800',
   },

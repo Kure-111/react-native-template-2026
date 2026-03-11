@@ -49,7 +49,7 @@ const QUESTION_TYPE_CONFIG = {
   },
   distribution_change: {
     ticketType: 'distribution_change',
-    title: '会計配布基準変更の連絡',
+    title: '商品配布基準変更の連絡',
     notifyTarget: 'accounting',
   },
   damage_report: {
@@ -57,6 +57,33 @@ const QUESTION_TYPE_CONFIG = {
     title: '物品破損の報告',
     notifyTarget: 'property',
   },
+};
+
+/**
+ * 質問詳細の先頭をタイトル用に短く整形する
+ * @param {string} detail - 質問詳細
+ * @returns {string} タイトル用プレビュー
+ */
+const buildQuestionTitlePreview = (detail) => {
+  /** 改行と連続空白をならした文字列 */
+  const normalizedDetail = normalizeText(detail).replace(/\s+/g, ' ');
+  if (!normalizedDetail) {
+    return '';
+  }
+
+  return normalizedDetail.length > 24 ? `${normalizedDetail.slice(0, 24)}...` : normalizedDetail;
+};
+
+/**
+ * 質問連絡案件のタイトルを組み立てる
+ * @param {Object} config - 質問種別設定
+ * @param {string} detail - 質問詳細
+ * @returns {string} タイトル
+ */
+const buildQuestionTicketTitle = (config, detail) => {
+  /** タイトル用プレビュー */
+  const preview = buildQuestionTitlePreview(detail);
+  return preview ? `${config.title}: ${preview}` : config.title;
 };
 
 /**
@@ -357,7 +384,7 @@ const createQuestionContact = async (input) => {
       ticket_type: config.ticketType,
       ticket_status: 'new',
       priority: 'normal',
-      title: config.title,
+      title: buildQuestionTicketTitle(config, detail),
       description: detail,
       event_id: normalizeText(input.eventId) || null,
       event_name: normalizeText(input.eventName),
@@ -540,11 +567,10 @@ const createEventStatusReport = async (input) => {
     validateCommonInput(input);
 
     const status = normalizeText(input.status) || 'start';
-    const memo = normalizeText(input.memo);
     const isStart = status === 'start';
     const ticketType = isStart ? 'start_report' : 'end_report';
     const title = isStart ? '企画開始報告' : '企画終了報告';
-    const description = memo || (isStart ? '企画開始を報告します。' : '企画終了を報告します。');
+    const description = isStart ? '企画開始を報告します。' : '企画終了を報告します。';
 
     const payload = {
       ticket_no: generateTicketNo(),

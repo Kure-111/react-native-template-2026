@@ -624,17 +624,19 @@ const Item12Screen = ({ navigation, route }) => {
   };
 
   /**
-   * 巡回チェック項目の評価点を更新
-   * @param {string} item - 項目名
-   * @param {number} score - 評価点
+   * 巡回チェック項目の回答を更新
+   * @param {string} itemKey - 項目キー
+   * @param {string} answerKey - 回答キー
+   * @param {string} answerLabel - 回答ラベル
    * @returns {void}
    */
-  const handleChangePatrolCheckScore = (item, score) => {
+  const handleChangePatrolCheckAnswer = (itemKey, answerKey, answerLabel) => {
     setPatrolCheckItems((prev) => ({
       ...prev,
-      [item]: {
-        ...(prev[item] || {}),
-        score,
+      [itemKey]: {
+        ...(prev[itemKey] || {}),
+        answerKey,
+        answerLabel,
       },
     }));
   };
@@ -666,6 +668,15 @@ const Item12Screen = ({ navigation, route }) => {
   };
 
   /**
+   * 選択中の巡回場所を解除
+   * @returns {void}
+   */
+  const handleClearSelectedLocation = () => {
+    setSelectedPatrolLocationId('');
+    setPatrolLocationText('');
+  };
+
+  /**
    * 巡回チェックを登録
    * @returns {Promise<void>} 登録処理
    */
@@ -690,14 +701,15 @@ const Item12Screen = ({ navigation, route }) => {
 
     /** 保存するチェック項目配列 */
     const checkItems = PATROL_CHECK_ITEM_OPTIONS.map((item) => ({
-      key: item,
-      label: item,
-      score: patrolCheckItems[item]?.score ?? null,
-      memo: (patrolCheckItems[item]?.memo || '').trim(),
+      key: item.key,
+      label: item.label,
+      answerKey: patrolCheckItems[item.key]?.answerKey || '',
+      answerLabel: patrolCheckItems[item.key]?.answerLabel || '',
+      memo: (patrolCheckItems[item.key]?.memo || '').trim(),
     }));
 
-    if (checkItems.some((item) => !(item.score >= 1 && item.score <= 5))) {
-      showToast('すべてのチェック項目を5段階で評価してください', 'error');
+    if (checkItems.some((item) => !item.answerKey || !item.answerLabel)) {
+      showToast('すべてのチェック項目に回答してください', 'error');
       return;
     }
 
@@ -1178,8 +1190,9 @@ const Item12Screen = ({ navigation, route }) => {
                 onSelectLocation={handleSelectLocation}
                 patrolLocationText={patrolLocationText}
                 patrolCheckItems={patrolCheckItems}
-                onChangeCheckScore={handleChangePatrolCheckScore}
+                onChangeCheckAnswer={handleChangePatrolCheckAnswer}
                 onChangeCheckMemo={handleChangePatrolCheckMemo}
+                onClearSelectedLocation={handleClearSelectedLocation}
                 patrolCheckMemo={patrolCheckMemo}
                 onChangeSummaryMemo={setPatrolCheckMemo}
                 isSubmittingPatrolCheck={isSubmittingPatrolCheck}

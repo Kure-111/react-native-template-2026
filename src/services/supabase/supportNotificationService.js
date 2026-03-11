@@ -4,9 +4,8 @@
  */
 
 import {
-  getRoles,
   getUserProfilesByIds,
-  sendNotificationToRoles,
+  sendNotificationToRoleNames as dispatchNotificationToRoleNames,
   sendNotificationToUser,
 } from '../../shared/services/notificationService.js';
 
@@ -75,14 +74,6 @@ const PATROL_TASK_TYPE_LABELS = {
   other: 'その他',
 };
 
-/** ロール一覧のキャッシュ保持時間 */
-const ROLE_CACHE_TTL_MS = 5 * 60 * 1000;
-
-/** ロール一覧キャッシュ */
-let roleCache = null;
-/** ロール一覧キャッシュ期限 */
-let roleCacheExpiresAt = 0;
-
 /**
  * 文字列をtrimして返す
  * @param {string|null|undefined} value - 入力値
@@ -96,61 +87,6 @@ const normalizeText = (value) => (typeof value === 'string' ? value.trim() : '')
  * @returns {Array<string>} 正規化後配列
  */
 const unique = (values) => Array.from(new Set((values || []).filter(Boolean)));
-
-/**
- * ロール一覧を取得する
- * @returns {Promise<Array>} ロール一覧
- */
-const loadRoles = async () => {
-  if (roleCache && roleCacheExpiresAt > Date.now()) {
-    return roleCache;
-  }
-
-  /** ロール取得結果 */
-  const { roles, error } = await getRoles();
-  if (error) {
-    return [];
-  }
-
-  roleCache = roles || [];
-  roleCacheExpiresAt = Date.now() + ROLE_CACHE_TTL_MS;
-  return roleCache;
-};
-
-/**
- * ロール名からロールIDを解決する
- * @param {Array<string>} roleNames - ロール名一覧
- * @returns {Promise<{roleIds: Array<string>, error: Error|null}>} 解決結果
- */
-const resolveRoleIdsByNames = async (roleNames) => {
-  /** 正規化済みロール名 */
-  const normalizedNames = unique((roleNames || []).map(normalizeText));
-
-  if (normalizedNames.length === 0) {
-    return { roleIds: [], error: new Error('通知先ロールが未指定です') };
-  }
-
-  /** ロール一覧 */
-  const roles = await loadRoles();
-  /** 解決済みロールID */
-  const roleIds = unique(
-    roles
-      .filter((role) => {
-        /** ロール名 */
-        const roleName = normalizeText(role.name);
-        /** ロール表示名 */
-        const roleDisplayName = normalizeText(role.display_name);
-        return normalizedNames.includes(roleName) || normalizedNames.includes(roleDisplayName);
-      })
-      .map((role) => role.id)
-  );
-
-  if (roleIds.length === 0) {
-    return { roleIds: [], error: new Error('通知先ロールが見つかりません') };
-  }
-
-  return { roleIds, error: null };
-};
 
 /**
  * ロール名ベースで通知を送る
@@ -169,14 +105,8 @@ const sendNotificationToRoleNames = async ({
   metadata = {},
   senderUserId = null,
 }) => {
-  /** ロール解決結果 */
-  const { roleIds, error: resolveError } = await resolveRoleIdsByNames(roleNames);
-  if (resolveError) {
-    return { error: resolveError };
-  }
-
   /** 通知送信結果 */
-  const result = await sendNotificationToRoles(roleIds, title, body, metadata, senderUserId);
+  const result = await dispatchNotificationToRoleNames(roleNames, title, body, metadata, senderUserId);
   if (result.error) {
     return { error: result.error };
   }

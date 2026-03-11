@@ -62,6 +62,21 @@ const normalizeText = (value) => (value || '').trim();
  * @param {number|null|undefined} fileSizeBytes - バイト数
  * @returns {string} 表示用サイズ
  */
+/**
+ * 連絡案件の詳細プレビューを整形する
+ * @param {string|null|undefined} value - 連絡案件詳細
+ * @returns {string} 表示用プレビュー
+ */
+const buildDetailPreview = (value) => {
+  /** 改行と連続空白をならした詳細 */
+  const normalizedValue = normalizeText(value).replace(/\s+/g, ' ');
+  if (!normalizedValue) {
+    return '';
+  }
+
+  return normalizedValue.length > 48 ? `${normalizedValue.slice(0, 48)}...` : normalizedValue;
+};
+
 const formatFileSize = (fileSizeBytes) => {
   const size = Number(fileSizeBytes);
   if (!Number.isFinite(size) || size < 0) {
@@ -93,6 +108,9 @@ const formatFileSize = (fileSizeBytes) => {
  * @param {Array} props.contactAttachments - 添付一覧
  * @param {(attachment: Object) => void} props.onOpenAttachment - 添付を開くコールバック
  * @param {() => void} props.onRefreshDetail - 詳細再取得コールバック
+ * @param {(y: number) => void} [props.onDetailLayout] - 詳細カード座標通知コールバック
+ * @param {string} props.historyTitle - 一覧セクションタイトル
+ * @param {string} props.detailTitle - 詳細セクションタイトル
  * @returns {JSX.Element} 履歴表示
  */
 const ContactHistory = ({
@@ -110,15 +128,28 @@ const ContactHistory = ({
   contactAttachments,
   onOpenAttachment,
   onRefreshDetail,
+  onDetailLayout,
+  historyTitle,
+  detailTitle,
   canCloseLatestContact,
   isClosingLatestContact,
   onCloseLatestContact,
 }) => {
+  /** 最新案件セクションの折りたたみ状態 */
+  const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
   /**
    * 折りたたみ中の種別キー集合
    * @type {Set<string>}
    */
   const [collapsedTypes, setCollapsedTypes] = useState(new Set());
+
+  /**
+   * 最新案件セクション全体の開閉を切り替える
+   * @returns {void}
+   */
+  const toggleHistoryCollapsed = () => {
+    setIsHistoryCollapsed((prev) => !prev);
+  };
 
   /**
    * 種別グループの開閉を切り替える
@@ -179,17 +210,33 @@ const ContactHistory = ({
       <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <View style={styles.historyHeader}>
           <Text style={[styles.sectionTitle, styles.historyTitle, { color: theme.text }]}>
-            最新の連絡案件
+            {historyTitle}
           </Text>
-          <TouchableOpacity
-            style={[styles.refreshButton, { borderColor: theme.border }]}
-            onPress={onRefreshContacts}
-          >
-            <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={[styles.refreshButton, { borderColor: theme.border }]}
+              onPress={onRefreshContacts}
+            >
+              <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.refreshButton, { borderColor: theme.border }]}
+              onPress={toggleHistoryCollapsed}
+            >
+              <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>
+                {isHistoryCollapsed ? '開く' : '折りたたむ'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {isLoadingContacts ? (
+        {isHistoryCollapsed ? (
+          <Text style={[styles.historyEmptyText, { color: theme.textSecondary }]}>
+            {myContacts.length === 0
+              ? '折りたたみ中です。対象の連絡案件はありません。'
+              : `折りたたみ中です。現在 ${myContacts.length} 件あります。`}
+          </Text>
+        ) : isLoadingContacts ? (
           <SkeletonLoader lines={3} baseColor={theme.border} />
         ) : myContacts.length === 0 ? (
           <EmptyState icon="📝" title="連絡履歴はまだありません" theme={theme} />
@@ -243,6 +290,11 @@ const ContactHistory = ({
                               ' / ' +
                               new Date(contact.created_at).toLocaleString('ja-JP')}
                           </Text>
+                          {buildDetailPreview(contact.description) ? (
+                            <Text style={[styles.historyItemPreview, { color: theme.textSecondary }]} numberOfLines={2}>
+                              {buildDetailPreview(contact.description)}
+                            </Text>
+                          ) : null}
                         </Pressable>
                       ))}
                     </View>
@@ -254,11 +306,16 @@ const ContactHistory = ({
         )}
       </View>
 
-      {selectedContact ? (
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      {!isHistoryCollapsed && selectedContact ? (
+        <View
+          style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}
+          onLayout={(event) => {
+            onDetailLayout?.(event.nativeEvent.layout.y);
+          }}
+        >
           <View style={styles.historyHeader}>
             <Text style={[styles.sectionTitle, styles.historyTitle, { color: theme.text }]}>
-              質問詳細
+              {detailTitle}
             </Text>
             <View style={styles.detailHeaderActions}>
               {canCloseLatestContact ? (
@@ -408,6 +465,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   detailHeaderActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -495,6 +557,11 @@ const styles = StyleSheet.create({
   historyItemMeta: {
     fontSize: 12,
     marginTop: 4,
+  },
+  historyItemPreview: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 6,
   },
   requestText: {
     borderWidth: 1,

@@ -8,6 +8,7 @@ interface DispatchPayload {
   targetType: TargetType;
   userId?: string;
   roleIds?: string[];
+  roleNames?: string[];
   title: string;
   body: string;
   metadata?: Record<string, unknown>;
@@ -54,14 +55,33 @@ const INTERNAL_NOTIFY_TOKEN = Deno.env.get('INTERNAL_NOTIFY_TOKEN');
 const PUSH_NOTIFICATION_ICON = '/icons/icon-192.png';
 const PUSH_NOTIFICATION_BADGE = '/icons/icon-192.png';
 const PUSH_TTL_SECONDS = 60 * 60 * 24;
-const ADMIN_ROLE_NAMES = ['管理者', '祭実長', '部長', '事務部'];
-const PATROL_ASSIGN_ROLE_NAMES = ['企画管理部', '管理者'];
+const ADMIN_ROLE_NAMES = ['管理者', 'Admin', 'Administrator', '祭実長', '部長', '事務部', '実長', '渉外部'];
+const PATROL_ASSIGN_ROLE_NAMES = [
+  '企画管理部',
+  '本部',
+  'HQ',
+  'Headquarters',
+  '管理者',
+  'Admin',
+  'Administrator',
+];
 const SUPPORT_USER_NOTIFICATION_EVENTS = ['message_created', 'status_changed'];
 const SUPPORT_ROLE_NAME_TARGETS = {
-  hq: ['企画管理部', '管理者'],
-  accounting: ['会計部', '管理者'],
-  property: ['物品部', '管理者'],
-  patrol: ['警備部', '企画管理部', '管理者'],
+  hq: ['企画管理部', '本部', 'HQ', 'Headquarters', '管理者', 'Admin', 'Administrator'],
+  accounting: ['会計部', '会計', 'Accounting', '管理者', 'Admin', 'Administrator'],
+  property: ['物品部', '物品', 'Property', '管理者', 'Admin', 'Administrator'],
+  patrol: [
+    '警備部',
+    '巡回',
+    'Patrol',
+    '企画管理部',
+    '本部',
+    'HQ',
+    'Headquarters',
+    '管理者',
+    'Admin',
+    'Administrator',
+  ],
 } as const;
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -114,6 +134,33 @@ const hasAnyRoleName = (actualRoleNames: string[], expectedRoleNames: string[]) 
 };
 
 /**
+ * 通知認可エラーの調査に必要なメタデータだけを抽出する
+ * @param {Record<string, unknown> | undefined} metadata - 通知メタデータ
+ * @returns {Record<string, unknown>} ログ用メタデータ
+ */
+const pickAuthorizationMetadata = (metadata?: Record<string, unknown>) => {
+  return {
+    source: normalizeText(metadata?.source) || null,
+    event: normalizeText(metadata?.event) || null,
+    type: normalizeText(metadata?.type) || null,
+    ticketId: normalizeText(metadata?.ticket_id) || null,
+    taskId: normalizeText(metadata?.task_id) || null,
+    notifyTarget: normalizeText(metadata?.notify_target) || null,
+    status: normalizeText(metadata?.status) || null,
+  };
+};
+
+/**
+ * 通知認可ログを出力する
+ * @param {string} label - ログ識別子
+ * @param {Record<string, unknown>} detail - ログ詳細
+ * @returns {void}
+ */
+const logAuthorizationDebug = (label: string, detail: Record<string, unknown>) => {
+  console.warn(`[dispatch-notification] ${label}`, detail);
+};
+
+/**
  * 連絡案件に紐づく許可ロール名一覧を返す
  * @param {string} ticketType - 連絡案件種別
  * @param {string} notifyTarget - 通知先種別
@@ -121,7 +168,10 @@ const hasAnyRoleName = (actualRoleNames: string[], expectedRoleNames: string[]) 
  */
 const getRoleNamesForTicket = (ticketType: string, notifyTarget: string) => {
   if (ticketType === 'start_report' || ticketType === 'end_report' || ticketType === 'emergency') {
-    return uniqueValues([...SUPPORT_ROLE_NAME_TARGETS.hq, ...SUPPORT_ROLE_NAME_TARGETS.patrol]);
+    return uniqueValues([
+      ...SUPPORT_ROLE_NAME_TARGETS.hq,
+      ...SUPPORT_ROLE_NAME_TARGETS.patrol,
+    ]);
   }
   if (notifyTarget === 'accounting') {
     return SUPPORT_ROLE_NAME_TARGETS.accounting;
@@ -180,19 +230,8 @@ const getBearerToken = (request: Request) => {
  * @returns {Promise<boolean>} 送信権限がある場合true
  */
 const isAdminSender = async (supabase: ReturnType<typeof createServiceClient>, userId: string) => {
-  const { data, error } = await supabase
-    .from('user_roles')
-    .select('roles!inner(name)')
-    .eq('user_id', userId)
-    .in('roles.name', ADMIN_ROLE_NAMES)
-    .limit(1);
-
-  if (error) {
-    console.error('admin check error:', error);
-    throw new Error('Failed to check admin role');
-  }
-
-  return Array.isArray(data) && data.length > 0;
+  const senderRoleNames = await selectUserRoleNames(supabase, userId);
+  return hasAnyRoleName(senderRoleNames, ADMIN_ROLE_NAMES);
 };
 
 /**
@@ -234,6 +273,41 @@ const selectUserRoleNames = async (
  * @param {string} ticketId - 連絡案件ID
  * @returns {Promise<{id: string; created_by: string | null; ticket_type: string | null; notify_target: string | null} | null>} 連絡案件
  */
+/**
+ * ロール名一覧からロールID一覧を解決する
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase - Supabaseクライアント
+ * @param {string[] | undefined} roleNames - ロール名一覧
+ * @returns {Promise<string[]>} ロールID一覧
+ */
+const selectRoleIdsByNames = async (
+  supabase: ReturnType<typeof createServiceClient>,
+  roleNames?: string[]
+): Promise<string[]> => {
+  const normalizedRoleNames = uniqueValues(roleNames ?? []);
+  if (normalizedRoleNames.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from('roles')
+    .select('id,name,display_name');
+
+  if (error) {
+    console.error('role fetch error:', error);
+    throw new Error('Failed to resolve roles');
+  }
+
+  return uniqueValues(
+    (data ?? [])
+      .filter((role) => {
+        const roleName = normalizeText(role.name);
+        const roleDisplayName = normalizeText(role.display_name);
+        return normalizedRoleNames.includes(roleName) || normalizedRoleNames.includes(roleDisplayName);
+      })
+      .map((role) => role.id)
+  );
+};
+
 const selectSupportTicketForAuthorization = async (
   supabase: ReturnType<typeof createServiceClient>,
   ticketId: string
@@ -332,6 +406,18 @@ const canSendSupportUserNotification = async (
   const targetAllowed =
     normalizeText(targetUserId) === ticketCreatorId || hasAnyRoleName(targetRoleNames, relatedRoleNames);
 
+  if (!senderAllowed || !targetAllowed) {
+    logAuthorizationDebug('support-user-notification-denied', {
+      senderUserId: normalizeText(senderUserId) || null,
+      targetUserId: normalizeText(targetUserId) || null,
+      ticketCreatorId: ticketCreatorId || null,
+      senderRoleNames,
+      targetRoleNames,
+      relatedRoleNames,
+      metadata: pickAuthorizationMetadata(metadata),
+    });
+  }
+
   return senderAllowed && targetAllowed;
 };
 
@@ -359,7 +445,19 @@ const canSendPatrolAssignmentNotification = async (
   }
 
   const senderRoleNames = await selectUserRoleNames(supabase, senderUserId);
-  return hasAnyRoleName(senderRoleNames, PATROL_ASSIGN_ROLE_NAMES);
+  const senderAllowed = hasAnyRoleName(senderRoleNames, PATROL_ASSIGN_ROLE_NAMES);
+
+  if (!senderAllowed) {
+    logAuthorizationDebug('patrol-assignment-notification-denied', {
+      senderUserId: normalizeText(senderUserId) || null,
+      targetUserId: normalizeText(targetUserId) || null,
+      senderRoleNames,
+      requiredRoleNames: PATROL_ASSIGN_ROLE_NAMES,
+      metadata: pickAuthorizationMetadata(metadata),
+    });
+  }
+
+  return senderAllowed;
 };
 
 /**
@@ -427,16 +525,6 @@ const authenticateRequester = async (
 
   // targetType=roles（ロール宛て）は認証済みユーザー全員に許可（企画者からの通知に対応）
   // targetType=user（個人宛て）は管理者ロール、または許可済み業務イベントのみ許可
-  if (payload.targetType === 'user') {
-    let authorized = await isAdminSender(supabase, user.id);
-    if (!authorized && payload.userId) {
-      authorized = await isWorkflowUserNotificationAllowed(supabase, user.id, payload.userId, payload.metadata);
-    }
-    if (!authorized) {
-      throw new Error('Forbidden');
-    }
-  }
-
   return {
     type: 'user',
     senderUserId: user.id,
@@ -460,14 +548,19 @@ const resolveRecipients = async (
     return [payload.userId];
   }
 
-  if (!Array.isArray(payload.roleIds) || payload.roleIds.length === 0) {
-    throw new Error('roleIds is required');
+  const roleIds = uniqueValues(payload.roleIds ?? []);
+  if (roleIds.length === 0) {
+    roleIds.push(...(await selectRoleIdsByNames(supabase, payload.roleNames)));
+  }
+
+  if (roleIds.length === 0) {
+    throw new Error('roleIds or roleNames is required');
   }
 
   const { data, error } = await supabase
     .from('user_roles')
     .select('user_id')
-    .in('role_id', payload.roleIds);
+    .in('role_id', roleIds);
 
   if (error) {
     console.error('role resolve error:', error);
@@ -714,6 +807,14 @@ const validatePayload = (payload: DispatchPayload) => {
 
   if (typeof payload.body !== 'string') {
     throw new Error('body must be a string');
+  }
+
+  if (
+    payload.targetType === 'roles' &&
+    uniqueValues(payload.roleIds ?? []).length === 0 &&
+    uniqueValues(payload.roleNames ?? []).length === 0
+  ) {
+    throw new Error('roleIds or roleNames is required');
   }
 };
 

@@ -6,8 +6,7 @@
 export const SCREEN_NAME = '物品対応';
 
 /** 画面説明 */
-export const SCREEN_DESCRIPTION =
-  '物品部向けの対応画面です。物品対象の連絡案件の確認、返信、ステータス更新を行います。';
+export const SCREEN_DESCRIPTION = '';
 
 /** 実装予定の機能一覧 */
 export const FEATURE_PLACEHOLDERS = [

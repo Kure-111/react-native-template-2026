@@ -93,6 +93,24 @@ const sanitizeFileName = (fileName) => {
  * @param {string} [input.storageBucket='ticket_attachments'] - バケット名
  * @returns {Promise<{data: Object|null, error: Error|null}>} アップロード結果
  */
+/**
+ * Storage に渡せるアップロード本体へ変換する
+ * React Native の Blob / File はそのまま渡すと失敗しやすいため ArrayBuffer 化する
+ * @param {File|Blob|ArrayBuffer|Uint8Array} file - 元ファイル
+ * @returns {Promise<ArrayBuffer|Uint8Array>} アップロード本体
+ */
+const buildUploadBody = async (file) => {
+  if (file instanceof ArrayBuffer || file instanceof Uint8Array) {
+    return file;
+  }
+
+  if (file && typeof file.arrayBuffer === 'function') {
+    return file.arrayBuffer();
+  }
+
+  throw new Error('アップロードできない添付形式です');
+};
+
 export const uploadTicketAttachmentFile = async (input) => {
   try {
     const ticketId = normalizeText(input.ticketId);
@@ -116,8 +134,9 @@ export const uploadTicketAttachmentFile = async (input) => {
     const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
     const randomSuffix = Math.random().toString(36).slice(2, 8);
     const storagePath = `${ticketId}/${timestamp}-${randomSuffix}-${fileName}`;
+    const uploadBody = await buildUploadBody(file);
 
-    const { error } = await getSupabaseClient().storage.from(storageBucket).upload(storagePath, file, {
+    const { error } = await getSupabaseClient().storage.from(storageBucket).upload(storagePath, uploadBody, {
       contentType: mimeType,
       upsert: false,
     });

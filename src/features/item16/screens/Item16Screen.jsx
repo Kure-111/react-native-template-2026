@@ -4,7 +4,7 @@
  * state管理とAPI呼び出しを担当し、子コンポーネントへpropsを渡す
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -66,6 +66,30 @@ const REQUESTED_AT_TIME_PATTERN = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
 /** 希望時刻パターン（YYYY-MM-DD HH:mm） */
 const REQUESTED_AT_DATE_TIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})\s+([01]\d|2[0-3]):([0-5]\d)$/;
+
+/** タブごとに表示する最新案件の種別 */
+const VISIBLE_TICKET_TYPES_BY_TAB = {
+  [SUPPORT_TAB_TYPES.QUESTION]: ['rule_question', 'layout_change', 'distribution_change', 'damage_report'],
+  [SUPPORT_TAB_TYPES.EMERGENCY]: ['emergency'],
+  [SUPPORT_TAB_TYPES.KEY_PREAPPLY]: ['key_preapply'],
+  [SUPPORT_TAB_TYPES.EVENT_STATUS]: ['start_report', 'end_report'],
+};
+
+/** タブごとの最新案件タイトル */
+const HISTORY_TITLES_BY_TAB = {
+  [SUPPORT_TAB_TYPES.QUESTION]: '質問の最新連絡案件',
+  [SUPPORT_TAB_TYPES.EMERGENCY]: '緊急の最新連絡案件',
+  [SUPPORT_TAB_TYPES.KEY_PREAPPLY]: '鍵申請の最新連絡案件',
+  [SUPPORT_TAB_TYPES.EVENT_STATUS]: '開始/終了の最新連絡案件',
+};
+
+/** タブごとの案件詳細タイトル */
+const DETAIL_TITLES_BY_TAB = {
+  [SUPPORT_TAB_TYPES.QUESTION]: '質問詳細',
+  [SUPPORT_TAB_TYPES.EMERGENCY]: '緊急連絡詳細',
+  [SUPPORT_TAB_TYPES.KEY_PREAPPLY]: '鍵申請詳細',
+  [SUPPORT_TAB_TYPES.EVENT_STATUS]: '開始/終了報告詳細',
+};
 
 /**
  * 企画者サポートのタブキーが有効か判定
@@ -205,6 +229,25 @@ const buildCompressedImageFileName = (fileName) => {
 };
 
 /**
+ * React Native で選択した Blob をアップロード可能な添付情報へ変換する
+ * Blob 自体へプロパティを書き込まず、必要なメタ情報だけを保持する
+ * @param {Object} input - 変換元情報
+ * @param {Blob} input.blob - 元Blob
+ * @param {string} input.fileName - 表示用ファイル名
+ * @param {string} input.mimeType - MIME type
+ * @returns {{name: string, type: string, size: number, lastModified: number, arrayBuffer: Function}} 添付情報
+ */
+const buildNativeUploadableFile = ({ blob, fileName, mimeType }) => {
+  return {
+    name: fileName,
+    type: mimeType,
+    size: Number(blob?.size) || 0,
+    lastModified: Date.now(),
+    arrayBuffer: () => blob.arrayBuffer(),
+  };
+};
+
+/**
  * ユーザーごとのローカル保存キーを生成
  * @param {string} baseKey - ベースキー
  * @param {string|null|undefined} userId - ユーザーID
@@ -228,6 +271,8 @@ const buildUserScopedStorageKey = (baseKey, userId) => {
 const Item16Screen = ({ navigation, route }) => {
   const { theme } = useTheme();
   const { user, userInfo } = useAuth();
+  /** 画面全体スクロール参照 */
+  const scrollViewRef = useRef(null);
   /** 通知タップなどで指定された初期タブ */
   const initialTab = route?.params?.initialTab || null;
   /** 画面単位のPush購読状態 */
@@ -268,7 +313,6 @@ const Item16Screen = ({ navigation, route }) => {
 
   // 企画の開始/終了報告
   const [eventStatus, setEventStatus] = useState(EVENT_STATUS_OPTIONS[0].key);
-  const [eventMemo, setEventMemo] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [myContacts, setMyContacts] = useState([]);
@@ -278,6 +322,8 @@ const Item16Screen = ({ navigation, route }) => {
   const [contactAttachments, setContactAttachments] = useState([]);
   const [isLoadingContactAttachments, setIsLoadingContactAttachments] = useState(false);
   const [isClosingLatestContact, setIsClosingLatestContact] = useState(false);
+  const [detailSectionY, setDetailSectionY] = useState(0);
+  const [shouldScrollToDetail, setShouldScrollToDetail] = useState(false);
 
   /**
    * メッセージ表示
@@ -609,8 +655,6 @@ const Item16Screen = ({ navigation, route }) => {
         const keys = [
           STORAGE_KEYS.DRAFT_QUESTION_DETAIL,
           STORAGE_KEYS.DRAFT_EMERGENCY_DETAIL,
-          STORAGE_KEYS.DRAFT_KEY_REASON,
-          STORAGE_KEYS.DRAFT_EVENT_MEMO,
         ];
         const values = await AsyncStorage.multiGet(keys);
         const drafts = Object.fromEntries(values.filter(([, v]) => v !== null));
@@ -619,10 +663,6 @@ const Item16Screen = ({ navigation, route }) => {
         }
         if (drafts[STORAGE_KEYS.DRAFT_EMERGENCY_DETAIL]) {
           setEmergencyDetail(drafts[STORAGE_KEYS.DRAFT_EMERGENCY_DETAIL]);
-        }
-
-        if (drafts[STORAGE_KEYS.DRAFT_EVENT_MEMO]) {
-          setEventMemo(drafts[STORAGE_KEYS.DRAFT_EVENT_MEMO]);
         }
       } catch (error) {
         console.warn('下書き復元に失敗:', error);
@@ -641,15 +681,13 @@ const Item16Screen = ({ navigation, route }) => {
         await AsyncStorage.multiSet([
           [STORAGE_KEYS.DRAFT_QUESTION_DETAIL, questionDetail],
           [STORAGE_KEYS.DRAFT_EMERGENCY_DETAIL, emergencyDetail],
-
-          [STORAGE_KEYS.DRAFT_EVENT_MEMO, eventMemo],
         ]);
       } catch (error) {
         console.warn('下書き保存に失敗:', error);
       }
     };
     saveDrafts();
-  }, [questionDetail, emergencyDetail, eventMemo, isHydrated]);
+  }, [questionDetail, emergencyDetail, isHydrated]);
 
   /**
    * ログインユーザーが変わったら履歴を再取得
@@ -657,14 +695,6 @@ const Item16Screen = ({ navigation, route }) => {
   useEffect(() => {
     loadMyContacts();
   }, [user?.id]);
-
-  /**
-   * 選択案件が変わったら対応メッセージを再取得
-   */
-  useEffect(() => {
-    loadContactMessages(selectedContactId);
-    loadContactAttachments(selectedContactId);
-  }, [selectedContactId]);
 
   /**
    * 現在タブのタイトル
@@ -675,13 +705,6 @@ const Item16Screen = ({ navigation, route }) => {
   }, [activeTab]);
 
   /**
-   * 選択中の連絡案件
-   */
-  const selectedContact = useMemo(() => {
-    return myContacts.find((contact) => contact.id === selectedContactId) || null;
-  }, [myContacts, selectedContactId]);
-
-  /**
    * 選択中の質問種別設定
    */
   const selectedQuestionConfig = useMemo(() => {
@@ -689,11 +712,65 @@ const Item16Screen = ({ navigation, route }) => {
   }, [questionType]);
 
   /**
+   * 現在タブで表示する最新案件の種別一覧
+   */
+  const visibleTicketTypes = useMemo(() => {
+    return VISIBLE_TICKET_TYPES_BY_TAB[activeTab] || [];
+  }, [activeTab]);
+
+  /**
+   * 現在タブに対応する最新案件一覧
+   */
+  const visibleContacts = useMemo(() => {
+    const visibleTypeSet = new Set(visibleTicketTypes);
+    return myContacts.filter((contact) => visibleTypeSet.has(contact.ticket_type));
+  }, [myContacts, visibleTicketTypes]);
+
+  /**
+   * 質問系統の添付は停止中
+   * 写真が必要な場合は Discord 連絡へ誘導する
+   */
+  const isAttachmentEnabled = false;
+
+  /**
+   * 現在タブ向けの履歴タイトル
+   */
+  const historyTitle = HISTORY_TITLES_BY_TAB[activeTab] || '最新の連絡案件';
+
+  /**
+   * 現在タブ向けの詳細タイトル
+   */
+  const detailTitle = DETAIL_TITLES_BY_TAB[activeTab] || '連絡詳細';
+
+  /**
    * 最新案件ID
    */
   const latestContactId = useMemo(() => {
-    return myContacts[0]?.id || null;
-  }, [myContacts]);
+    return visibleContacts[0]?.id || null;
+  }, [visibleContacts]);
+
+  /**
+   * 表示中タブで選択可能な案件へ選択状態を合わせる
+   */
+  useEffect(() => {
+    if (visibleContacts.length === 0) {
+      setSelectedContactId(null);
+      return;
+    }
+
+    if (selectedContactId && visibleContacts.some((contact) => contact.id === selectedContactId)) {
+      return;
+    }
+
+    setSelectedContactId(visibleContacts[0].id);
+  }, [visibleContacts, selectedContactId]);
+
+  /**
+   * 選択中の連絡案件
+   */
+  const selectedContact = useMemo(() => {
+    return visibleContacts.find((contact) => contact.id === selectedContactId) || null;
+  }, [visibleContacts, selectedContactId]);
 
   /**
    * 最新案件をクローズできるか
@@ -703,6 +780,53 @@ const Item16Screen = ({ navigation, route }) => {
       selectedContact.id === latestContactId &&
       selectedContact.ticket_status !== SUPPORT_TICKET_STATUSES.CLOSED
   );
+
+  /**
+   * 履歴一覧から案件を選択する
+   * 質問タブでは選択後に詳細位置まで自動スクロールする
+   * @param {string} contactId - 連絡案件ID
+   * @returns {void}
+   */
+  const handleSelectContactFromHistory = (contactId) => {
+    setSelectedContactId(contactId);
+    if (activeTab === SUPPORT_TAB_TYPES.QUESTION) {
+      setShouldScrollToDetail(true);
+    }
+  };
+
+  /**
+   * 表示中案件が変わったら詳細を再取得
+   */
+  useEffect(() => {
+    loadContactMessages(selectedContact?.id || null);
+    loadContactAttachments(selectedContact?.id || null);
+  }, [selectedContact?.id]);
+
+  /**
+   * 質問タブで履歴一覧から選択したときは詳細位置まで自動スクロールする
+   */
+  useEffect(() => {
+    if (
+      !shouldScrollToDetail ||
+      activeTab !== SUPPORT_TAB_TYPES.QUESTION ||
+      !selectedContact?.id ||
+      detailSectionY <= 0
+    ) {
+      return;
+    }
+
+    const timerId = setTimeout(() => {
+      scrollViewRef.current?.scrollTo({
+        y: Math.max(detailSectionY - 12, 0),
+        animated: true,
+      });
+      setShouldScrollToDetail(false);
+    }, 60);
+
+    return () => {
+      clearTimeout(timerId);
+    };
+  }, [activeTab, detailSectionY, selectedContact?.id, shouldScrollToDetail]);
 
   /**
    * 棟プルダウン選択に応じた鍵候補
@@ -859,9 +983,11 @@ const Item16Screen = ({ navigation, route }) => {
         const response = await fetch(asset.uri);
         const blob = await response.blob();
         const fileName = normalizeText(asset.fileName) || buildCompressedImageFileName('attachment.jpg');
-        const uploadableFile = Object.assign(blob, {
-          name: fileName,
-          lastModified: Date.now(),
+        const mimeType = normalizeText(asset.mimeType) || normalizeText(blob.type) || 'image/jpeg';
+        const uploadableFile = buildNativeUploadableFile({
+          blob,
+          fileName,
+          mimeType,
         });
 
         if ((uploadableFile.size || 0) > MAX_ATTACHMENT_FILE_BYTES) {
@@ -962,7 +1088,7 @@ const Item16Screen = ({ navigation, route }) => {
     if (!validateCommonFields()) {
       return;
     }
-    if (attachmentFile && attachmentFile.size > MAX_ATTACHMENT_FILE_BYTES) {
+    if (isAttachmentEnabled && attachmentFile && attachmentFile.size > MAX_ATTACHMENT_FILE_BYTES) {
       showMessage(
         '容量超過',
         `添付は${MAX_ATTACHMENT_FILE_SIZE_MB}MB以下にしてください（選択: ${formatFileSize(
@@ -1003,7 +1129,6 @@ const Item16Screen = ({ navigation, route }) => {
       payload = {
         type: activeTab,
         status: eventStatus,
-        memo: eventMemo,
       };
     }
 
@@ -1011,7 +1136,7 @@ const Item16Screen = ({ navigation, route }) => {
       eventId: null,
       eventName,
       eventLocation,
-      attachments: attachmentFile
+      attachments: isAttachmentEnabled && attachmentFile
         ? [
             {
               file: attachmentFile,
@@ -1066,7 +1191,6 @@ const Item16Screen = ({ navigation, route }) => {
         result = await exhibitorSupportService.createEventStatusReport({
           ...commonPayload,
           status: eventStatus,
-          memo: eventMemo,
         });
       }
 
@@ -1089,12 +1213,11 @@ const Item16Screen = ({ navigation, route }) => {
         setSelectedKeyIds([]);
         setKeyBuilding(ALL_BUILDINGS_VALUE);
         setKeySelectedId('');
-      } else if (activeTab === SUPPORT_TAB_TYPES.EVENT_STATUS) {
-        setEventMemo('');
-        AsyncStorage.removeItem(STORAGE_KEYS.DRAFT_EVENT_MEMO).catch(() => {});
       }
-      setAttachmentFile(null);
-      setAttachmentCaption('');
+      if (isAttachmentEnabled) {
+        setAttachmentFile(null);
+        setAttachmentCaption('');
+      }
 
       if (result.warning) {
         showMessage('送信完了（一部警告）', `連絡案件を登録しました。\n${result.warning}`);
@@ -1216,8 +1339,6 @@ const Item16Screen = ({ navigation, route }) => {
         theme={theme}
         eventStatus={eventStatus}
         onChangeEventStatus={setEventStatus}
-        eventMemo={eventMemo}
-        onChangeEventMemo={setEventMemo}
         renderOptionButtons={renderOptionButtons}
       />
     );
@@ -1231,7 +1352,7 @@ const Item16Screen = ({ navigation, route }) => {
         style={styles.body}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+        <ScrollView ref={scrollViewRef} style={styles.scrollView} contentContainerStyle={styles.content}>
           {pushNotice.isVisible ? (
             <WebPushStatusCard
               theme={theme}
@@ -1326,8 +1447,8 @@ const Item16Screen = ({ navigation, route }) => {
             <Text style={[styles.sectionTitle, { color: theme.text }]}>{activeTabTitle}</Text>
             {renderActiveForm()}
 
-            {/* 鍵事前申請タブでは添付情報セクションを非表示（申請フォームに不要） */}
-            {activeTab !== SUPPORT_TAB_TYPES.KEY_PREAPPLY ? (
+            {/* 添付情報は質問タブだけで扱う */}
+            {isAttachmentEnabled ? (
               <>
                 <Text style={[styles.label, { color: theme.text }]}>添付情報（任意）</Text>
                 <TouchableOpacity
@@ -1398,12 +1519,13 @@ const Item16Screen = ({ navigation, route }) => {
           </TouchableOpacity>
 
           <ContactHistory
+            key={activeTab}
             theme={theme}
             user={user}
             isLoadingContacts={isLoadingContacts}
-            myContacts={myContacts}
+            myContacts={visibleContacts}
             selectedContactId={selectedContactId}
-            onSelectContact={setSelectedContactId}
+            onSelectContact={handleSelectContactFromHistory}
             selectedContact={selectedContact}
             onRefreshContacts={loadMyContacts}
             isLoadingContactMessages={isLoadingContactMessages}
@@ -1411,7 +1533,13 @@ const Item16Screen = ({ navigation, route }) => {
             isLoadingContactAttachments={isLoadingContactAttachments}
             contactAttachments={contactAttachments}
             onOpenAttachment={openAttachment}
+            historyTitle={historyTitle}
+            detailTitle={detailTitle}
+            onDetailLayout={setDetailSectionY}
             onRefreshDetail={() => {
+              if (!selectedContact?.id) {
+                return;
+              }
               loadContactMessages(selectedContact.id);
               loadContactAttachments(selectedContact.id);
             }}

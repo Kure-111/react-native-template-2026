@@ -47,7 +47,7 @@ export const QUESTION_TYPES = [
   { key: 'layout_change', label: '配置図変更', targetLabel: '本部', notifyTarget: 'hq' },
   {
     key: 'distribution_change',
-    label: '会計配布基準変更',
+    label: '商品配布基準変更',
     targetLabel: '会計',
     notifyTarget: 'accounting',
   },
@@ -76,6 +76,4 @@ export const STORAGE_KEYS = {
   DRAFT_EMERGENCY_DETAIL: 'item16_draft_emergency_detail',
   /** 下書き: 鍵申請理由 */
   DRAFT_KEY_REASON: 'item16_draft_key_reason',
-  /** 下書き: 企画メモ */
-  DRAFT_EVENT_MEMO: 'item16_draft_event_memo',
 };
