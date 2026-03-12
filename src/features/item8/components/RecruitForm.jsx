@@ -3,7 +3,7 @@
  * 必須入力の検証、日付/時刻ピッカー、送信 payload の組み立てを担当する。
  */
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, TextInput, StyleSheet, Button, ScrollView, Pressable, Switch } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Button, ScrollView, Pressable } from 'react-native';
 import { OPTIONAL_FIELD_DEFAULTS } from '../constants.js';
 import { useTheme } from '../../../shared/hooks/useTheme';
 
@@ -15,6 +15,7 @@ const LATE_JOIN_ALLOW = 'allow';
 const LATE_JOIN_DENY = 'deny';
 const TIME_DROPDOWN_MIN_WIDTH = 280;
 const TIME_DROPDOWN_MAX_HEIGHT = 360;
+const TOGGLE_ACTIVE_COLOR = '#2563EB';
 
 /**
  * フォームの空状態。
@@ -86,6 +87,7 @@ export const RecruitForm = ({
   const [isImmediateMeetTime, setIsImmediateMeetTime] = useState(false);
   const [containerLayout, setContainerLayout] = useState(null);
   const [notifyAllOnCreate, setNotifyAllOnCreate] = useState(false);
+  const [notifyApplicantsOnUpdate, setNotifyApplicantsOnUpdate] = useState(true);
 
   const dateOptions = [
     { label: '2026/11/1', value: '2026-11-01' },
@@ -176,6 +178,11 @@ export const RecruitForm = ({
     setMeetHour(parsedMeet?.hour || '');
     setMeetMinute(parsedMeet?.minute || '');
     setNotifyAllOnCreate(Boolean(initialValues?.notify_all_on_create));
+    setNotifyApplicantsOnUpdate(
+      initialValues?.notify_applicants_on_update === undefined
+        ? Boolean(initialValues?.id)
+        : Boolean(initialValues?.notify_applicants_on_update)
+    );
   }, [initialValues]);
 
   const updateField = (key, value) => {
@@ -275,6 +282,7 @@ export const RecruitForm = ({
         (isImmediateTime ? IMMEDIATE_TIME_LABEL : `${startHour}:${startMinute}`),
       belongings: form.belongings || OPTIONAL_FIELD_DEFAULTS.belongings,
       notify_all_on_create: notifyAllOnCreate,
+      notify_applicants_on_update: notifyApplicantsOnUpdate,
     };
     onSubmit?.(payload);
   };
@@ -512,15 +520,52 @@ export const RecruitForm = ({
       {!isEditing ? (
         <View style={styles.notifyToggleRow}>
           <Text style={styles.notifyToggleLabel}>作成時に全員への通知を行う</Text>
-          <Switch
-            value={notifyAllOnCreate}
-            onValueChange={setNotifyAllOnCreate}
+          <Pressable
+            style={[
+              styles.customToggleTrack,
+              { backgroundColor: notifyAllOnCreate ? withAlpha(TOGGLE_ACTIVE_COLOR, '55') : withAlpha(theme.textSecondary, '55') },
+              disabled && styles.customToggleDisabled,
+            ]}
+            onPress={() => setNotifyAllOnCreate((prev) => !prev)}
             disabled={disabled}
-            trackColor={{ false: withAlpha(theme.textSecondary, '55'), true: withAlpha(theme.primary, '88') }}
-            thumbColor={notifyAllOnCreate ? theme.primary : theme.surface}
-          />
+          >
+            <View
+              style={[
+                styles.customToggleThumb,
+                {
+                  backgroundColor: notifyAllOnCreate ? TOGGLE_ACTIVE_COLOR : theme.surface,
+                  borderColor: notifyAllOnCreate ? TOGGLE_ACTIVE_COLOR : withAlpha(theme.textSecondary, '88'),
+                  transform: [{ translateX: notifyAllOnCreate ? 18 : 0 }],
+                },
+              ]}
+            />
+          </Pressable>
         </View>
-      ) : null}
+      ) : (
+        <View style={styles.notifyToggleRow}>
+          <Text style={styles.notifyToggleLabel}>変更時に応募済みの人へ通知する</Text>
+          <Pressable
+            style={[
+              styles.customToggleTrack,
+              { backgroundColor: notifyApplicantsOnUpdate ? withAlpha(TOGGLE_ACTIVE_COLOR, '55') : withAlpha(theme.textSecondary, '55') },
+              disabled && styles.customToggleDisabled,
+            ]}
+            onPress={() => setNotifyApplicantsOnUpdate((prev) => !prev)}
+            disabled={disabled}
+          >
+            <View
+              style={[
+                styles.customToggleThumb,
+                {
+                  backgroundColor: notifyApplicantsOnUpdate ? TOGGLE_ACTIVE_COLOR : theme.surface,
+                  borderColor: notifyApplicantsOnUpdate ? TOGGLE_ACTIVE_COLOR : withAlpha(theme.textSecondary, '88'),
+                  transform: [{ translateX: notifyApplicantsOnUpdate ? 18 : 0 }],
+                },
+              ]}
+            />
+          </Pressable>
+        </View>
+      )}
       <Button title={submitLabel} onPress={handleSubmit} disabled={disabled} color={theme.primary} />
       {datePickerOpen && (
         <>
@@ -791,6 +836,24 @@ const createStyles = (theme) =>
     notifyToggleLabel: {
       fontSize: 13,
       color: theme.text,
+    },
+    customToggleTrack: {
+      width: 44,
+      height: 26,
+      borderRadius: 999,
+      paddingHorizontal: 3,
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: withAlpha(theme.border, 'BB'),
+    },
+    customToggleThumb: {
+      width: 18,
+      height: 18,
+      borderRadius: 999,
+      borderWidth: 1,
+    },
+    customToggleDisabled: {
+      opacity: 0.6,
     },
     dropdownItem: {
       paddingVertical: 8,

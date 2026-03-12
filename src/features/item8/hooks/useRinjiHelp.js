@@ -16,14 +16,131 @@ import {
   fetchAppliedRecruits,
   syncExpiredRecruitStatuses,
 } from '../services/rinjiHelpService.js';
-import { isManager, RINJI_STATUS } from '../constants.js';
+import { isManager, RINJI_CLOSE_REASON, RINJI_STATUS } from '../constants.js';
 import { sendNotificationToUser } from '../../../shared/services/notificationService.js';
 
 const TITLE_SEPARATOR = '\n\n---\n\n';
 const META_SEPARATOR = '\n\n::META::\n\n';
 const RECRUIT_APPLIED_NOTIFICATION_TYPE = 'rinji_help_recruit_applied';
 const RECRUIT_CANCELLED_NOTIFICATION_TYPE = 'rinji_help_recruit_apply_cancelled';
+const RECRUIT_UPDATED_NOTIFICATION_TYPE = 'rinji_help_recruit_updated';
+const RECRUIT_AUTO_FULL_NOTIFICATION_TYPE = 'rinji_help_recruit_auto_full_closed';
 const supabase = getSupabaseClient();
+
+/**
+ * description 文字列を「タイトル / 業務内容 / 途中参加可否」に分解する。
+ *
+ * @param {string | null | undefined} rawDescription
+ * @returns {{ title: string, body: string, lateJoin: string }}
+ */
+const parseRecruitDescriptionParts = (rawDescription) => {
+  if (!rawDescription || typeof rawDescription !== 'string') {
+    return { title: '', body: '', lateJoin: '' };
+  }
+
+  const metaIdx = rawDescription.indexOf(META_SEPARATOR);
+  const plain = metaIdx === -1 ? rawDescription : rawDescription.slice(0, metaIdx);
+  const lateJoin = metaIdx === -1 ? '' : rawDescription.slice(metaIdx + META_SEPARATOR.length).trim();
+  const titleIdx = plain.indexOf(TITLE_SEPARATOR);
+
+  if (titleIdx === -1) {
+    return {
+      title: '',
+      body: plain.trim(),
+      lateJoin,
+    };
+  }
+
+  return {
+    title: plain.slice(0, titleIdx).trim(),
+    body: plain.slice(titleIdx + TITLE_SEPARATOR.length).trim(),
+    lateJoin,
+  };
+};
+
+/**
+ * 通知本文向けに表示値を正規化する。
+ *
+ * @param {any} value
+ * @param {string} fallback
+ * @returns {string}
+ */
+const normalizeDisplayValue = (value, fallback = '未設定') => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed === '' ? fallback : trimmed;
+  }
+  return `${value}`;
+};
+
+/**
+ * 比較用に値を文字列へ正規化する。
+ *
+ * @param {any} value
+ * @returns {string}
+ */
+const normalizeComparableValue = (value) => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value.trim();
+  return `${value}`;
+};
+
+/**
+ * 途中参加可否コードを表示文言へ変換する。
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+const formatLateJoinValue = (value) => {
+  if (value === 'allow') return '可';
+  if (value === 'deny') return '不可';
+  return '未設定';
+};
+
+/**
+ * 更新前後の募集情報から、通知本文用の簡易差分を生成する。
+ * 業務内容は本文そのものを出さず、変更有無のみ通知する。
+ *
+ * @param {Record<string, any> | null} previousRecruit
+ * @param {Record<string, any>} nextRecruit
+ * @returns {{ title: string, lines: string[] }}
+ */
+const buildRecruitUpdateDiffSummary = (previousRecruit, nextRecruit) => {
+  const previousParts = parseRecruitDescriptionParts(previousRecruit?.description);
+  const nextParts = parseRecruitDescriptionParts(nextRecruit?.description);
+  const nextTitle = normalizeDisplayValue(nextParts.title, '新しい臨時ヘルプ募集');
+  const lines = [];
+
+  const pushDiff = (label, beforeValue, afterValue) => {
+    const beforeText = normalizeDisplayValue(beforeValue);
+    const afterText = normalizeDisplayValue(afterValue);
+    if (beforeText !== afterText) {
+      lines.push(`・${label}: ${beforeText} → ${afterText}`);
+    }
+  };
+
+  if (previousRecruit) {
+    pushDiff('募集タイトル', previousParts.title, nextParts.title);
+    pushDiff('募集人数', previousRecruit.headcount, nextRecruit.headcount);
+    pushDiff('募集日', previousRecruit.work_date, nextRecruit.work_date);
+    pushDiff('開始時刻', previousRecruit.work_time, nextRecruit.work_time);
+    pushDiff('場所', previousRecruit.location, nextRecruit.location);
+    pushDiff('集合場所', previousRecruit.meet_place, nextRecruit.meet_place);
+    pushDiff('集合時間', previousRecruit.meet_time, nextRecruit.meet_time);
+    pushDiff('途中参加可否', formatLateJoinValue(previousParts.lateJoin), formatLateJoinValue(nextParts.lateJoin));
+
+    const beforeDescriptionBody = normalizeComparableValue(previousParts.body);
+    const nextDescriptionBody = normalizeComparableValue(nextParts.body);
+    if (beforeDescriptionBody !== nextDescriptionBody) {
+      lines.push('・業務内容欄が変更されました');
+    }
+  } else {
+    lines.push('・募集内容が更新されました（詳細は募集画面をご確認ください）');
+  }
+
+  return { title: nextTitle, lines };
+};
 
 /**
  * description から募集タイトルを抽出する。
@@ -32,15 +149,7 @@ const supabase = getSupabaseClient();
  * @returns {string}
  */
 const parseRecruitTitle = (rawDescription) => {
-  if (!rawDescription || typeof rawDescription !== 'string') {
-    return '新しい臨時ヘルプ募集';
-  }
-  const plain = rawDescription.split(META_SEPARATOR)[0] || '';
-  const idx = plain.indexOf(TITLE_SEPARATOR);
-  if (idx === -1) {
-    return plain.trim() || '新しい臨時ヘルプ募集';
-  }
-  return plain.slice(0, idx).trim() || '新しい臨時ヘルプ募集';
+  return normalizeDisplayValue(parseRecruitDescriptionParts(rawDescription).title, '新しい臨時ヘルプ募集');
 };
 
 /**
@@ -291,6 +400,164 @@ export const useRinjiHelp = () => {
   );
 
   /**
+   * 募集が満員で自動終了に遷移した際、募集作成者へ通知する。
+   * すでに auto_full だった募集は通知しない（重複抑止）。
+   *
+   * @param {{
+   *   recruitId: string,
+   *   actorUserId?: string,
+   *   previousRecruit?: Record<string, any> | null
+   * }} params
+   * @returns {Promise<void>}
+   */
+  const notifyRecruitOwnerOnAutoFullClose = useCallback(
+    async ({ recruitId, actorUserId, previousRecruit = null }) => {
+      if (!recruitId) return;
+
+      const { data: latestRecruit, error: recruitError } = await supabase
+        .from('rinji_help_recruits')
+        .select('id, head_user_id, description, headcount, status, close_reason')
+        .eq('id', recruitId)
+        .single();
+      if (recruitError || !latestRecruit?.head_user_id) {
+        console.warn('[item8] auto full notify recruit fetch failed:', recruitError?.message || recruitError);
+        return;
+      }
+
+      const isLatestAutoFullClosed =
+        latestRecruit.status === RINJI_STATUS.CLOSED &&
+        latestRecruit.close_reason === RINJI_CLOSE_REASON.AUTO_FULL;
+      if (!isLatestAutoFullClosed) return;
+
+      const wasAlreadyAutoFullClosed =
+        previousRecruit?.status === RINJI_STATUS.CLOSED &&
+        previousRecruit?.close_reason === RINJI_CLOSE_REASON.AUTO_FULL;
+      if (wasAlreadyAutoFullClosed) return;
+
+      const creatorUserId = latestRecruit.head_user_id;
+      if (actorUserId && creatorUserId === actorUserId) {
+        // 自分の操作で自分に通知しない
+        return;
+      }
+
+      const { count, error: countError } = await supabase
+        .from('rinji_help_applications')
+        .select('id', { count: 'exact', head: true })
+        .eq('recruit_id', recruitId);
+      if (countError) {
+        console.warn('[item8] auto full notify count fetch failed:', countError?.message || countError);
+      }
+
+      const recruitTitle = parseRecruitTitle(latestRecruit.description);
+      const applicantCount = Number.isFinite(count) ? count : null;
+      const headcount = Number(latestRecruit.headcount);
+      const ratioText =
+        applicantCount !== null && Number.isFinite(headcount) && headcount > 0
+          ? `（${applicantCount}/${headcount}）`
+          : '';
+      const title = '[臨時ヘルプ] 募集が定員に達しました';
+      const body = `募集タイトル: ${recruitTitle}\n応募人数が募集人数に到達しました${ratioText}`;
+      const metadata = {
+        type: RECRUIT_AUTO_FULL_NOTIFICATION_TYPE,
+        source: 'item8_rinji_help',
+        event: 'recruit_auto_full_closed',
+        recruit_id: recruitId,
+        creator_user_id: creatorUserId,
+        applicant_count: applicantCount,
+        headcount: Number.isFinite(headcount) ? headcount : null,
+      };
+
+      const { error: notifyError } = await sendNotificationToUser(
+        creatorUserId,
+        title,
+        body,
+        metadata,
+        actorUserId || null
+      );
+      if (notifyError) {
+        console.warn('[item8] auto full notify failed:', notifyError?.message || notifyError);
+      }
+    },
+    []
+  );
+
+  /**
+   * 募集更新時に、応募済みユーザーへ通知する。
+   *
+   * @param {{ recruitId: string, payload?: Record<string, any>, updaterUserId?: string }} params
+   * @returns {Promise<void>}
+   */
+  const notifyRecruitApplicantsOnUpdate = useCallback(
+    async ({ recruitId, payload = {}, updaterUserId, previousRecruit = null }) => {
+      if (!recruitId || !updaterUserId) return;
+
+      const { data: applications, error: applicationsError } = await supabase
+        .from('rinji_help_applications')
+        .select('applicant_user_id')
+        .eq('recruit_id', recruitId);
+      if (applicationsError) {
+        console.warn(
+          '[item8] recruit update notify recipients fetch failed:',
+          applicationsError?.message || applicationsError
+        );
+        return;
+      }
+
+      const recipientUserIds = [
+        ...new Set(
+          (applications || [])
+            .map((row) => row?.applicant_user_id)
+            .filter((userId) => Boolean(userId) && userId !== updaterUserId)
+        ),
+      ];
+      if (recipientUserIds.length === 0) return;
+
+      const { data: latestRecruit, error: recruitError } = await supabase
+        .from('rinji_help_recruits')
+        .select('id, description, headcount, work_date, work_time, location, meet_place, meet_time')
+        .eq('id', recruitId)
+        .single();
+      if (recruitError) {
+        console.warn('[item8] recruit update notify recruit fetch failed:', recruitError?.message || recruitError);
+      }
+
+      const sourceRecruit = latestRecruit || payload || {};
+      const { title: recruitTitle, lines: diffLines } = buildRecruitUpdateDiffSummary(previousRecruit, sourceRecruit);
+      if (diffLines.length === 0) {
+        // 変更点が検出できない場合は通知を送らない
+        return;
+      }
+
+      const title = `[臨時ヘルプ]「${recruitTitle}」の募集内容が更新されました`;
+      const body = `募集タイトル: ${recruitTitle}\n変更点:\n${diffLines.join('\n')}`;
+      const metadata = {
+        type: RECRUIT_UPDATED_NOTIFICATION_TYPE,
+        source: 'item8_rinji_help',
+        event: 'recruit_updated',
+        recruit_id: recruitId,
+        updater_user_id: updaterUserId,
+      };
+
+      const results = await Promise.allSettled(
+        recipientUserIds.map((recipientUserId) =>
+          sendNotificationToUser(recipientUserId, title, body, metadata, updaterUserId)
+        )
+      );
+
+      let failedCount = 0;
+      results.forEach((result) => {
+        if (result.status === 'rejected' || result?.value?.error) {
+          failedCount += 1;
+        }
+      });
+      if (failedCount > 0) {
+        console.warn(`[item8] recruit update notification failed: ${failedCount}/${recipientUserIds.length}`);
+      }
+    },
+    []
+  );
+
+  /**
    * 募集データを取得して、通常一覧または履歴一覧に振り分ける。
    *
    * @param {{ includeClosed?: boolean }} params
@@ -351,7 +618,11 @@ export const useRinjiHelp = () => {
    */
   const handleCreate = useCallback(
     async (payload) => {
-      const { notify_all_on_create: notifyAllOnCreate = false, ...createPayload } = payload || {};
+      const {
+        notify_all_on_create: notifyAllOnCreate = false,
+        notify_applicants_on_update: _notifyApplicantsOnUpdate,
+        ...createPayload
+      } = payload || {};
       const { data: createdRecruit, error } = await createRecruit({
         ...createPayload,
         head_user_id: user?.id,
@@ -380,15 +651,48 @@ export const useRinjiHelp = () => {
    */
   const handleUpdate = useCallback(
     async (id, payload) => {
-      const { error } = await updateRecruit(id, payload);
+      const {
+        notify_applicants_on_update: notifyApplicantsOnUpdate = true,
+        notify_all_on_create: _notifyAllOnCreate,
+        ...updatePayload
+      } = payload || {};
+      const { data: previousRecruit, error: previousRecruitError } = await supabase
+        .from('rinji_help_recruits')
+        .select('id, description, headcount, work_date, work_time, location, meet_place, meet_time, status, close_reason')
+        .eq('id', id)
+        .single();
+      if (previousRecruitError) {
+        console.warn(
+          '[item8] recruit update previous state fetch failed:',
+          previousRecruitError?.message || previousRecruitError
+        );
+      }
+      const { error } = await updateRecruit(id, updatePayload);
       if (error) {
         setError(error.message);
         return false;
       }
+      if (notifyApplicantsOnUpdate) {
+        notifyRecruitApplicantsOnUpdate({
+          recruitId: id,
+          payload: updatePayload,
+          updaterUserId: user?.id,
+          previousRecruit: previousRecruit || null,
+        }).catch((notifyError) => {
+          console.warn('[item8] recruit update notify skipped:', notifyError?.message || notifyError);
+        });
+      }
+      notifyRecruitOwnerOnAutoFullClose({
+        recruitId: id,
+        actorUserId: user?.id,
+        previousRecruit: previousRecruit || null,
+      }).catch((notifyError) => {
+        console.warn('[item8] auto full notify after update skipped:', notifyError?.message || notifyError);
+      });
       await refresh();
       return true;
     },
-    [refresh]
+    [notifyRecruitApplicantsOnUpdate, notifyRecruitOwnerOnAutoFullClose, refresh, user?.id]
   );
 
   /**
@@ -438,6 +742,15 @@ export const useRinjiHelp = () => {
    */
   const handleApply = useCallback(
     async (id) => {
+      const { data: previousRecruit, error: previousRecruitError } = await supabase
+        .from('rinji_help_recruits')
+        .select('id, status, close_reason')
+        .eq('id', id)
+        .single();
+      if (previousRecruitError) {
+        console.warn('[item8] apply previous recruit fetch failed:', previousRecruitError?.message || previousRecruitError);
+      }
+
       const { data: application, error } = await applyRecruit(id, user?.id);
       if (error) {
         const duplicate =
@@ -454,10 +767,17 @@ export const useRinjiHelp = () => {
       }).catch((notifyError) => {
         console.warn('[item8] recruit apply notify skipped:', notifyError?.message || notifyError);
       });
+      notifyRecruitOwnerOnAutoFullClose({
+        recruitId: id,
+        actorUserId: user?.id,
+        previousRecruit: previousRecruit || null,
+      }).catch((notifyError) => {
+        console.warn('[item8] auto full notify skipped:', notifyError?.message || notifyError);
+      });
       await refresh();
       return true;
     },
-    [notifyRecruitOwnerOnApply, refresh, user?.id]
+    [notifyRecruitOwnerOnApply, notifyRecruitOwnerOnAutoFullClose, refresh, user?.id]
   );
 
   /**
