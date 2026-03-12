@@ -40,6 +40,31 @@ const APPLICANTS_DELETE_CONFIRM_MESSAGE =
   'この募集を削除します。削除後は一覧に表示されなくなり、応募者情報も削除されます。よろしいですか？';
 
 /**
+ * 生エラーメッセージをユーザー表示向けに正規化する。
+ *
+ * @param {any} raw
+ * @returns {string}
+ */
+const toDisplayErrorMessage = (raw) => {
+  const text = `${raw || ''}`;
+  if (/failed to fetch|network request failed|networkerror|timeout|offline|unreachable/i.test(text)) {
+    return '通信エラーが発生しました。接続を確認して再度お試しください。';
+  }
+  return text || '処理中にエラーが発生しました。';
+};
+
+/**
+ * 現在表示中のエラーメッセージが通信系エラーかを判定する。
+ *
+ * @param {any} raw
+ * @returns {boolean}
+ */
+const isNetworkErrorMessage = (raw) => {
+  const text = toDisplayErrorMessage(raw);
+  return text === '通信エラーが発生しました。接続を確認して再度お試しください。';
+};
+
+/**
  * カラーを少し暗くする。
  *
  * @param {string} hexColor
@@ -91,7 +116,9 @@ class LocalErrorBoundary extends React.Component {
           ]}
         >
           <Text style={[styles.localErrorTitle, { color: theme.error }]}>項目8 内部エラー</Text>
-          <Text style={[styles.localErrorMessage, { color: theme.text }]}>{this.state.error.message}</Text>
+          <Text style={[styles.localErrorMessage, { color: theme.text }]}>
+            {toDisplayErrorMessage(this.state.error?.message)}
+          </Text>
           <Button title="再読み込み" onPress={onReload} color={theme.primary} />
         </View>
       );
@@ -120,6 +147,8 @@ const Item8Screen = ({ navigation }) => {
     historyRecruits,
     appliedRecruits,
     applications,
+    retrySuccessEvent,
+    clearRetrySuccessEvent,
     currentUserId,
     handleCreate,
     handleUpdate,
@@ -138,6 +167,8 @@ const Item8Screen = ({ navigation }) => {
   const [toast, setToast] = useState({ message: '', type: 'success' });
   const [openApplicantsByRecruitId, setOpenApplicantsByRecruitId] = useState({});
   const [loadingApplicantsByRecruitId, setLoadingApplicantsByRecruitId] = useState({});
+  const [createFormResetToken, setCreateFormResetToken] = useState(0);
+  const [pendingCreateDraftClear, setPendingCreateDraftClear] = useState(false);
   const [deleteConfirmRecruitId, setDeleteConfirmRecruitId] = useState(null);
   const [deleteConfirmMessage, setDeleteConfirmMessage] = useState(DEFAULT_DELETE_CONFIRM_MESSAGE);
   const [deletingRecruit, setDeletingRecruit] = useState(false);
@@ -177,19 +208,24 @@ const Item8Screen = ({ navigation }) => {
    */
   const onSubmit = async (payload) => {
     const isEditing = Boolean(editing);
-    setSubmitting(true);
-    const ok = isEditing ? await handleUpdate(editing.id, payload) : await handleCreate(payload);
-    setSubmitting(false);
-    if (ok) {
-      setEditing(null);
-      setActiveTab(MANAGER_TABS.LIST);
-      showSuccessToast(isEditing ? '募集を更新しました' : '募集を作成しました');
-    } else {
-      showErrorToast(
-        isEditing
-          ? '募集の更新に失敗しました。入力内容を確認して再度お試しください。'
-          : '募集の作成に失敗しました。入力内容を確認して再度お試しください。'
-      );
+    try {
+      setSubmitting(true);
+      const ok = isEditing ? await handleUpdate(editing.id, payload) : await handleCreate(payload);
+      setSubmitting(false);
+      if (ok) {
+        setEditing(null);
+        setActiveTab(MANAGER_TABS.LIST);
+        showSuccessToast(isEditing ? '募集を更新しました' : '募集を作成しました');
+      } else {
+        showErrorToast(
+          isEditing
+            ? '募集の更新に失敗しました。入力内容を確認して再度お試しください。'
+            : '募集の作成に失敗しました。入力内容を確認して再度お試しください。'
+        );
+      }
+    } catch (unexpectedError) {
+      setSubmitting(false);
+      showErrorToast(toDisplayErrorMessage(unexpectedError?.message || unexpectedError));
     }
   };
 
@@ -223,6 +259,28 @@ const Item8Screen = ({ navigation }) => {
    * @param {string} message
    */
   const showErrorToast = (message) => showToast(message, 'error');
+
+  useEffect(() => {
+    if (!retrySuccessEvent?.message) return;
+    showSuccessToast(retrySuccessEvent.message);
+    if (retrySuccessEvent.type === 'create' && !editing) {
+      setCreateFormResetToken((prev) => prev + 1);
+      setPendingCreateDraftClear(false);
+    }
+    clearRetrySuccessEvent();
+  }, [clearRetrySuccessEvent, editing, retrySuccessEvent]);
+
+  useEffect(() => {
+    if (!pendingCreateDraftClear) return;
+    if (!error) {
+      setCreateFormResetToken((prev) => prev + 1);
+      setPendingCreateDraftClear(false);
+      return;
+    }
+    if (!isNetworkErrorMessage(error)) {
+      setPendingCreateDraftClear(false);
+    }
+  }, [error, pendingCreateDraftClear]);
 
   /**
    * 募集を終了し、成功時はトーストを表示する。
@@ -325,11 +383,15 @@ const Item8Screen = ({ navigation }) => {
    * @returns {Promise<void>}
    */
   const onApplyRecruit = async (recruitId) => {
-    const ok = await handleApply(recruitId);
-    if (ok) {
-      showSuccessToast('応募しました');
-    } else {
-      showErrorToast('応募に失敗しました。すでに応募済みの場合は応募済みタブをご確認ください。');
+    try {
+      const ok = await handleApply(recruitId);
+      if (ok) {
+        showSuccessToast('応募しました');
+      } else {
+        showErrorToast('応募に失敗しました。すでに応募済みの場合は応募済みタブをご確認ください。');
+      }
+    } catch (unexpectedError) {
+      showErrorToast(toDisplayErrorMessage(unexpectedError?.message || unexpectedError));
     }
   };
 
@@ -354,6 +416,10 @@ const Item8Screen = ({ navigation }) => {
    * @returns {Promise<void>}
    */
   const handleRefresh = async () => {
+    const shouldClearCreateDraftAfterRefresh = isNetworkErrorMessage(error) && !editing;
+    if (shouldClearCreateDraftAfterRefresh) {
+      setPendingCreateDraftClear(true);
+    }
     await refresh();
     setOpenApplicantsByRecruitId({});
     setLoadingApplicantsByRecruitId({});
@@ -388,7 +454,8 @@ const Item8Screen = ({ navigation }) => {
    *
    * @returns {JSX.Element | null}
    */
-  const renderError = () => (error ? <Text style={[styles.error, { color: theme.error }]}>{error}</Text> : null);
+  const renderError = () =>
+    error ? <Text style={[styles.error, { color: theme.error }]}>{toDisplayErrorMessage(error)}</Text> : null;
   const listAndHistorySectionBackground = darkenHex(theme.surface, 0.04);
 
   /**
@@ -412,6 +479,7 @@ const Item8Screen = ({ navigation }) => {
       </Text>
       <RecruitForm
         initialValues={editing || {}}
+        resetDraftToken={createFormResetToken}
         submitLabel={editing ? '更新する' : '募集を作成'}
         onSubmit={onSubmit}
         disabled={submitting}

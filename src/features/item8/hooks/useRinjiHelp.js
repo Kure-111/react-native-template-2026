@@ -1,8 +1,9 @@
 /**
  * 臨時ヘルプ機能の画面状態と操作をまとめて提供するカスタムフック。
  */
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '../../../shared/contexts/AuthContext.js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSupabaseClient } from '../../../services/supabase/client.js';
 import {
   fetchRecruits,
@@ -28,7 +29,77 @@ const RECRUIT_UPDATED_NOTIFICATION_TYPE = 'rinji_help_recruit_updated';
 const RECRUIT_AUTO_FULL_NOTIFICATION_TYPE = 'rinji_help_recruit_auto_full_closed';
 const RECRUIT_DELETED_NOTIFICATION_TYPE = 'rinji_help_recruit_deleted';
 const RECRUIT_DELETED_MARKER = '::DELETED::';
+const REQUEST_RETRY_MAX_COUNT = 3;
+const REQUEST_RETRY_INTERVAL_MS = 2000;
+const QUEUE_ITEM_CREATE = 'create';
+const QUEUE_ITEM_APPLY = 'apply';
+const RETRY_QUEUE_STORAGE_KEY = 'item8_rinji_help_retry_queue_v1';
 const supabase = getSupabaseClient();
+
+/**
+ * 非同期待機用ユーティリティ。
+ *
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * 応募の重複エラーかどうかを判定する。
+ *
+ * @param {any} error
+ * @returns {boolean}
+ */
+const isDuplicateApplyError = (error) => {
+  const message = `${error?.message || ''}`.toLowerCase();
+  return (
+    error?.code === '23505' ||
+    message.includes('uq_rinji_apps_recruit_applicant') ||
+    message.includes('duplicate key')
+  );
+};
+
+/**
+ * 通信断など、再送対象とみなすエラーかどうかを判定する。
+ *
+ * @param {any} error
+ * @returns {boolean}
+ */
+const isRetryableNetworkError = (error) => {
+  const text = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+  return [
+    'failed to fetch',
+    'network request failed',
+    'networkerror',
+    'timeout',
+    'timed out',
+    'connection',
+    'offline',
+    'unreachable',
+    'load failed',
+    'xhr',
+    'fetch failed',
+    'socket',
+  ].some((token) => text.includes(token));
+};
+
+/**
+ * 例外オブジェクトをユーザー表示向けメッセージへ変換する。
+ *
+ * @param {any} error
+ * @param {string} fallback
+ * @returns {string}
+ */
+const toUserErrorMessage = (error, fallback = '処理に失敗しました。') => {
+  if (isRetryableNetworkError(error)) {
+    return '通信エラーが発生しました。接続を確認して再度お試しください。';
+  }
+  const message = error?.message;
+  if (typeof message === 'string' && message.trim() !== '') {
+    return message;
+  }
+  return fallback;
+};
 
 /**
  * description 文字列を「タイトル / 業務内容 / 途中参加可否」に分解する。
@@ -170,6 +241,8 @@ const parseRecruitTitle = (rawDescription) => {
  *   historyRecruits: Array<any>,
  *   appliedRecruits: Array<any>,
  *   applications: Record<string, Array<any>>,
+ *   retrySuccessEvent: { id: number, type: 'create' | 'apply', message: string } | null,
+ *   clearRetrySuccessEvent: () => void,
  *   refresh: () => Promise<void>,
  *   handleCreate: (payload: Record<string, any>) => Promise<boolean>,
  *   handleUpdate: (id: string, payload: Record<string, any>) => Promise<boolean>,
@@ -188,9 +261,33 @@ export const useRinjiHelp = () => {
   const [historyRecruits, setHistoryRecruits] = useState([]);
   const [appliedRecruits, setAppliedRecruits] = useState([]);
   const [applications, setApplications] = useState({});
+  const [retrySuccessEvent, setRetrySuccessEvent] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [managerFlag, setManagerFlag] = useState(false);
+  const retryQueueRef = useRef([]);
+  const processingRetryQueueRef = useRef(false);
+  const unmountedRef = useRef(false);
+
+  useEffect(
+    () => () => {
+      unmountedRef.current = true;
+    },
+    []
+  );
+
+  /**
+   * 再送キューをローカルストレージへ保存する。
+   *
+   * @returns {Promise<void>}
+   */
+  const persistRetryQueue = useCallback(async () => {
+    try {
+      await AsyncStorage.setItem(RETRY_QUEUE_STORAGE_KEY, JSON.stringify(retryQueueRef.current));
+    } catch (storageError) {
+      console.warn('[item8] retry queue persist failed:', storageError?.message || storageError);
+    }
+  }, []);
 
   // ロール情報が到着したら一度だけ評価し、ユーザーが変わったらリセット
   useEffect(() => {
@@ -638,7 +735,7 @@ export const useRinjiHelp = () => {
       setError(null);
       const { data, error } = await fetchRecruits({ includeClosed, includeAutoFullClosed });
       if (error) {
-        setError(error.message);
+        setError(toUserErrorMessage(error, '募集一覧の取得に失敗しました。'));
       } else {
         includeClosed ? setHistoryRecruits(data || []) : setRecruits(data || []);
       }
@@ -666,7 +763,7 @@ export const useRinjiHelp = () => {
       setHistoryRecruits([]);
       const { data, error: appliedError } = await fetchAppliedRecruits(user?.id);
       if (appliedError) {
-        setError(appliedError.message);
+        setError(toUserErrorMessage(appliedError, '応募済み一覧の取得に失敗しました。'));
       } else {
         setAppliedRecruits(data || []);
       }
@@ -678,6 +775,286 @@ export const useRinjiHelp = () => {
       refresh();
     }
   }, [authLoading, refresh, manager]);
+
+  /**
+   * 募集作成処理を1回実行する。
+   *
+   * @param {{ createPayload: Record<string, any>, notifyAllOnCreate: boolean }} params
+   * @returns {Promise<{ ok: boolean, retryable: boolean, message?: string }>}
+   */
+  const performCreateRequest = useCallback(
+    async ({ createPayload, notifyAllOnCreate }) => {
+      try {
+        if (!user?.id) {
+          return { ok: false, retryable: false, message: 'ユーザー情報を確認できませんでした。再ログインしてください。' };
+        }
+
+        const { data: createdRecruit, error: createError } = await createRecruit({
+          ...createPayload,
+          head_user_id: user.id,
+        });
+        if (createError) {
+          return {
+            ok: false,
+            retryable: isRetryableNetworkError(createError),
+            message: toUserErrorMessage(createError, '募集の作成に失敗しました。'),
+          };
+        }
+
+        if (notifyAllOnCreate) {
+          notifyRecruitCreatedToOthers(createdRecruit || null, createPayload).catch((notifyError) => {
+            console.warn('[item8] recruit create notify skipped:', notifyError?.message || notifyError);
+          });
+        }
+
+        await refresh();
+        return { ok: true, retryable: false };
+      } catch (unexpectedError) {
+        return {
+          ok: false,
+          retryable: isRetryableNetworkError(unexpectedError),
+          message: toUserErrorMessage(unexpectedError, '募集の作成に失敗しました。'),
+        };
+      }
+    },
+    [notifyRecruitCreatedToOthers, refresh, user?.id]
+  );
+
+  /**
+   * 応募処理を1回実行する。
+   *
+   * @param {{
+   *   recruitId: string,
+   *   applicantUserId: string | null | undefined,
+   *   treatDuplicateAsSuccess?: boolean
+   * }} params
+   * @returns {Promise<{ ok: boolean, retryable: boolean, message?: string }>}
+   */
+  const performApplyRequest = useCallback(
+    async ({ recruitId, applicantUserId, treatDuplicateAsSuccess = false }) => {
+      try {
+        if (!recruitId || !applicantUserId) {
+          return { ok: false, retryable: false, message: '応募に必要なユーザー情報が不足しています。' };
+        }
+
+        const { data: previousRecruit, error: previousRecruitError } = await supabase
+          .from('rinji_help_recruits')
+          .select('id, status, close_reason')
+          .eq('id', recruitId)
+          .single();
+        if (previousRecruitError) {
+          console.warn('[item8] apply previous recruit fetch failed:', previousRecruitError?.message || previousRecruitError);
+        }
+
+        const { data: application, error: applyError } = await applyRecruit(recruitId, applicantUserId);
+        if (applyError) {
+          if (isDuplicateApplyError(applyError)) {
+            if (!treatDuplicateAsSuccess) {
+              return {
+                ok: false,
+                retryable: false,
+                message: 'すでに応募済みです。応募済みタブをご確認ください。',
+              };
+            }
+            notifyRecruitOwnerOnApply({
+              recruitId,
+              applicationId: null,
+              applicantUserId,
+            }).catch((notifyError) => {
+              console.warn('[item8] recruit apply notify skipped:', notifyError?.message || notifyError);
+            });
+            notifyRecruitOwnerOnAutoFullClose({
+              recruitId,
+              actorUserId: applicantUserId,
+              previousRecruit: previousRecruit || null,
+            }).catch((notifyError) => {
+              console.warn('[item8] auto full notify skipped:', notifyError?.message || notifyError);
+            });
+            await refresh();
+            return { ok: true, retryable: false };
+          }
+
+          return {
+            ok: false,
+            retryable: isRetryableNetworkError(applyError),
+            message: toUserErrorMessage(applyError, '応募に失敗しました。'),
+          };
+        }
+
+        notifyRecruitOwnerOnApply({
+          recruitId,
+          applicationId: application?.id || null,
+          applicantUserId,
+        }).catch((notifyError) => {
+          console.warn('[item8] recruit apply notify skipped:', notifyError?.message || notifyError);
+        });
+        notifyRecruitOwnerOnAutoFullClose({
+          recruitId,
+          actorUserId: applicantUserId,
+          previousRecruit: previousRecruit || null,
+        }).catch((notifyError) => {
+          console.warn('[item8] auto full notify skipped:', notifyError?.message || notifyError);
+        });
+        await refresh();
+        return { ok: true, retryable: false };
+      } catch (unexpectedError) {
+        return {
+          ok: false,
+          retryable: isRetryableNetworkError(unexpectedError),
+          message: toUserErrorMessage(unexpectedError, '応募に失敗しました。'),
+        };
+      }
+    },
+    [notifyRecruitOwnerOnApply, notifyRecruitOwnerOnAutoFullClose, refresh]
+  );
+
+  /**
+   * キュー済みリクエストを先頭から順に再送する。
+   * 通信系エラーは最大3回までリトライし、それ以外は即失敗通知する。
+   *
+   * @returns {Promise<void>}
+   */
+  const processRetryQueue = useCallback(async () => {
+    if (processingRetryQueueRef.current) return;
+    processingRetryQueueRef.current = true;
+
+    try {
+      while (!unmountedRef.current && retryQueueRef.current.length > 0) {
+        const current = retryQueueRef.current[0];
+        const attemptNumber = Math.max(1, Number(current.retryCount || 0) + 1);
+        const targetLabel = current.type === QUEUE_ITEM_CREATE ? '募集作成' : '応募';
+        if (!unmountedRef.current) {
+          setError(`通信エラーのため${targetLabel}を再送中です（${attemptNumber}/${REQUEST_RETRY_MAX_COUNT}）。`);
+        }
+        const result =
+          current.type === QUEUE_ITEM_CREATE
+            ? await performCreateRequest(current.payload)
+            : await performApplyRequest({ ...current.payload, treatDuplicateAsSuccess: true });
+
+        if (result.ok) {
+          if (!unmountedRef.current) {
+            setError(null);
+            setRetrySuccessEvent({
+              id: Date.now(),
+              type: current.type === QUEUE_ITEM_CREATE ? QUEUE_ITEM_CREATE : QUEUE_ITEM_APPLY,
+              message: current.type === QUEUE_ITEM_CREATE ? '募集を作成しました' : '応募しました',
+            });
+          }
+          retryQueueRef.current.shift();
+          await persistRetryQueue();
+          continue;
+        }
+
+        if (result.retryable && attemptNumber < REQUEST_RETRY_MAX_COUNT) {
+          current.retryCount = attemptNumber;
+          await persistRetryQueue();
+          if (!unmountedRef.current) {
+            setError(
+              `通信エラーのため${targetLabel}の再送に失敗しました。${REQUEST_RETRY_INTERVAL_MS / 1000}秒後に再試行します（${attemptNumber}/${REQUEST_RETRY_MAX_COUNT}）。`
+            );
+          }
+          await sleep(REQUEST_RETRY_INTERVAL_MS);
+          continue;
+        }
+
+        retryQueueRef.current.shift();
+        await persistRetryQueue();
+        if (!unmountedRef.current) {
+          const fallbackMessage =
+            current.type === QUEUE_ITEM_CREATE
+              ? `通信失敗のため募集作成の再送に${REQUEST_RETRY_MAX_COUNT}回失敗しました。再度お試しください。`
+              : `通信失敗のため応募の再送に${REQUEST_RETRY_MAX_COUNT}回失敗しました。再度お試しください。`;
+          setError(result.message || fallbackMessage);
+        }
+      }
+    } finally {
+      processingRetryQueueRef.current = false;
+    }
+  }, [performApplyRequest, performCreateRequest, persistRetryQueue]);
+
+  /**
+   * 通信失敗したリクエストをキューに積み、自動再送を開始する。
+   *
+   * @param {{ type: string, queueKey: string, payload: any }} item
+   * @param {string} queuedMessage
+   */
+  const enqueueRetryItem = useCallback(
+    (item, queuedMessage) => {
+      const exists = retryQueueRef.current.some((queued) => queued.queueKey === item.queueKey);
+      if (!exists) {
+        retryQueueRef.current.push({
+          ...item,
+          retryCount: 0,
+        });
+        void persistRetryQueue();
+      }
+      setError(queuedMessage);
+      void processRetryQueue();
+    },
+    [persistRetryQueue, processRetryQueue]
+  );
+
+  /**
+   * 自動再送の成功通知イベントをクリアする。
+   */
+  const clearRetrySuccessEvent = useCallback(() => {
+    setRetrySuccessEvent(null);
+  }, []);
+
+  /**
+   * 永続化された再送キューを復元し、存在する場合は自動再送を開始する。
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    const restoreRetryQueue = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(RETRY_QUEUE_STORAGE_KEY);
+        if (!raw) return;
+
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          retryQueueRef.current = [];
+          await AsyncStorage.removeItem(RETRY_QUEUE_STORAGE_KEY);
+          return;
+        }
+
+        const restored = parsed
+          .filter(
+            (item) =>
+              item &&
+              (item.type === QUEUE_ITEM_CREATE || item.type === QUEUE_ITEM_APPLY) &&
+              typeof item.queueKey === 'string' &&
+              item.payload
+          )
+          .map((item) => ({
+            ...item,
+            retryCount: Number.isFinite(Number(item.retryCount))
+              ? Math.min(Math.max(0, Number(item.retryCount)), REQUEST_RETRY_MAX_COUNT - 1)
+              : 0,
+          }));
+
+        retryQueueRef.current = restored;
+        await persistRetryQueue();
+
+        if (restored.length === 0) {
+          return;
+        }
+
+        if (!cancelled && !unmountedRef.current) {
+          setError('未送信のリクエストを検出したため、自動で再送を試行します。');
+        }
+        void processRetryQueue();
+      } catch (restoreError) {
+        console.warn('[item8] retry queue restore failed:', restoreError?.message || restoreError);
+      }
+    };
+
+    void restoreRetryQueue();
+    return () => {
+      cancelled = true;
+    };
+  }, [persistRetryQueue, processRetryQueue]);
 
   /**
    * 募集を作成して一覧を更新する。
@@ -692,23 +1069,26 @@ export const useRinjiHelp = () => {
         notify_applicants_on_update: _notifyApplicantsOnUpdate,
         ...createPayload
       } = payload || {};
-      const { data: createdRecruit, error } = await createRecruit({
-        ...createPayload,
-        head_user_id: user?.id,
-      });
-      if (error) {
-        setError(error.message);
+      const result = await performCreateRequest({ createPayload, notifyAllOnCreate });
+      if (result.ok) return true;
+
+      if (result.retryable) {
+        const queueKey = `${QUEUE_ITEM_CREATE}:${user?.id || 'unknown'}:${JSON.stringify(createPayload)}`;
+        enqueueRetryItem(
+          {
+            type: QUEUE_ITEM_CREATE,
+            queueKey,
+            payload: { createPayload, notifyAllOnCreate },
+          },
+          '通信エラーのため募集作成をキューに保存しました。自動で再送を試行します。'
+        );
         return false;
       }
-      if (notifyAllOnCreate) {
-        notifyRecruitCreatedToOthers(createdRecruit || null, createPayload).catch((notifyError) => {
-          console.warn('[item8] recruit create notify skipped:', notifyError?.message || notifyError);
-        });
-      }
-      await refresh();
-      return true;
+
+      setError(result.message || '募集の作成に失敗しました。');
+      return false;
     },
-    [notifyRecruitCreatedToOthers, refresh, user?.id]
+    [enqueueRetryItem, performCreateRequest, user?.id]
   );
 
   /**
@@ -738,7 +1118,7 @@ export const useRinjiHelp = () => {
       }
       const { error } = await updateRecruit(id, updatePayload);
       if (error) {
-        setError(error.message);
+        setError(toUserErrorMessage(error, '募集の更新に失敗しました。'));
         return false;
       }
       if (notifyApplicantsOnUpdate) {
@@ -781,7 +1161,7 @@ export const useRinjiHelp = () => {
         .eq('id', id)
         .single();
       if (recruitError || !recruit) {
-        setError(recruitError?.message || '募集の取得に失敗しました。');
+        setError(toUserErrorMessage(recruitError, '募集の取得に失敗しました。'));
         return false;
       }
 
@@ -798,7 +1178,7 @@ export const useRinjiHelp = () => {
       const recruitTitle = parseRecruitTitle(recruit.description);
       const { error } = await logicalDeleteRecruit(id);
       if (error) {
-        setError(error.message);
+        setError(toUserErrorMessage(error, '募集の削除に失敗しました。'));
         return false;
       }
 
@@ -829,7 +1209,7 @@ export const useRinjiHelp = () => {
     async (id) => {
       const { error } = await closeRecruit(id);
       if (error) {
-        setError(error.message);
+        setError(toUserErrorMessage(error, '募集の終了に失敗しました。'));
         return false;
       }
       await refresh();
@@ -848,7 +1228,7 @@ export const useRinjiHelp = () => {
     async (id) => {
       const { error } = await reopenRecruit(id);
       if (error) {
-        const message = error?.message || '募集の再開に失敗しました。';
+        const message = toUserErrorMessage(error, '募集の再開に失敗しました。');
         setError(message);
         return { ok: false, message };
       }
@@ -866,42 +1246,31 @@ export const useRinjiHelp = () => {
    */
   const handleApply = useCallback(
     async (id) => {
-      const { data: previousRecruit, error: previousRecruitError } = await supabase
-        .from('rinji_help_recruits')
-        .select('id, status, close_reason')
-        .eq('id', id)
-        .single();
-      if (previousRecruitError) {
-        console.warn('[item8] apply previous recruit fetch failed:', previousRecruitError?.message || previousRecruitError);
-      }
+      const applicantUserId = user?.id;
+      const result = await performApplyRequest({
+        recruitId: id,
+        applicantUserId,
+        treatDuplicateAsSuccess: false,
+      });
+      if (result.ok) return true;
 
-      const { data: application, error } = await applyRecruit(id, user?.id);
-      if (error) {
-        const duplicate =
-          error?.code === '23505' ||
-          error?.message?.includes?.('uq_rinji_apps_recruit_applicant') ||
-          error?.message?.toLowerCase?.().includes?.('duplicate key');
-        setError(duplicate ? 'すでに応募済みです。応募済みタブをご確認ください。' : error.message);
+      if (result.retryable) {
+        const queueKey = `${QUEUE_ITEM_APPLY}:${id}:${applicantUserId || 'unknown'}`;
+        enqueueRetryItem(
+          {
+            type: QUEUE_ITEM_APPLY,
+            queueKey,
+            payload: { recruitId: id, applicantUserId },
+          },
+          '通信エラーのため応募をキューに保存しました。自動で再送を試行します。'
+        );
         return false;
       }
-      notifyRecruitOwnerOnApply({
-        recruitId: id,
-        applicationId: application?.id || null,
-        applicantUserId: user?.id,
-      }).catch((notifyError) => {
-        console.warn('[item8] recruit apply notify skipped:', notifyError?.message || notifyError);
-      });
-      notifyRecruitOwnerOnAutoFullClose({
-        recruitId: id,
-        actorUserId: user?.id,
-        previousRecruit: previousRecruit || null,
-      }).catch((notifyError) => {
-        console.warn('[item8] auto full notify skipped:', notifyError?.message || notifyError);
-      });
-      await refresh();
-      return true;
+
+      setError(result.message || '応募に失敗しました。');
+      return false;
     },
-    [notifyRecruitOwnerOnApply, notifyRecruitOwnerOnAutoFullClose, refresh, user?.id]
+    [enqueueRetryItem, performApplyRequest, user?.id]
   );
 
   /**
@@ -914,7 +1283,7 @@ export const useRinjiHelp = () => {
     async (id) => {
       const { data, error } = await cancelRecruitApplication(id, user?.id);
       if (error) {
-        setError(error.message);
+        setError(toUserErrorMessage(error, '応募の取り消しに失敗しました。'));
         return false;
       }
       if (!data || data.length === 0) {
@@ -943,7 +1312,7 @@ export const useRinjiHelp = () => {
   const loadApplications = useCallback(async (recruitId) => {
     const { data, error } = await fetchApplications(recruitId);
     if (error) {
-      setError(error.message);
+      setError(toUserErrorMessage(error, '応募者一覧の取得に失敗しました。'));
       return;
     }
     setApplications((prev) => ({ ...prev, [recruitId]: data || [] }));
@@ -961,6 +1330,8 @@ export const useRinjiHelp = () => {
     historyRecruits,
     appliedRecruits,
     applications,
+    retrySuccessEvent,
+    clearRetrySuccessEvent,
     refresh,
     handleCreate,
     handleUpdate,

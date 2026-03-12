@@ -55,7 +55,8 @@ const withAlpha = (hexColor, alpha) => {
  *   initialValues?: Record<string, any>,
  *   submitLabel?: string,
  *   onSubmit?: (payload: Record<string, any>) => void,
- *   disabled?: boolean
+ *   disabled?: boolean,
+ *   resetDraftToken?: number
  * }} props
  * @returns {JSX.Element}
  */
@@ -64,6 +65,7 @@ export const RecruitForm = ({
   submitLabel = '作成',
   onSubmit,
   disabled = false,
+  resetDraftToken = 0,
 }) => {
   const { theme } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -183,7 +185,40 @@ export const RecruitForm = ({
         ? Boolean(initialValues?.id)
         : Boolean(initialValues?.notify_applicants_on_update)
     );
-  }, [initialValues]);
+  }, [
+    initialValues?.id,
+    initialValues?.headcount,
+    initialValues?.work_date,
+    initialValues?.work_time,
+    initialValues?.location,
+    initialValues?.meet_time,
+    initialValues?.meet_place,
+    initialValues?.description,
+    initialValues?.reward,
+    initialValues?.belongings,
+    initialValues?.department_id,
+    initialValues?.notify_all_on_create,
+    initialValues?.notify_applicants_on_update,
+  ]);
+
+  useEffect(() => {
+    if (isEditing) return;
+    setForm({ ...emptyForm });
+    setErrors({});
+    setDatePickerOpen(false);
+    setTimePickerOpen(false);
+    setMeetTimePickerOpen(false);
+    setStartHour('');
+    setStartMinute('');
+    setIsImmediateTime(false);
+    setMeetHour('');
+    setMeetMinute('');
+    setIsImmediateMeetTime(false);
+    setDurationMinutes('未定');
+    setLateJoin(LATE_JOIN_ALLOW);
+    setNotifyAllOnCreate(false);
+    setNotifyApplicantsOnUpdate(false);
+  }, [isEditing, resetDraftToken]);
 
   const updateField = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
