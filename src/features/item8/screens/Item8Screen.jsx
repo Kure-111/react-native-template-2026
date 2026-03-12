@@ -3,7 +3,7 @@
  * 管理者/一般ユーザーの表示切り替えと、管理者向けフッタータブ制御を行う。
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { SafeAreaView, ScrollView, View, Text, StyleSheet, Button, ActivityIndicator, Pressable } from 'react-native';
+import { SafeAreaView, ScrollView, View, Text, StyleSheet, Button, ActivityIndicator, Pressable, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
@@ -35,6 +35,9 @@ const SUCCESS_TOAST_BACKGROUND = '#63E57B';
 const SUCCESS_TOAST_TEXT = '#FFFFFF';
 const ERROR_TOAST_BACKGROUND = '#D93B3B';
 const ERROR_TOAST_TEXT = '#FFFFFF';
+const DEFAULT_DELETE_CONFIRM_MESSAGE = 'この募集を削除します。削除後は一覧に表示されなくなります。よろしいですか？';
+const APPLICANTS_DELETE_CONFIRM_MESSAGE =
+  'この募集を削除します。削除後は一覧に表示されなくなり、応募者情報も削除されます。よろしいですか？';
 
 /**
  * カラーを少し暗くする。
@@ -117,8 +120,10 @@ const Item8Screen = ({ navigation }) => {
     historyRecruits,
     appliedRecruits,
     applications,
+    currentUserId,
     handleCreate,
     handleUpdate,
+    handleDelete,
     handleClose,
     handleReopen,
     handleApply,
@@ -133,6 +138,9 @@ const Item8Screen = ({ navigation }) => {
   const [toast, setToast] = useState({ message: '', type: 'success' });
   const [openApplicantsByRecruitId, setOpenApplicantsByRecruitId] = useState({});
   const [loadingApplicantsByRecruitId, setLoadingApplicantsByRecruitId] = useState({});
+  const [deleteConfirmRecruitId, setDeleteConfirmRecruitId] = useState(null);
+  const [deleteConfirmMessage, setDeleteConfirmMessage] = useState(DEFAULT_DELETE_CONFIRM_MESSAGE);
+  const [deletingRecruit, setDeletingRecruit] = useState(false);
   const scrollViewRef = useRef(null);
   const toastTimerRef = useRef(null);
 
@@ -228,6 +236,55 @@ const Item8Screen = ({ navigation }) => {
       showSuccessToast('募集を終了しました');
     } else {
       showErrorToast('募集の終了に失敗しました。通信状況を確認して再度お試しください。');
+    }
+  };
+
+  /**
+   * 削除確認モーダルを開く。
+   *
+   * @param {string | Record<string, any>} recruitOrId
+   * @returns {void}
+   */
+  const onDeleteRecruit = (recruitOrId) => {
+    const recruitId = typeof recruitOrId === 'string' ? recruitOrId : recruitOrId?.id;
+    if (!recruitId) return;
+
+    const rawApplicantCount =
+      typeof recruitOrId === 'object' && recruitOrId !== null ? recruitOrId.applicant_count : null;
+    const numericApplicantCount = Number(rawApplicantCount);
+    const hasApplicantsByCount = Number.isFinite(numericApplicantCount) && numericApplicantCount > 0;
+    const hasApplicantsByLoadedList = (applications[recruitId]?.length || 0) > 0;
+    setDeleteConfirmMessage(
+      hasApplicantsByCount || hasApplicantsByLoadedList
+        ? APPLICANTS_DELETE_CONFIRM_MESSAGE
+        : DEFAULT_DELETE_CONFIRM_MESSAGE
+    );
+    setDeleteConfirmRecruitId(recruitId);
+  };
+
+  /**
+   * 削除確認モーダルを閉じる。
+   */
+  const onCancelDeleteRecruit = () => {
+    if (deletingRecruit) return;
+    setDeleteConfirmRecruitId(null);
+    setDeleteConfirmMessage(DEFAULT_DELETE_CONFIRM_MESSAGE);
+  };
+
+  /**
+   * 削除確認モーダルで確定した削除処理を実行する。
+   */
+  const onConfirmDeleteRecruit = async () => {
+    if (!deleteConfirmRecruitId || deletingRecruit) return;
+    setDeletingRecruit(true);
+    const ok = await handleDelete(deleteConfirmRecruitId);
+    setDeletingRecruit(false);
+    setDeleteConfirmRecruitId(null);
+    setDeleteConfirmMessage(DEFAULT_DELETE_CONFIRM_MESSAGE);
+    if (ok) {
+      showSuccessToast('募集を削除しました');
+    } else {
+      showErrorToast('募集の削除に失敗しました。作成者権限と通信状況を確認してください。');
     }
   };
 
@@ -359,9 +416,7 @@ const Item8Screen = ({ navigation }) => {
         onSubmit={onSubmit}
         disabled={submitting}
       />
-      {editing && (
-        <Button title="編集をやめる" onPress={() => setEditing(null)} color={theme.textSecondary} />
-      )}
+      {editing && <Button title="編集をやめる" onPress={() => setEditing(null)} color={theme.textSecondary} />}
     </View>
   );
 
@@ -391,6 +446,7 @@ const Item8Screen = ({ navigation }) => {
         onApply={onApplyRecruit}
         onEdit={manager ? handleStartEdit : undefined}
         onClose={manager ? onCloseRecruit : undefined}
+        onDelete={manager ? onDeleteRecruit : undefined}
         onReopen={manager ? onReopenRecruit : undefined}
         onFinalizeAutoClose={manager ? onFinalizeAutoClosedRecruit : undefined}
         refreshing={loading}
@@ -402,6 +458,7 @@ const Item8Screen = ({ navigation }) => {
         loadingApplicantsByRecruitId={loadingApplicantsByRecruitId}
         showApplicantsToggle={manager}
         showAutoClosedBadge={manager}
+        currentUserId={currentUserId}
       />
     </View>
   );
@@ -432,6 +489,7 @@ const Item8Screen = ({ navigation }) => {
         onApply={handleApply}
         onEdit={handleStartEdit}
         onClose={onCloseRecruit}
+        onDelete={onDeleteRecruit}
         onReopen={onReopenRecruit}
         onToggleApplicants={onToggleApplicants}
         refreshing={loading}
@@ -443,6 +501,7 @@ const Item8Screen = ({ navigation }) => {
         loadingApplicantsByRecruitId={loadingApplicantsByRecruitId}
         showApplicantsToggle
         showAutoClosedBadge
+        currentUserId={currentUserId}
       />
     </View>
   );
@@ -556,7 +615,7 @@ const Item8Screen = ({ navigation }) => {
                       </Text>
                     </Pressable>
                   );
-                  })}
+                })}
               </View>
             ) : (
               <View
@@ -634,6 +693,60 @@ const Item8Screen = ({ navigation }) => {
                 </View>
               </View>
             ) : null}
+            <Modal
+              transparent
+              visible={Boolean(deleteConfirmRecruitId)}
+              animationType="fade"
+              onRequestClose={onCancelDeleteRecruit}
+            >
+              <View style={styles.deleteConfirmOverlay}>
+                <View
+                  style={[
+                    styles.deleteConfirmDialog,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: theme.border,
+                      borderRadius: theme.borderRadius,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.deleteConfirmTitle, { color: theme.text, fontWeight: theme.fontWeight }]}>
+                    募集を削除
+                  </Text>
+                  <Text style={[styles.deleteConfirmMessage, { color: theme.textSecondary }]}>
+                    {deleteConfirmMessage}
+                  </Text>
+                  <View style={styles.deleteConfirmActions}>
+                    <Pressable
+                      style={[
+                        styles.deleteConfirmButton,
+                        styles.deleteConfirmCancelButton,
+                        { borderColor: theme.border, borderRadius: theme.borderRadius },
+                      ]}
+                      onPress={onCancelDeleteRecruit}
+                      disabled={deletingRecruit}
+                    >
+                      <Text style={[styles.deleteConfirmButtonText, { color: theme.textSecondary }]}>
+                        キャンセル
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.deleteConfirmButton,
+                        styles.deleteConfirmDestructiveButton,
+                        { borderColor: theme.error, borderRadius: theme.borderRadius },
+                      ]}
+                      onPress={() => void onConfirmDeleteRecruit()}
+                      disabled={deletingRecruit}
+                    >
+                      <Text style={[styles.deleteConfirmButtonText, { color: theme.error }]}>
+                        {deletingRecruit ? '削除中...' : '削除する'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            </Modal>
           </View>
         </LocalErrorBoundary>
       )}
@@ -720,6 +833,47 @@ const styles = StyleSheet.create({
   toastText: {
     fontSize: 18,
     textAlign: 'center',
+  },
+  deleteConfirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  deleteConfirmDialog: {
+    width: '100%',
+    maxWidth: 420,
+    borderWidth: 1,
+    padding: 16,
+    gap: 12,
+  },
+  deleteConfirmTitle: {
+    fontSize: 18,
+  },
+  deleteConfirmMessage: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  deleteConfirmActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  deleteConfirmButton: {
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  deleteConfirmCancelButton: {
+    backgroundColor: 'transparent',
+  },
+  deleteConfirmDestructiveButton: {
+    backgroundColor: 'transparent',
+  },
+  deleteConfirmButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   localErrorBox: {
     margin: 12,

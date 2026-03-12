@@ -10,6 +10,7 @@ import {
   updateRecruit,
   closeRecruit,
   reopenRecruit,
+  logicalDeleteRecruit,
   fetchApplications,
   applyRecruit,
   cancelRecruitApplication,
@@ -25,6 +26,8 @@ const RECRUIT_APPLIED_NOTIFICATION_TYPE = 'rinji_help_recruit_applied';
 const RECRUIT_CANCELLED_NOTIFICATION_TYPE = 'rinji_help_recruit_apply_cancelled';
 const RECRUIT_UPDATED_NOTIFICATION_TYPE = 'rinji_help_recruit_updated';
 const RECRUIT_AUTO_FULL_NOTIFICATION_TYPE = 'rinji_help_recruit_auto_full_closed';
+const RECRUIT_DELETED_NOTIFICATION_TYPE = 'rinji_help_recruit_deleted';
+const RECRUIT_DELETED_MARKER = '::DELETED::';
 const supabase = getSupabaseClient();
 
 /**
@@ -157,6 +160,7 @@ const parseRecruitTitle = (rawDescription) => {
  *
  * @returns {{
  *   manager: boolean,
+ *   currentUserId: string | null | undefined,
  *   authLoading: boolean,
  *   loading: boolean,
  *   error: string | null,
@@ -169,6 +173,7 @@ const parseRecruitTitle = (rawDescription) => {
  *   refresh: () => Promise<void>,
  *   handleCreate: (payload: Record<string, any>) => Promise<boolean>,
  *   handleUpdate: (id: string, payload: Record<string, any>) => Promise<boolean>,
+ *   handleDelete: (id: string) => Promise<boolean>,
  *   handleClose: (id: string) => Promise<boolean>,
  *   handleReopen: (id: string) => Promise<{ok: boolean, message?: string}>,
  *   handleApply: (id: string) => Promise<boolean>,
@@ -558,6 +563,70 @@ export const useRinjiHelp = () => {
   );
 
   /**
+   * 募集削除時に、応募者へ通知する。
+   *
+   * @param {{
+   *   recruitId: string,
+   *   recruitTitle: string,
+   *   workDate?: string | null,
+   *   workTime?: string | null,
+   *   location?: string | null,
+   *   actorUserId?: string | null
+   * }} params
+   * @returns {Promise<void>}
+   */
+  const notifyApplicantsOnRecruitDeleted = useCallback(
+    async ({ recruitId, recruitTitle, workDate, workTime, location, actorUserId = null }) => {
+      if (!recruitId) return;
+
+      const { data: applications, error: applicationsError } = await supabase
+        .from('rinji_help_applications')
+        .select('applicant_user_id')
+        .eq('recruit_id', recruitId);
+      if (applicationsError) {
+        console.warn('[item8] recruit delete notify recipients fetch failed:', applicationsError?.message || applicationsError);
+        return;
+      }
+
+      const recipientUserIds = [
+        ...new Set(
+          (applications || [])
+            .map((row) => row?.applicant_user_id)
+            .filter((userId) => Boolean(userId) && userId !== actorUserId)
+        ),
+      ];
+      if (recipientUserIds.length === 0) return;
+
+      const title = `[臨時ヘルプ]「${recruitTitle}」の募集が削除されました`;
+      const body = `募集が削除されたため、この募集への参加は不要になりました\n募集名: ${recruitTitle}\n募集日時: ${normalizeDisplayValue(workDate)} ${normalizeDisplayValue(workTime)}\n場所: ${normalizeDisplayValue(location)}`;
+      const metadata = {
+        type: RECRUIT_DELETED_NOTIFICATION_TYPE,
+        source: 'item8_rinji_help',
+        event: 'recruit_deleted',
+        recruit_id: recruitId,
+        deleted_by: actorUserId,
+      };
+
+      const results = await Promise.allSettled(
+        recipientUserIds.map((recipientUserId) =>
+          sendNotificationToUser(recipientUserId, title, body, metadata, actorUserId)
+        )
+      );
+
+      let failedCount = 0;
+      results.forEach((result) => {
+        if (result.status === 'rejected' || result?.value?.error) {
+          failedCount += 1;
+        }
+      });
+      if (failedCount > 0) {
+        console.warn(`[item8] recruit delete notification failed: ${failedCount}/${recipientUserIds.length}`);
+      }
+    },
+    []
+  );
+
+  /**
    * 募集データを取得して、通常一覧または履歴一覧に振り分ける。
    *
    * @param {{ includeClosed?: boolean }} params
@@ -696,6 +765,61 @@ export const useRinjiHelp = () => {
   );
 
   /**
+   * 募集を論理削除して一覧を更新する。
+   * 作成者のみ削除可能。
+   *
+   * @param {string} id
+   * @returns {Promise<boolean>}
+   */
+  const handleDelete = useCallback(
+    async (id) => {
+      if (!id) return false;
+
+      const { data: recruit, error: recruitError } = await supabase
+        .from('rinji_help_recruits')
+        .select('id, head_user_id, description, work_date, work_time, location')
+        .eq('id', id)
+        .single();
+      if (recruitError || !recruit) {
+        setError(recruitError?.message || '募集の取得に失敗しました。');
+        return false;
+      }
+
+      if (!user?.id || recruit.head_user_id !== user.id) {
+        setError('募集を削除できるのは作成者のみです。');
+        return false;
+      }
+
+      if (typeof recruit.description === 'string' && recruit.description.includes(RECRUIT_DELETED_MARKER)) {
+        await refresh();
+        return true;
+      }
+
+      const recruitTitle = parseRecruitTitle(recruit.description);
+      const { error } = await logicalDeleteRecruit(id);
+      if (error) {
+        setError(error.message);
+        return false;
+      }
+
+      notifyApplicantsOnRecruitDeleted({
+        recruitId: id,
+        recruitTitle,
+        workDate: recruit.work_date,
+        workTime: recruit.work_time,
+        location: recruit.location,
+        actorUserId: user.id,
+      }).catch((notifyError) => {
+        console.warn('[item8] recruit delete notify skipped:', notifyError?.message || notifyError);
+      });
+
+      await refresh();
+      return true;
+    },
+    [notifyApplicantsOnRecruitDeleted, refresh, user?.id]
+  );
+
+  /**
    * 募集を終了して一覧を更新する。
    *
    * @param {string} id
@@ -827,6 +951,7 @@ export const useRinjiHelp = () => {
 
   return {
     manager,
+    currentUserId: user?.id,
     authLoading,
     loading,
     error,
@@ -839,6 +964,7 @@ export const useRinjiHelp = () => {
     refresh,
     handleCreate,
     handleUpdate,
+    handleDelete,
     handleClose,
     handleReopen,
     handleApply,

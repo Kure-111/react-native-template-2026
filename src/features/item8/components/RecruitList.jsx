@@ -3,7 +3,7 @@
  * 募集カードの描画、管理者操作ボタン、ステータス表示を担当する。
  */
 import React from 'react';
-import { View, Text, StyleSheet, FlatList, Button } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Button, Pressable } from 'react-native';
 import { OPTIONAL_FIELD_DEFAULTS, RINJI_STATUS, RINJI_CLOSE_REASON } from '../constants.js';
 import { useTheme } from '../../../shared/hooks/useTheme';
 
@@ -231,6 +231,7 @@ const RecruitCard = ({
   onCancelApply,
   onEdit,
   onClose,
+  onDelete,
   onReopen,
   onFinalizeAutoClose,
   onToggleApplicants,
@@ -245,6 +246,7 @@ const RecruitCard = ({
   applicantsLoading = false,
   showApplicantsToggle = false,
   showAutoClosedBadge = false,
+  currentUserId = null,
 }) => {
   const optional = formatOptional(recruit);
   const text = parseTitleAndDescription(recruit.description);
@@ -255,6 +257,7 @@ const RecruitCard = ({
   const isAutoClosedByDate =
     recruit.status === RINJI_STATUS.CLOSED &&
     recruit.close_reason === RINJI_CLOSE_REASON.AUTO_DATE_PASSED;
+  const canDelete = Boolean(onDelete) && Boolean(currentUserId) && recruit.head_user_id === currentUserId;
   const createdDate = formatCreatedDate(recruit.created_at);
 
   return (
@@ -404,6 +407,22 @@ const RecruitCard = ({
                   onPress={() => onToggleApplicants?.(recruit.id)}
                 />
               ) : null}
+              {canDelete ? (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.deleteInline,
+                    {
+                      borderColor: theme.error,
+                      backgroundColor: pressed ? withAlpha(theme.error, '1A') : 'transparent',
+                      borderRadius: theme.borderRadius,
+                    },
+                  ]}
+                  onPress={() => onDelete?.(recruit)}
+                  hitSlop={8}
+                >
+                  <Text style={[styles.deleteInlineText, { color: theme.error }]}>削除</Text>
+                </Pressable>
+              ) : null}
             </>
           ) : (
             <>
@@ -477,6 +496,7 @@ export const RecruitList = ({
   onCancelApply,
   onEdit,
   onClose,
+  onDelete,
   onReopen,
   onFinalizeAutoClose,
   onToggleApplicants,
@@ -492,6 +512,7 @@ export const RecruitList = ({
   loadingApplicantsByRecruitId = {},
   showApplicantsToggle = false,
   showAutoClosedBadge = false,
+  currentUserId = null,
 }) => {
   const { theme, themeMode } = useTheme();
 
@@ -510,6 +531,7 @@ export const RecruitList = ({
           onCancelApply={onCancelApply}
           onEdit={onEdit}
           onClose={onClose}
+          onDelete={onDelete}
           onReopen={onReopen}
           onFinalizeAutoClose={onFinalizeAutoClose}
           onToggleApplicants={onToggleApplicants}
@@ -524,6 +546,7 @@ export const RecruitList = ({
           applicantsLoading={Boolean(loadingApplicantsByRecruitId[item.id])}
           showApplicantsToggle={showApplicantsToggle}
           showAutoClosedBadge={showAutoClosedBadge}
+          currentUserId={currentUserId}
         />
       )}
     />
@@ -623,7 +646,18 @@ const styles = StyleSheet.create({
   actions: {
     marginTop: 4,
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
+  },
+  deleteInline: {
+    marginLeft: 'auto',
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  deleteInlineText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   applicantsBox: {
     marginTop: 8,
