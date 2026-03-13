@@ -2,8 +2,8 @@
  * 臨時ヘルプ機能のメイン画面。
  * 管理者/一般ユーザーの表示切り替えと、管理者向けフッタータブ制御を行う。
  */
-import React, { useEffect, useRef, useState } from 'react';
-import { SafeAreaView, ScrollView, View, Text, StyleSheet, Button, ActivityIndicator, Pressable, Modal } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { SafeAreaView, ScrollView, View, Text, StyleSheet, Button, ActivityIndicator, Pressable, Modal, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
@@ -38,6 +38,7 @@ const ERROR_TOAST_TEXT = '#FFFFFF';
 const DEFAULT_DELETE_CONFIRM_MESSAGE = 'この募集を削除します。削除後は一覧に表示されなくなります。よろしいですか？';
 const APPLICANTS_DELETE_CONFIRM_MESSAGE =
   'この募集を削除します。削除後は一覧に表示されなくなり、応募者情報も削除されます。よろしいですか？';
+const DEPARTMENT_FILTER_ALL = '__all__';
 
 /**
  * 生エラーメッセージをユーザー表示向けに正規化する。
@@ -172,8 +173,26 @@ const Item8Screen = ({ navigation }) => {
   const [deleteConfirmRecruitId, setDeleteConfirmRecruitId] = useState(null);
   const [deleteConfirmMessage, setDeleteConfirmMessage] = useState(DEFAULT_DELETE_CONFIRM_MESSAGE);
   const [deletingRecruit, setDeletingRecruit] = useState(false);
+  const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState(DEPARTMENT_FILTER_ALL);
   const scrollViewRef = useRef(null);
   const toastTimerRef = useRef(null);
+
+  const departmentFilterOptions = useMemo(() => {
+    const organizations = [...new Set((recruits || []).map((item) => `${item?.head_organization || ''}`.trim()))]
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'ja'));
+    return [
+      { label: 'すべての部署', value: DEPARTMENT_FILTER_ALL },
+      ...organizations.map((organization) => ({ label: organization, value: organization })),
+    ];
+  }, [recruits]);
+
+  const filteredRecruits = useMemo(() => {
+    if (selectedDepartmentFilter === DEPARTMENT_FILTER_ALL) return recruits;
+    return (recruits || []).filter(
+      (item) => `${item?.head_organization || ''}`.trim() === selectedDepartmentFilter
+    );
+  }, [recruits, selectedDepartmentFilter]);
 
   useEffect(() => () => {
     if (toastTimerRef.current) {
@@ -186,6 +205,14 @@ const Item8Screen = ({ navigation }) => {
     setOpenApplicantsByRecruitId({});
     setLoadingApplicantsByRecruitId({});
   }, [manager]);
+
+  useEffect(() => {
+    if (selectedDepartmentFilter === DEPARTMENT_FILTER_ALL) return;
+    const exists = departmentFilterOptions.some((option) => option.value === selectedDepartmentFilter);
+    if (!exists) {
+      setSelectedDepartmentFilter(DEPARTMENT_FILTER_ALL);
+    }
+  }, [departmentFilterOptions, selectedDepartmentFilter]);
 
   /**
    * 募集編集開始時に作成タブへ遷移し、先頭へスクロールする。
@@ -506,10 +533,73 @@ const Item8Screen = ({ navigation }) => {
     >
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: theme.text, fontWeight: theme.fontWeight }]}>募集一覧</Text>
-        <Button title="再読み込み" onPress={handleRefresh} color={theme.primary} />
+        <View style={styles.sectionHeaderActions}>
+          {!manager ? (
+            <View
+              style={[
+                styles.departmentFilterContainer,
+                {
+                  borderColor: theme.border,
+                  borderRadius: theme.borderRadius,
+                  backgroundColor: theme.background,
+                },
+              ]}
+            >
+              {Platform.OS === 'web' ? (
+                <select
+                  value={selectedDepartmentFilter}
+                  onChange={(e) => setSelectedDepartmentFilter(e.target.value)}
+                  style={{
+                    ...styles.departmentFilterSelectWeb,
+                    color: theme.text,
+                    backgroundColor: theme.background,
+                    borderColor: theme.border,
+                  }}
+                >
+                  {departmentFilterOptions.map((option) => (
+                    <option
+                      key={option.value}
+                      value={option.value}
+                      style={{
+                        color: theme.text,
+                        backgroundColor: theme.background,
+                      }}
+                    >
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                (() => {
+                  const { Picker } = require('@react-native-picker/picker');
+                  return (
+                    <Picker
+                      selectedValue={selectedDepartmentFilter}
+                      onValueChange={setSelectedDepartmentFilter}
+                      style={[
+                        styles.departmentFilterSelectNative,
+                        {
+                          color: theme.text,
+                          backgroundColor: theme.background,
+                        },
+                      ]}
+                      itemStyle={{ color: theme.text }}
+                      dropdownIconColor={theme.text}
+                    >
+                      {departmentFilterOptions.map((option) => (
+                        <Picker.Item key={option.value} label={option.label} value={option.value} />
+                      ))}
+                    </Picker>
+                  );
+                })()
+              )}
+            </View>
+          ) : null}
+          <Button title="再読み込み" onPress={handleRefresh} color={theme.primary} />
+        </View>
       </View>
       <RecruitList
-        data={recruits}
+        data={manager ? recruits : filteredRecruits}
         isManager={manager}
         onApply={onApplyRecruit}
         onEdit={manager ? handleStartEdit : undefined}
@@ -845,9 +935,34 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+    gap: 8,
+  },
+  sectionHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+  },
+  departmentFilterContainer: {
+    minWidth: 180,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  departmentFilterSelectWeb: {
+    height: 34,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    paddingLeft: 8,
+    paddingRight: 8,
+    fontSize: 14,
+  },
+  departmentFilterSelectNative: {
+    height: 34,
+    width: 180,
   },
   sectionTitle: {
     fontSize: 16,
+    flexShrink: 1,
   },
   error: {
     padding: 8,
