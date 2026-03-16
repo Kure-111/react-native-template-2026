@@ -7,6 +7,7 @@ import { SafeAreaView, ScrollView, View, Text, StyleSheet, Button, ActivityIndic
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { ThemedHeader } from '../../../shared/components/ThemedHeader';
+import { Ionicons } from '../../../shared/components/icons';
 import { useRinjiHelp } from '../hooks/useRinjiHelp.js';
 import RecruitForm from '../components/RecruitForm.jsx';
 import RecruitList from '../components/RecruitList.jsx';
@@ -39,6 +40,10 @@ const DEFAULT_DELETE_CONFIRM_MESSAGE = 'この募集を削除します。削除�
 const APPLICANTS_DELETE_CONFIRM_MESSAGE =
   'この募集を削除します。削除後は一覧に表示されなくなり、応募者情報も削除されます。よろしいですか？';
 const DEPARTMENT_FILTER_ALL = '__all__';
+const SORT_CREATED_DESC = 'created_desc';
+const SORT_CREATED_ASC = 'created_asc';
+const SORT_HEADCOUNT_DESC = 'headcount_desc';
+const SORT_HEADCOUNT_ASC = 'headcount_asc';
 
 /**
  * 生エラーメッセージをユーザー表示向けに正規化する。
@@ -174,6 +179,7 @@ const Item8Screen = ({ navigation }) => {
   const [deleteConfirmMessage, setDeleteConfirmMessage] = useState(DEFAULT_DELETE_CONFIRM_MESSAGE);
   const [deletingRecruit, setDeletingRecruit] = useState(false);
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState(DEPARTMENT_FILTER_ALL);
+  const [selectedSortKey, setSelectedSortKey] = useState(SORT_CREATED_DESC);
   const scrollViewRef = useRef(null);
   const toastTimerRef = useRef(null);
 
@@ -187,12 +193,49 @@ const Item8Screen = ({ navigation }) => {
     ];
   }, [recruits]);
 
-  const filteredRecruits = useMemo(() => {
+  const sortOptions = useMemo(
+    () => [
+      { label: '新しい順', value: SORT_CREATED_DESC },
+      { label: '古い順', value: SORT_CREATED_ASC },
+      { label: '募集人数の多い順', value: SORT_HEADCOUNT_DESC },
+      { label: '募集人数の少ない順', value: SORT_HEADCOUNT_ASC },
+    ],
+    []
+  );
+
+  const filteredAndSortedRecruits = useMemo(() => {
     if (selectedDepartmentFilter === DEPARTMENT_FILTER_ALL) return recruits;
-    return (recruits || []).filter(
+    const filtered = (recruits || []).filter(
       (item) => `${item?.head_organization || ''}`.trim() === selectedDepartmentFilter
     );
+    return filtered;
   }, [recruits, selectedDepartmentFilter]);
+
+  const sortedFilteredRecruits = useMemo(() => {
+    const toTimestamp = (value) => {
+      const timestamp = new Date(value || 0).getTime();
+      return Number.isFinite(timestamp) ? timestamp : 0;
+    };
+    const toHeadcount = (value) => {
+      const headcount = Number(value);
+      return Number.isFinite(headcount) ? headcount : 0;
+    };
+
+    const list = [...(filteredAndSortedRecruits || [])];
+    list.sort((a, b) => {
+      if (selectedSortKey === SORT_CREATED_ASC) {
+        return toTimestamp(a?.created_at) - toTimestamp(b?.created_at);
+      }
+      if (selectedSortKey === SORT_HEADCOUNT_DESC) {
+        return toHeadcount(b?.headcount) - toHeadcount(a?.headcount);
+      }
+      if (selectedSortKey === SORT_HEADCOUNT_ASC) {
+        return toHeadcount(a?.headcount) - toHeadcount(b?.headcount);
+      }
+      return toTimestamp(b?.created_at) - toTimestamp(a?.created_at);
+    });
+    return list;
+  }, [filteredAndSortedRecruits, selectedSortKey]);
 
   useEffect(() => () => {
     if (toastTimerRef.current) {
@@ -545,61 +588,132 @@ const Item8Screen = ({ navigation }) => {
                 },
               ]}
             >
-              {Platform.OS === 'web' ? (
-                <select
-                  value={selectedDepartmentFilter}
-                  onChange={(e) => setSelectedDepartmentFilter(e.target.value)}
-                  style={{
-                    ...styles.departmentFilterSelectWeb,
-                    color: theme.text,
-                    backgroundColor: theme.background,
-                    borderColor: theme.border,
-                  }}
-                >
-                  {departmentFilterOptions.map((option) => (
-                    <option
-                      key={option.value}
-                      value={option.value}
+              <View style={styles.dropdownWithIcon}>
+                <Ionicons name="funnel-outline" size={16} color={theme.textSecondary} />
+                <View style={styles.dropdownInputArea}>
+                  {Platform.OS === 'web' ? (
+                    <select
+                      value={selectedDepartmentFilter}
+                      onChange={(e) => setSelectedDepartmentFilter(e.target.value)}
                       style={{
+                        ...styles.departmentFilterSelectWeb,
                         color: theme.text,
                         backgroundColor: theme.background,
+                        borderColor: theme.border,
                       }}
                     >
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                (() => {
-                  const { Picker } = require('@react-native-picker/picker');
-                  return (
-                    <Picker
-                      selectedValue={selectedDepartmentFilter}
-                      onValueChange={setSelectedDepartmentFilter}
-                      style={[
-                        styles.departmentFilterSelectNative,
-                        {
-                          color: theme.text,
-                          backgroundColor: theme.background,
-                        },
-                      ]}
-                      itemStyle={{ color: theme.text }}
-                      dropdownIconColor={theme.text}
-                    >
                       {departmentFilterOptions.map((option) => (
-                        <Picker.Item key={option.value} label={option.label} value={option.value} />
+                        <option
+                          key={option.value}
+                          value={option.value}
+                          style={{
+                            color: theme.text,
+                            backgroundColor: theme.background,
+                          }}
+                        >
+                          {option.label}
+                        </option>
                       ))}
-                    </Picker>
-                  );
-                })()
-              )}
+                    </select>
+                  ) : (
+                    (() => {
+                      const { Picker } = require('@react-native-picker/picker');
+                      return (
+                        <Picker
+                          selectedValue={selectedDepartmentFilter}
+                          onValueChange={setSelectedDepartmentFilter}
+                          style={[
+                            styles.departmentFilterSelectNative,
+                            {
+                              color: theme.text,
+                              backgroundColor: theme.background,
+                            },
+                          ]}
+                          itemStyle={{ color: theme.text }}
+                          dropdownIconColor={theme.text}
+                        >
+                          {departmentFilterOptions.map((option) => (
+                            <Picker.Item key={option.value} label={option.label} value={option.value} />
+                          ))}
+                        </Picker>
+                      );
+                    })()
+                  )}
+                </View>
+              </View>
+            </View>
+          ) : null}
+          {!manager ? (
+            <View
+              style={[
+                styles.departmentFilterContainer,
+                {
+                  borderColor: theme.border,
+                  borderRadius: theme.borderRadius,
+                  backgroundColor: theme.background,
+                },
+              ]}
+            >
+              <View style={styles.dropdownWithIcon}>
+                <Ionicons name="swap-vertical-outline" size={16} color={theme.textSecondary} />
+                <View style={styles.dropdownInputArea}>
+                  {Platform.OS === 'web' ? (
+                    <select
+                      value={selectedSortKey}
+                      onChange={(e) => setSelectedSortKey(e.target.value)}
+                      style={{
+                        ...styles.departmentFilterSelectWeb,
+                        color: theme.text,
+                        backgroundColor: theme.background,
+                        borderColor: theme.border,
+                      }}
+                    >
+                      {sortOptions.map((option) => (
+                        <option
+                          key={option.value}
+                          value={option.value}
+                          style={{
+                            color: theme.text,
+                            backgroundColor: theme.background,
+                          }}
+                        >
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    (() => {
+                      const { Picker } = require('@react-native-picker/picker');
+                      return (
+                        <Picker
+                          selectedValue={selectedSortKey}
+                          onValueChange={setSelectedSortKey}
+                          style={[
+                            styles.departmentFilterSelectNative,
+                            {
+                              color: theme.text,
+                              backgroundColor: theme.background,
+                            },
+                          ]}
+                          itemStyle={{ color: theme.text }}
+                          dropdownIconColor={theme.text}
+                        >
+                          {sortOptions.map((option) => (
+                            <Picker.Item key={option.value} label={option.label} value={option.value} />
+                          ))}
+                        </Picker>
+                      );
+                    })()
+                  )}
+                </View>
+              </View>
             </View>
           ) : null}
           <Button title="再読み込み" onPress={handleRefresh} color={theme.primary} />
         </View>
       </View>
       <RecruitList
-        data={manager ? recruits : filteredRecruits}
+        data={manager ? recruits : sortedFilteredRecruits}
         isManager={manager}
         onApply={onApplyRecruit}
         onEdit={manager ? handleStartEdit : undefined}
@@ -944,21 +1058,34 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   departmentFilterContainer: {
-    minWidth: 180,
+    minWidth: 140,
+    maxWidth: 220,
+    width: 'auto',
     borderWidth: 1,
     overflow: 'hidden',
+  },
+  dropdownWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 6,
+    gap: 2,
+  },
+  dropdownInputArea: {
+    flex: 1,
+    marginLeft: -2,
   },
   departmentFilterSelectWeb: {
     height: 34,
     borderWidth: 0,
     backgroundColor: 'transparent',
-    paddingLeft: 8,
+    width: '100%',
+    paddingLeft: 2,
     paddingRight: 8,
     fontSize: 14,
   },
   departmentFilterSelectNative: {
     height: 34,
-    width: 180,
+    width: '100%',
   },
   sectionTitle: {
     fontSize: 16,
