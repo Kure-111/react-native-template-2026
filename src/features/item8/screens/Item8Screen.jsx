@@ -36,6 +36,7 @@ const SUCCESS_TOAST_BACKGROUND = '#63E57B';
 const SUCCESS_TOAST_TEXT = '#FFFFFF';
 const ERROR_TOAST_BACKGROUND = '#D93B3B';
 const ERROR_TOAST_TEXT = '#FFFFFF';
+const TOGGLE_ACTIVE_COLOR = '#2563EB';
 const DEFAULT_DELETE_CONFIRM_MESSAGE = 'この募集を削除します。削除後は一覧に表示されなくなります。よろしいですか？';
 const APPLICANTS_DELETE_CONFIRM_MESSAGE =
   'この募集を削除します。削除後は一覧に表示されなくなり、応募者情報も削除されます。よろしいですか？';
@@ -68,6 +69,20 @@ const toDisplayErrorMessage = (raw) => {
 const isNetworkErrorMessage = (raw) => {
   const text = toDisplayErrorMessage(raw);
   return text === '通信エラーが発生しました。接続を確認して再度お試しください。';
+};
+
+/**
+ * 16進カラーにアルファ値を付与する。
+ *
+ * @param {string} hexColor
+ * @param {string} alpha
+ * @returns {string}
+ */
+const withAlpha = (hexColor, alpha) => {
+  if (typeof hexColor === 'string' && /^#[0-9A-Fa-f]{6}$/.test(hexColor)) {
+    return `${hexColor}${alpha}`;
+  }
+  return hexColor;
 };
 
 /**
@@ -178,6 +193,7 @@ const Item8Screen = ({ navigation }) => {
   const [deleteConfirmRecruitId, setDeleteConfirmRecruitId] = useState(null);
   const [deleteConfirmMessage, setDeleteConfirmMessage] = useState(DEFAULT_DELETE_CONFIRM_MESSAGE);
   const [deletingRecruit, setDeletingRecruit] = useState(false);
+  const [showOnlyMyRecruits, setShowOnlyMyRecruits] = useState(false);
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState(DEPARTMENT_FILTER_ALL);
   const [selectedSortKey, setSelectedSortKey] = useState(SORT_CREATED_DESC);
   const scrollViewRef = useRef(null);
@@ -236,6 +252,13 @@ const Item8Screen = ({ navigation }) => {
     });
     return list;
   }, [filteredAndSortedRecruits, selectedSortKey]);
+
+  const managerFilteredRecruits = useMemo(() => {
+    if (!manager || !showOnlyMyRecruits || !currentUserId) {
+      return recruits;
+    }
+    return (recruits || []).filter((recruit) => recruit?.head_user_id === currentUserId);
+  }, [currentUserId, manager, recruits, showOnlyMyRecruits]);
 
   useEffect(() => () => {
     if (toastTimerRef.current) {
@@ -709,11 +732,40 @@ const Item8Screen = ({ navigation }) => {
               </View>
             </View>
           ) : null}
+          {manager ? (
+            <View style={styles.managerInlineToggleGroup}>
+              <Text style={[styles.managerOnlyToggleLabel, { color: theme.textSecondary }]}>
+                自分が作成した募集のみ表示
+              </Text>
+              <Pressable
+                style={[
+                  styles.customToggleTrack,
+                  {
+                    backgroundColor: showOnlyMyRecruits
+                      ? withAlpha(TOGGLE_ACTIVE_COLOR, '55')
+                      : withAlpha(theme.textSecondary, '55'),
+                  },
+                ]}
+                onPress={() => setShowOnlyMyRecruits((prev) => !prev)}
+              >
+                <View
+                  style={[
+                    styles.customToggleThumb,
+                    {
+                      backgroundColor: showOnlyMyRecruits ? TOGGLE_ACTIVE_COLOR : theme.surface,
+                      borderColor: showOnlyMyRecruits ? TOGGLE_ACTIVE_COLOR : withAlpha(theme.textSecondary, '88'),
+                      transform: [{ translateX: showOnlyMyRecruits ? 18 : 0 }],
+                    },
+                  ]}
+                />
+              </Pressable>
+            </View>
+          ) : null}
           <Button title="再読み込み" onPress={handleRefresh} color={theme.primary} />
         </View>
       </View>
       <RecruitList
-        data={manager ? recruits : sortedFilteredRecruits}
+        data={manager ? managerFilteredRecruits : sortedFilteredRecruits}
         isManager={manager}
         onApply={onApplyRecruit}
         onEdit={manager ? handleStartEdit : undefined}
@@ -1090,6 +1142,27 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     flexShrink: 1,
+  },
+  managerInlineToggleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  managerOnlyToggleLabel: {
+    fontSize: 14,
+  },
+  customToggleTrack: {
+    width: 44,
+    height: 26,
+    borderRadius: 999,
+    paddingHorizontal: 3,
+    justifyContent: 'center',
+  },
+  customToggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    borderWidth: 1,
   },
   error: {
     padding: 8,

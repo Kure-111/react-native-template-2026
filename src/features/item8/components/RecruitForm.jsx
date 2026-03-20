@@ -88,7 +88,7 @@ export const RecruitForm = ({
   const [meetMinute, setMeetMinute] = useState('');
   const [isImmediateMeetTime, setIsImmediateMeetTime] = useState(false);
   const [containerLayout, setContainerLayout] = useState(null);
-  const [notifyAllOnCreate, setNotifyAllOnCreate] = useState(false);
+  const [notifyAllOnCreate, setNotifyAllOnCreate] = useState(true);
   const [notifyApplicantsOnUpdate, setNotifyApplicantsOnUpdate] = useState(true);
 
   const dateOptions = [
@@ -179,7 +179,11 @@ export const RecruitForm = ({
     setIsImmediateMeetTime(Boolean(parsedMeet?.immediate));
     setMeetHour(parsedMeet?.hour || '');
     setMeetMinute(parsedMeet?.minute || '');
-    setNotifyAllOnCreate(Boolean(initialValues?.notify_all_on_create));
+    setNotifyAllOnCreate(
+      initialValues?.notify_all_on_create === undefined
+        ? true
+        : Boolean(initialValues?.notify_all_on_create)
+    );
     setNotifyApplicantsOnUpdate(
       initialValues?.notify_applicants_on_update === undefined
         ? Boolean(initialValues?.id)
@@ -216,7 +220,7 @@ export const RecruitForm = ({
     setIsImmediateMeetTime(false);
     setDurationMinutes('未定');
     setLateJoin(LATE_JOIN_ALLOW);
-    setNotifyAllOnCreate(false);
+    setNotifyAllOnCreate(true);
     setNotifyApplicantsOnUpdate(false);
   }, [isEditing, resetDraftToken]);
 

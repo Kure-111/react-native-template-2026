@@ -1107,14 +1107,16 @@ export const useRinjiHelp = () => {
       } = payload || {};
       const { data: previousRecruit, error: previousRecruitError } = await supabase
         .from('rinji_help_recruits')
-        .select('id, description, headcount, work_date, work_time, location, meet_place, meet_time, status, close_reason')
+        .select('id, head_user_id, description, headcount, work_date, work_time, location, meet_place, meet_time, status, close_reason')
         .eq('id', id)
         .single();
-      if (previousRecruitError) {
-        console.warn(
-          '[item8] recruit update previous state fetch failed:',
-          previousRecruitError?.message || previousRecruitError
-        );
+      if (previousRecruitError || !previousRecruit) {
+        setError(toUserErrorMessage(previousRecruitError, '募集の取得に失敗しました。'));
+        return false;
+      }
+      if (!user?.id || previousRecruit.head_user_id !== user.id) {
+        setError('募集を編集できるのは作成者のみです。');
+        return false;
       }
       const { error } = await updateRecruit(id, updatePayload);
       if (error) {
@@ -1207,6 +1209,19 @@ export const useRinjiHelp = () => {
    */
   const handleClose = useCallback(
     async (id) => {
+      const { data: recruit, error: recruitError } = await supabase
+        .from('rinji_help_recruits')
+        .select('id, head_user_id')
+        .eq('id', id)
+        .single();
+      if (recruitError || !recruit) {
+        setError(toUserErrorMessage(recruitError, '募集の取得に失敗しました。'));
+        return false;
+      }
+      if (!user?.id || recruit.head_user_id !== user.id) {
+        setError('募集を終了できるのは作成者のみです。');
+        return false;
+      }
       const { error } = await closeRecruit(id);
       if (error) {
         setError(toUserErrorMessage(error, '募集の終了に失敗しました。'));
@@ -1215,7 +1230,7 @@ export const useRinjiHelp = () => {
       await refresh();
       return true;
     },
-    [refresh]
+    [refresh, user?.id]
   );
 
   /**

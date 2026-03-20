@@ -257,7 +257,8 @@ const RecruitCard = ({
   const isAutoClosedByDate =
     recruit.status === RINJI_STATUS.CLOSED &&
     recruit.close_reason === RINJI_CLOSE_REASON.AUTO_DATE_PASSED;
-  const canDelete = Boolean(onDelete) && Boolean(currentUserId) && recruit.head_user_id === currentUserId;
+  const canManageRecruit = Boolean(currentUserId) && recruit.head_user_id === currentUserId;
+  const canDelete = Boolean(onDelete) && canManageRecruit;
   const createdDate = formatCreatedDate(recruit.created_at);
 
   return (
@@ -392,14 +393,18 @@ const RecruitCard = ({
         <View style={styles.actions}>
           {isManager ? (
             <>
-              <Button title="編集" color={theme.primary} onPress={() => onEdit?.(recruit)} />
-              {recruit.status === RINJI_STATUS.OPEN ? (
-                <Button title="終了" color={theme.error} onPress={() => onClose?.(recruit.id)} />
-              ) : isAutoClosedByCapacity && onFinalizeAutoClose ? (
-                <Button title="募集を終了" color={theme.error} onPress={() => onFinalizeAutoClose?.(recruit.id)} />
-              ) : (
-                <Button title="再開" color={theme.success} onPress={() => onReopen?.(recruit.id)} />
-              )}
+              {canManageRecruit ? (
+                <Button title="編集" color={theme.primary} onPress={() => onEdit?.(recruit)} />
+              ) : null}
+              {canManageRecruit ? (
+                recruit.status === RINJI_STATUS.OPEN ? (
+                  <Button title="終了" color={theme.error} onPress={() => onClose?.(recruit.id)} />
+                ) : isAutoClosedByCapacity && onFinalizeAutoClose ? (
+                  <Button title="募集を終了" color={theme.error} onPress={() => onFinalizeAutoClose?.(recruit.id)} />
+                ) : (
+                  <Button title="再開" color={theme.success} onPress={() => onReopen?.(recruit.id)} />
+                )
+              ) : null}
               {showApplicantsToggle ? (
                 <Button
                   title={isApplicantsOpen ? '応募者一覧を閉じる' : '応募者一覧を開く'}
