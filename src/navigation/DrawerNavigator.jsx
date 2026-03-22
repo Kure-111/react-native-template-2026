@@ -69,7 +69,7 @@ const createWrappedScreen = (ScreenComponent, screenName) => {
 const WrappedEventsStallsList01Screen = createWrappedScreen(EventsStallsList01Screen, '企画・屋台一覧');
 const WrappedItem2Screen = createWrappedScreen(Item2Screen, '項目2');
 const WrappedItem3Screen = createWrappedScreen(Item3Screen, '項目3');
-const WrappedItem4Screen = createWrappedScreen(Item4Screen, '項目4');
+const WrappedItem4Screen = createWrappedScreen(Item4Screen, '落とし物検索');
 const WrappedItem5Screen = createWrappedScreen(Item5Screen, '項目5');
 const WrappedItem6Screen = createWrappedScreen(Item6Screen, '項目6');
 const WrappedItem7Screen = createWrappedScreen(Item7Screen, '項目7');
@@ -123,50 +123,22 @@ const DrawerNavigator = () => {
       }}
     >
       {/* 項目1〜10、事務シフト（Error Boundaryでラップ済み） */}
-      <Drawer.Screen
-        name="01_Events&Stalls_list"
-        component={WrappedEventsStallsList01Screen}
-        options={{ title: '企画・屋台一覧' }}
-      />
+      <Drawer.Screen name="01_Events&Stalls_list" component={WrappedEventsStallsList01Screen} options={{ title: '企画・屋台一覧' }}　/>
       <Drawer.Screen name="Item2" component={WrappedItem2Screen} />
       <Drawer.Screen name="Item3" component={WrappedItem3Screen} />
-      <Drawer.Screen name="Item4" component={WrappedItem4Screen} />
+      <Drawer.Screen name="Item4" component={WrappedItem4Screen} options={{ title: '落とし物検索' }} />
       <Drawer.Screen name="Item5" component={WrappedItem5Screen} />
       <Drawer.Screen name="Item6" component={WrappedItem6Screen} />
       <Drawer.Screen name="Item7" component={WrappedItem7Screen} />
       <Drawer.Screen name="Item8" component={WrappedItem8Screen} />
       <Drawer.Screen name="Item9" component={WrappedItem9Screen} />
-      <Drawer.Screen
-        name="Item10"
-        component={WrappedItem10Screen}
-        options={{ title: '本部' }}
-      />
-      <Drawer.Screen
-        name="Item12"
-        component={WrappedItem12Screen}
-        options={{ title: '巡回サポート' }}
-      />
-      <Drawer.Screen
-        name="Item13"
-        component={WrappedItem13Screen}
-        options={{ title: '本部サポート' }}
-      />
-      <Drawer.Screen
-        name="Item14"
-        component={WrappedItem14Screen}
-        options={{ title: '会計対応' }}
-      />
-      <Drawer.Screen
-        name="Item15"
-        component={WrappedItem15Screen}
-        options={{ title: '物品対応' }}
-      />
-      <Drawer.Screen
-        name="Item16"
-        component={WrappedItem16Screen}
-        options={{ title: '企画者サポート' }}
-      />
-      <Drawer.Screen name="JimuShift" component={WrappedJimuShiftScreen} />
+      <Drawer.Screen name="Item10" component={WrappedItem10Screen} options={{ title: '本部' }} />
+      <Drawer.Screen name="Item12" component={WrappedItem12Screen} options={{ title: '巡回サポート' }} />
+      <Drawer.Screen name="Item13" component={WrappedItem13Screen} options={{ title: '本部サポート' }} />
+      <Drawer.Screen name="Item14" component={WrappedItem14Screen} options={{ title: '会計対応' }} />
+      <Drawer.Screen name="Item15" component={WrappedItem15Screen} options={{ title: '物品対応' }} />
+      <Drawer.Screen name="Item16" component={WrappedItem16Screen} options={{ title: '企画者サポート' }} />
+      <Drawer.Screen name="JimuShift" component={WrappedJimuShiftScreen} options={{ title: '当日部員' }} />
       <Drawer.Screen name="SettingsTheme" component={WrappedSettingsThemeScreen} />
       <Drawer.Screen name="AdminTestNotification" component={WrappedAdminTestNotificationScreen} />
       <Drawer.Screen name="Notifications" component={WrappedNotificationListScreen} />

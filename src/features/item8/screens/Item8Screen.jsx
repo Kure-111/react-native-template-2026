@@ -16,11 +16,19 @@ const MANAGER_TABS = {
   LIST: 'list',
   HISTORY: 'history',
 };
+const USER_TABS = {
+  LIST: 'user_list',
+  APPLIED: 'user_applied',
+};
 
 const MANAGER_TAB_OPTIONS = [
   { key: MANAGER_TABS.CREATE, label: '募集作成' },
   { key: MANAGER_TABS.LIST, label: '募集一覧' },
   { key: MANAGER_TABS.HISTORY, label: '募集履歴' },
+];
+const USER_TAB_OPTIONS = [
+  { key: USER_TABS.LIST, label: '募集一覧' },
+  { key: USER_TABS.APPLIED, label: '応募済み' },
 ];
 const SUCCESS_MESSAGE_DURATION_MS = 4000;
 const SUCCESS_TOAST_BACKGROUND = '#63E57B';
@@ -107,11 +115,15 @@ const Item8Screen = ({ navigation }) => {
     error,
     recruits,
     historyRecruits,
+    appliedRecruits,
+    applications,
     handleCreate,
     handleUpdate,
     handleClose,
     handleReopen,
     handleApply,
+    handleCancelApply,
+    loadApplications,
     refresh,
   } = useRinjiHelp();
 
@@ -119,6 +131,8 @@ const Item8Screen = ({ navigation }) => {
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState(MANAGER_TABS.CREATE);
   const [toast, setToast] = useState({ message: '', type: 'success' });
+  const [openApplicantsByRecruitId, setOpenApplicantsByRecruitId] = useState({});
+  const [loadingApplicantsByRecruitId, setLoadingApplicantsByRecruitId] = useState({});
   const scrollViewRef = useRef(null);
   const toastTimerRef = useRef(null);
 
@@ -127,6 +141,12 @@ const Item8Screen = ({ navigation }) => {
       clearTimeout(toastTimerRef.current);
     }
   }, []);
+
+  useEffect(() => {
+    setActiveTab(manager ? MANAGER_TABS.CREATE : USER_TABS.LIST);
+    setOpenApplicantsByRecruitId({});
+    setLoadingApplicantsByRecruitId({});
+  }, [manager]);
 
   /**
    * 募集編集開始時に作成タブへ遷移し、先頭へスクロールする。
@@ -212,18 +232,98 @@ const Item8Screen = ({ navigation }) => {
   };
 
   /**
+   * 募集人数到達で自動クローズ中の案件を、本クローズ（手動終了）へ確定する。
+   *
+   * @param {string} recruitId
+   * @returns {Promise<void>}
+   */
+  const onFinalizeAutoClosedRecruit = async (recruitId) => {
+    const ok = await handleClose(recruitId);
+    if (ok) {
+      showSuccessToast('募集を終了しました');
+    } else {
+      showErrorToast('募集の終了に失敗しました。通信状況を確認して再度お試しください。');
+    }
+  };
+
+  /**
    * 募集を再開し、成功時はトーストを表示する。
    *
    * @param {string} recruitId
    * @returns {Promise<void>}
    */
   const onReopenRecruit = async (recruitId) => {
-    const ok = await handleReopen(recruitId);
-    if (ok) {
+    const result = await handleReopen(recruitId);
+    if (result.ok) {
       showSuccessToast('募集を再開しました');
     } else {
-      showErrorToast('募集の再開に失敗しました。通信状況を確認して再度お試しください。');
+      showErrorToast(result.message || '募集の再開に失敗しました。通信状況を確認して再度お試しください。');
     }
+  };
+
+  /**
+   * 一般ユーザーの応募を実行し、結果をトースト表示する。
+   *
+   * @param {string} recruitId
+   * @returns {Promise<void>}
+   */
+  const onApplyRecruit = async (recruitId) => {
+    const ok = await handleApply(recruitId);
+    if (ok) {
+      showSuccessToast('応募しました');
+    } else {
+      showErrorToast('応募に失敗しました。すでに応募済みの場合は応募済みタブをご確認ください。');
+    }
+  };
+
+  /**
+   * 一般ユーザーの応募を取り消し、成功時はトーストを表示する。
+   *
+   * @param {string} recruitId
+   * @returns {Promise<void>}
+   */
+  const onCancelApplyRecruit = async (recruitId) => {
+    const ok = await handleCancelApply(recruitId);
+    if (ok) {
+      showSuccessToast('応募を取り消しました');
+    } else {
+      showErrorToast('応募の取り消しに失敗しました。通信状況を確認して再度お試しください。');
+    }
+  };
+
+  /**
+   * 一覧を再読み込みし、応募者一覧の開閉状態も初期化する。
+   *
+   * @returns {Promise<void>}
+   */
+  const handleRefresh = async () => {
+    await refresh();
+    setOpenApplicantsByRecruitId({});
+    setLoadingApplicantsByRecruitId({});
+  };
+
+  /**
+   * 管理者向けに募集単位の応募者一覧を開閉する。
+   * 初回オープン時のみ応募者データを取得する。
+   *
+   * @param {string} recruitId
+   * @returns {Promise<void>}
+   */
+  const onToggleApplicants = async (recruitId) => {
+    const isOpen = Boolean(openApplicantsByRecruitId[recruitId]);
+    if (isOpen) {
+      setOpenApplicantsByRecruitId((prev) => ({ ...prev, [recruitId]: false }));
+      return;
+    }
+
+    setOpenApplicantsByRecruitId((prev) => ({ ...prev, [recruitId]: true }));
+    if (applications[recruitId]) {
+      return;
+    }
+
+    setLoadingApplicantsByRecruitId((prev) => ({ ...prev, [recruitId]: true }));
+    await loadApplications(recruitId);
+    setLoadingApplicantsByRecruitId((prev) => ({ ...prev, [recruitId]: false }));
   };
 
   /**
@@ -283,17 +383,25 @@ const Item8Screen = ({ navigation }) => {
     >
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: theme.text, fontWeight: theme.fontWeight }]}>募集一覧</Text>
-        <Button title="再読み込み" onPress={refresh} color={theme.primary} />
+        <Button title="再読み込み" onPress={handleRefresh} color={theme.primary} />
       </View>
       <RecruitList
         data={recruits}
         isManager={manager}
-        onApply={handleApply}
+        onApply={onApplyRecruit}
         onEdit={manager ? handleStartEdit : undefined}
         onClose={manager ? onCloseRecruit : undefined}
         onReopen={manager ? onReopenRecruit : undefined}
+        onFinalizeAutoClose={manager ? onFinalizeAutoClosedRecruit : undefined}
         refreshing={loading}
-        onRefresh={refresh}
+        onRefresh={handleRefresh}
+        appliedRecruitIds={appliedRecruits.map((recruit) => recruit.id)}
+        onToggleApplicants={manager ? onToggleApplicants : undefined}
+        applicationsByRecruitId={applications}
+        openApplicantsByRecruitId={openApplicantsByRecruitId}
+        loadingApplicantsByRecruitId={loadingApplicantsByRecruitId}
+        showApplicantsToggle={manager}
+        showAutoClosedBadge={manager}
       />
     </View>
   );
@@ -316,7 +424,7 @@ const Item8Screen = ({ navigation }) => {
     >
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: theme.text, fontWeight: theme.fontWeight }]}>募集履歴</Text>
-        <Button title="再読み込み" onPress={refresh} color={theme.primary} />
+        <Button title="再読み込み" onPress={handleRefresh} color={theme.primary} />
       </View>
       <RecruitList
         data={historyRecruits}
@@ -325,10 +433,49 @@ const Item8Screen = ({ navigation }) => {
         onEdit={handleStartEdit}
         onClose={onCloseRecruit}
         onReopen={onReopenRecruit}
+        onToggleApplicants={onToggleApplicants}
         refreshing={loading}
-        onRefresh={refresh}
+        onRefresh={handleRefresh}
         emptyText="履歴はありません"
         showStatus
+        applicationsByRecruitId={applications}
+        openApplicantsByRecruitId={openApplicantsByRecruitId}
+        loadingApplicantsByRecruitId={loadingApplicantsByRecruitId}
+        showApplicantsToggle
+        showAutoClosedBadge
+      />
+    </View>
+  );
+
+  /**
+   * 一般ユーザー向けの応募済みセクションを描画する。
+   *
+   * @returns {JSX.Element}
+   */
+  const renderAppliedSection = () => (
+    <View
+      style={[
+        styles.section,
+        {
+          backgroundColor: listAndHistorySectionBackground,
+          borderColor: theme.border,
+          borderRadius: theme.borderRadius,
+        },
+      ]}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionTitle, { color: theme.text, fontWeight: theme.fontWeight }]}>応募済み</Text>
+        <Button title="再読み込み" onPress={handleRefresh} color={theme.primary} />
+      </View>
+      <RecruitList
+        data={appliedRecruits}
+        refreshing={loading}
+        onRefresh={handleRefresh}
+        emptyText="応募済みの案件はありません。"
+        showStatus
+        showApplyButton={false}
+        showCancelButton
+        onCancelApply={onCancelApplyRecruit}
       />
     </View>
   );
@@ -344,6 +491,16 @@ const Item8Screen = ({ navigation }) => {
     return renderListSection();
   };
 
+  /**
+   * 一般ユーザー向けタブ状態に応じて表示セクションを切り替える。
+   *
+   * @returns {JSX.Element}
+   */
+  const renderUserTabContent = () => {
+    if (activeTab === USER_TABS.APPLIED) return renderAppliedSection();
+    return renderListSection();
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <ThemedHeader title={SCREEN_NAME} navigation={navigation} />
@@ -353,14 +510,14 @@ const Item8Screen = ({ navigation }) => {
         </View>
       )}
       {!authLoading && (
-        <LocalErrorBoundary onReload={refresh} theme={theme}>
+        <LocalErrorBoundary onReload={handleRefresh} theme={theme}>
           <View style={styles.body}>
             <ScrollView ref={scrollViewRef} style={styles.scroll} contentContainerStyle={styles.content}>
               {renderError()}
-              {manager ? renderManagerTabContent() : renderListSection()}
+              {manager ? renderManagerTabContent() : renderUserTabContent()}
             </ScrollView>
 
-            {manager && (
+            {manager ? (
               <View
                 style={[
                   styles.footer,
@@ -372,6 +529,47 @@ const Item8Screen = ({ navigation }) => {
                 ]}
               >
                 {MANAGER_TAB_OPTIONS.map((tab) => {
+                  const active = activeTab === tab.key;
+                  return (
+                    <Pressable
+                      key={tab.key}
+                      style={[
+                        styles.footerTab,
+                        {
+                          borderColor: active ? theme.primary : theme.border,
+                          backgroundColor: active ? theme.primary : theme.background,
+                          borderRadius: theme.borderRadius,
+                        },
+                      ]}
+                      onPress={() => setActiveTab(tab.key)}
+                    >
+                      <Text
+                        style={[
+                          styles.footerTabLabel,
+                          {
+                            color: active ? '#FFFFFF' : theme.textSecondary,
+                            fontWeight: active ? '700' : theme.fontWeight,
+                          },
+                        ]}
+                      >
+                        {tab.label}
+                      </Text>
+                    </Pressable>
+                  );
+                  })}
+              </View>
+            ) : (
+              <View
+                style={[
+                  styles.footer,
+                  {
+                    backgroundColor: theme.surface,
+                    borderTopColor: theme.border,
+                    paddingBottom: insets.bottom + 18,
+                  },
+                ]}
+              >
+                {USER_TAB_OPTIONS.map((tab) => {
                   const active = activeTab === tab.key;
                   return (
                     <Pressable

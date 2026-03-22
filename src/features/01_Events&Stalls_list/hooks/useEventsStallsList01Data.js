@@ -47,14 +47,14 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                 if (fetchStalls) {
                     promises.push(
                         supabase.from('stalls')
-                            .select('id, name, description, image_path, category, sub_category, updated_at, location_id, stall_organization_id, stall_locations(name, area_id), stall_organizations(name)')
+                            .select('id, name, description, image_path, category_id, updated_at, location_id, stall_organization_id, stall_locations(name, area_id, building_locations(name, display_order)), stall_organizations(name)')
                             .then(res => ({ ...res, type: TABS.STALLS }))
                     );
                 }
                 if (fetchEvents) {
                     promises.push(
                         supabase.from('events')
-                            .select('id, name, description, image_path, category, sub_category, updated_at, location_id, event_organization_id, event_locations(name, area_id), event_organizations(name)')
+                            .select('id, name, description, image_path, category_id, updated_at, location_id, event_organization_id, event_locations(name, building_locations(name, area_id, display_order)), event_organizations(name)')
                             .then(res => ({ ...res, type: TABS.EVENTS }))
                     );
                 }
@@ -126,13 +126,34 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                     if ((result.type === TABS.STALLS || result.type === TABS.EVENTS) && result.data) {
                         const mappedData = result.data.map(item => {
                             let locationName = '';
+                            let listLocationName = '';
                             let areaId = null;
+                            let buildingLocationOrder = 9999;
+
                             if (result.type === TABS.STALLS && item.stall_locations) {
-                                locationName = item.stall_locations.name || locationName;
+                                const lName = item.stall_locations.name || '';
+                                const bName = item.stall_locations.building_locations?.name || '';
+                                listLocationName = bName ? `${bName}前` : lName;
+
+                                if (bName && lName && bName !== lName) {
+                                    locationName = `${bName} ${lName}`;
+                                } else {
+                                    locationName = bName || lName;
+                                }
                                 areaId = item.stall_locations.area_id;
+                                buildingLocationOrder = item.stall_locations.building_locations?.display_order ?? 9999;
                             } else if (result.type === TABS.EVENTS && item.event_locations) {
-                                locationName = item.event_locations.name || locationName;
-                                areaId = item.event_locations.area_id;
+                                const lName = item.event_locations.name || '';
+                                const bName = item.event_locations.building_locations?.name || '';
+                                listLocationName = bName || lName;
+
+                                if (bName && lName && bName !== lName) {
+                                    locationName = `${bName} ${lName}`;
+                                } else {
+                                    locationName = bName || lName;
+                                }
+                                areaId = item.event_locations.building_locations?.area_id || null;
+                                buildingLocationOrder = item.event_locations.building_locations?.display_order ?? 9999;
                             }
 
                             let groupName = '';
@@ -147,9 +168,11 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                                 itemType: result.type,
                                 displayName: item.name,
                                 locationName: locationName,
+                                listLocationName: listLocationName,
+                                buildingLocationOrder,
                                 groupName: groupName,
-                                categoryName: categoryMap[item.sub_category] || item.sub_category,
-                                categoryDisplayOrder: categoryOrderMap[item.sub_category] ?? 9999,
+                                categoryName: categoryMap[item.category_id] || item.category_id,
+                                categoryDisplayOrder: categoryOrderMap[item.category_id] ?? 9999,
                                 areaId: areaId,
                             };
                         });
@@ -168,7 +191,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                 // カテゴリで絞り込み（複数選択対応）
                 if (selectedCategories && selectedCategories.length > 0) {
                     filteredData = filteredData.filter(item =>
-                        selectedCategories.includes(item.sub_category)
+                        selectedCategories.includes(item.category_id)
                     );
                 }
 
@@ -195,8 +218,11 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                             }
                             return 0;
                         }
-                        case SORT_OPTIONS.LOCATION_ASC:
-                            return (a.locationName || '').localeCompare(b.locationName || '', 'ja');
+                        case SORT_OPTIONS.LOCATION_ASC: {
+                            const diff = (a.buildingLocationOrder ?? 9999) - (b.buildingLocationOrder ?? 9999);
+                            if (diff !== 0) return diff;
+                            return (a.listLocationName || '').localeCompare(b.listLocationName || '', 'ja');
+                        }
                         case SORT_OPTIONS.GROUP_ASC:
                             return (a.groupName || '').localeCompare(b.groupName || '', 'ja');
                         default:
