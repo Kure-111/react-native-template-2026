@@ -660,6 +660,8 @@ const SupportDeskScreen = ({
   const isDepartmentRole =
     isAccountingRole || roleType === SUPPORT_DESK_ROLE_TYPES.PROPERTY;
   const isPropertyRole = roleType === SUPPORT_DESK_ROLE_TYPES.PROPERTY;
+  /** 案件詳細の添付表示を出すかどうか */
+  const shouldShowTicketAttachments = !isDepartmentRole;
   /** 部署向け説明カードを表示するかどうか */
   const shouldShowDepartmentDescription = Boolean(screenDescription);
   const departmentTicketStatusFilters = isAccountingRole
@@ -2390,72 +2392,76 @@ const SupportDeskScreen = ({
                   {selectedTicket.description}
                 </Text>
 
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.label, { color: theme.text }]}>添付</Text>
-                  <TouchableOpacity
-                    style={[styles.refreshButton, { borderColor: theme.border }]}
-                    onPress={() => loadTicketAttachedFiles(selectedTicket.id)}
-                  >
-                    <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-                  </TouchableOpacity>
-                </View>
+                {shouldShowTicketAttachments ? (
+                  <>
+                    <View style={styles.sectionHeader}>
+                      <Text style={[styles.label, { color: theme.text }]}>添付</Text>
+                      <TouchableOpacity
+                        style={[styles.refreshButton, { borderColor: theme.border }]}
+                        onPress={() => loadTicketAttachedFiles(selectedTicket.id)}
+                      >
+                        <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+                      </TouchableOpacity>
+                    </View>
 
-                {isLoadingAttachments ? (
-                  <Text style={[styles.helpText, { color: theme.textSecondary }]}>添付を読み込み中...</Text>
-                ) : ticketAttachments.length === 0 ? (
-                  <Text style={[styles.helpText, { color: theme.textSecondary }]}>添付はありません</Text>
-                ) : (
-                  <View style={styles.attachmentList}>
-                    {ticketAttachments.map((attachment) => {
-                      const isImage = normalizeText(attachment.mime_type).startsWith('image/');
-                      const fileName = normalizeText(attachment.storage_path).split('/').pop() || '添付ファイル';
-                      return (
-                        <View
-                          key={attachment.id}
-                          style={[
-                            styles.attachmentItem,
-                            { borderColor: theme.border, backgroundColor: theme.background },
-                          ]}
-                        >
-                          <Text style={[styles.attachmentName, { color: theme.text }]} numberOfLines={1}>
-                            {attachment.caption || fileName}
-                          </Text>
-                          <Text style={[styles.attachmentMeta, { color: theme.textSecondary }]}>
-                            {fileName} / {formatFileSize(attachment.file_size_bytes)} /{' '}
-                            {attachment.mime_type || 'application/octet-stream'}
-                          </Text>
-                          {isImage && attachment.signedUrl ? (
-                            <Image
-                              source={{ uri: attachment.signedUrl }}
-                              style={styles.attachmentPreview}
-                              resizeMode="cover"
-                            />
-                          ) : null}
-                          <TouchableOpacity
-                            style={[
-                              styles.attachmentOpenButton,
-                              {
-                                borderColor: attachment.signedUrl ? theme.border : '#9CA3AF',
-                                backgroundColor: theme.surface,
-                              },
-                            ]}
-                            disabled={!attachment.signedUrl}
-                            onPress={() => openAttachment(attachment)}
-                          >
-                            <Text
+                    {isLoadingAttachments ? (
+                      <Text style={[styles.helpText, { color: theme.textSecondary }]}>添付を読み込み中...</Text>
+                    ) : ticketAttachments.length === 0 ? (
+                      <Text style={[styles.helpText, { color: theme.textSecondary }]}>添付はありません</Text>
+                    ) : (
+                      <View style={styles.attachmentList}>
+                        {ticketAttachments.map((attachment) => {
+                          const isImage = normalizeText(attachment.mime_type).startsWith('image/');
+                          const fileName = normalizeText(attachment.storage_path).split('/').pop() || '添付ファイル';
+                          return (
+                            <View
+                              key={attachment.id}
                               style={[
-                                styles.attachmentOpenButtonText,
-                                { color: attachment.signedUrl ? theme.textSecondary : '#9CA3AF' },
+                                styles.attachmentItem,
+                                { borderColor: theme.border, backgroundColor: theme.background },
                               ]}
                             >
-                              {attachment.signedUrl ? '添付を開く' : 'URL生成失敗'}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
+                              <Text style={[styles.attachmentName, { color: theme.text }]} numberOfLines={1}>
+                                {attachment.caption || fileName}
+                              </Text>
+                              <Text style={[styles.attachmentMeta, { color: theme.textSecondary }]}>
+                                {fileName} / {formatFileSize(attachment.file_size_bytes)} /{' '}
+                                {attachment.mime_type || 'application/octet-stream'}
+                              </Text>
+                              {isImage && attachment.signedUrl ? (
+                                <Image
+                                  source={{ uri: attachment.signedUrl }}
+                                  style={styles.attachmentPreview}
+                                  resizeMode="cover"
+                                />
+                              ) : null}
+                              <TouchableOpacity
+                                style={[
+                                  styles.attachmentOpenButton,
+                                  {
+                                    borderColor: attachment.signedUrl ? theme.border : '#9CA3AF',
+                                    backgroundColor: theme.surface,
+                                  },
+                                ]}
+                                disabled={!attachment.signedUrl}
+                                onPress={() => openAttachment(attachment)}
+                              >
+                                <Text
+                                  style={[
+                                    styles.attachmentOpenButtonText,
+                                    { color: attachment.signedUrl ? theme.textSecondary : '#9CA3AF' },
+                                  ]}
+                                >
+                                  {attachment.signedUrl ? '添付を開く' : 'URL生成失敗'}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </>
+                ) : null}
 
                 {isHQRole && ['accounting', 'property'].includes(selectedTicket.notify_target) ? (
                   <TouchableOpacity
@@ -3834,72 +3840,76 @@ const SupportDeskScreen = ({
                   {selectedTicket.description}
                 </Text>
 
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.label, { color: theme.text }]}>添付</Text>
-                  <TouchableOpacity
-                    style={[styles.refreshButton, { borderColor: theme.border }]}
-                    onPress={() => loadTicketAttachedFiles(selectedTicket.id)}
-                  >
-                    <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
-                  </TouchableOpacity>
-                </View>
+                {shouldShowTicketAttachments ? (
+                  <>
+                    <View style={styles.sectionHeader}>
+                      <Text style={[styles.label, { color: theme.text }]}>添付</Text>
+                      <TouchableOpacity
+                        style={[styles.refreshButton, { borderColor: theme.border }]}
+                        onPress={() => loadTicketAttachedFiles(selectedTicket.id)}
+                      >
+                        <Text style={[styles.refreshButtonText, { color: theme.textSecondary }]}>更新</Text>
+                      </TouchableOpacity>
+                    </View>
 
-                {isLoadingAttachments ? (
-                  <Text style={[styles.helpText, { color: theme.textSecondary }]}>添付を読み込み中...</Text>
-                ) : ticketAttachments.length === 0 ? (
-                  <Text style={[styles.helpText, { color: theme.textSecondary }]}>添付はありません</Text>
-                ) : (
-                  <View style={styles.attachmentList}>
-                    {ticketAttachments.map((attachment) => {
-                      const isImage = normalizeText(attachment.mime_type).startsWith('image/');
-                      const fileName = normalizeText(attachment.storage_path).split('/').pop() || '添付ファイル';
-                      return (
-                        <View
-                          key={attachment.id}
-                          style={[
-                            styles.attachmentItem,
-                            { borderColor: theme.border, backgroundColor: theme.background },
-                          ]}
-                        >
-                          <Text style={[styles.attachmentName, { color: theme.text }]} numberOfLines={1}>
-                            {attachment.caption || fileName}
-                          </Text>
-                          <Text style={[styles.attachmentMeta, { color: theme.textSecondary }]}>
-                            {fileName} / {formatFileSize(attachment.file_size_bytes)} /{' '}
-                            {attachment.mime_type || 'application/octet-stream'}
-                          </Text>
-                          {isImage && attachment.signedUrl ? (
-                            <Image
-                              source={{ uri: attachment.signedUrl }}
-                              style={styles.attachmentPreview}
-                              resizeMode="cover"
-                            />
-                          ) : null}
-                          <TouchableOpacity
-                            style={[
-                              styles.attachmentOpenButton,
-                              {
-                                borderColor: attachment.signedUrl ? theme.border : '#9CA3AF',
-                                backgroundColor: theme.surface,
-                              },
-                            ]}
-                            disabled={!attachment.signedUrl}
-                            onPress={() => openAttachment(attachment)}
-                          >
-                            <Text
+                    {isLoadingAttachments ? (
+                      <Text style={[styles.helpText, { color: theme.textSecondary }]}>添付を読み込み中...</Text>
+                    ) : ticketAttachments.length === 0 ? (
+                      <Text style={[styles.helpText, { color: theme.textSecondary }]}>添付はありません</Text>
+                    ) : (
+                      <View style={styles.attachmentList}>
+                        {ticketAttachments.map((attachment) => {
+                          const isImage = normalizeText(attachment.mime_type).startsWith('image/');
+                          const fileName = normalizeText(attachment.storage_path).split('/').pop() || '添付ファイル';
+                          return (
+                            <View
+                              key={attachment.id}
                               style={[
-                                styles.attachmentOpenButtonText,
-                                { color: attachment.signedUrl ? theme.textSecondary : '#9CA3AF' },
+                                styles.attachmentItem,
+                                { borderColor: theme.border, backgroundColor: theme.background },
                               ]}
                             >
-                              {attachment.signedUrl ? '添付を開く' : 'URL生成失敗'}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
+                              <Text style={[styles.attachmentName, { color: theme.text }]} numberOfLines={1}>
+                                {attachment.caption || fileName}
+                              </Text>
+                              <Text style={[styles.attachmentMeta, { color: theme.textSecondary }]}>
+                                {fileName} / {formatFileSize(attachment.file_size_bytes)} /{' '}
+                                {attachment.mime_type || 'application/octet-stream'}
+                              </Text>
+                              {isImage && attachment.signedUrl ? (
+                                <Image
+                                  source={{ uri: attachment.signedUrl }}
+                                  style={styles.attachmentPreview}
+                                  resizeMode="cover"
+                                />
+                              ) : null}
+                              <TouchableOpacity
+                                style={[
+                                  styles.attachmentOpenButton,
+                                  {
+                                    borderColor: attachment.signedUrl ? theme.border : '#9CA3AF',
+                                    backgroundColor: theme.surface,
+                                  },
+                                ]}
+                                disabled={!attachment.signedUrl}
+                                onPress={() => openAttachment(attachment)}
+                              >
+                                <Text
+                                  style={[
+                                    styles.attachmentOpenButtonText,
+                                    { color: attachment.signedUrl ? theme.textSecondary : '#9CA3AF' },
+                                  ]}
+                                >
+                                  {attachment.signedUrl ? '添付を開く' : 'URL生成失敗'}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </>
+                ) : null}
 
                 {isHQRole && ['accounting', 'property'].includes(selectedTicket.notify_target) ? (
                   <TouchableOpacity
