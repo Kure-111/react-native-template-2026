@@ -10,6 +10,7 @@ import {
   Alert,
   Image,
   Linking,
+  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -500,7 +501,13 @@ const matchesPrizeSearchKeyword = (source, keyword) => {
  * @param {string|null} [props.initialTab] - 初期表示タブキー（通知タップなど外部からの指定用）
  * @returns {JSX.Element} 対応画面
  */
-const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType, initialTab }) => {
+const SupportDeskScreen = ({
+  navigation,
+  screenName,
+  screenDescription,
+  roleType,
+  initialTab,
+}) => {
   const { theme } = useTheme();
   const { user } = useAuth();
   /** 部署向け画面のスクロール制御 */
@@ -611,6 +618,8 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   const [selectedPrizeDistributionId, setSelectedPrizeDistributionId] = useState('');
   /** 景品配布基準の編集内容 */
   const [prizeCriteriaDraft, setPrizeCriteriaDraft] = useState('');
+  /** 景品配布基準の編集モーダル表示フラグ */
+  const [isPrizeDistributionEditorVisible, setIsPrizeDistributionEditorVisible] = useState(false);
   /** 景品配布基準保存中フラグ */
   const [isSavingPrizeDistribution, setIsSavingPrizeDistribution] = useState(false);
 
@@ -884,8 +893,8 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
    * 編集対象として選択中の景品配布基準
    */
   const selectedPrizeDistribution = useMemo(() => {
-    return filteredPrizeDistributions.find((item) => item.id === selectedPrizeDistributionId) || null;
-  }, [filteredPrizeDistributions, selectedPrizeDistributionId]);
+    return prizeDistributions.find((item) => item.id === selectedPrizeDistributionId) || null;
+  }, [prizeDistributions, selectedPrizeDistributionId]);
 
   const selectedTicket = useMemo(() => {
     return filteredTickets.find((ticket) => ticket.id === selectedTicketId) || null;
@@ -1186,24 +1195,6 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
       return;
     }
 
-    /** 確認ダイアログを表示 */
-    const confirmMessage = '回答を送信しますか？';
-    if (Platform.OS === 'web') {
-      if (!window.confirm(confirmMessage)) {
-        return;
-      }
-    } else {
-      const confirmed = await new Promise((resolve) => {
-        Alert.alert('確認', confirmMessage, [
-          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
-          { text: '送信', onPress: () => resolve(true) },
-        ]);
-      });
-      if (!confirmed) {
-        return;
-      }
-    }
-
     setIsSendingReply(true);
     const result = await createTicketMessage({
       ticketId: selectedTicket.id,
@@ -1217,19 +1208,32 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
       return;
     }
 
+    /** 自動ステータス更新エラー */
+    let autoStatusUpdateError = null;
+
     if (
       selectedTicket.ticket_status === SUPPORT_TICKET_STATUSES.NEW ||
       selectedTicket.ticket_status === SUPPORT_TICKET_STATUSES.ACKNOWLEDGED
     ) {
-      await updateTicketStatus({
+      const statusResult = await updateTicketStatus({
         ticketId: selectedTicket.id,
         status: SUPPORT_TICKET_STATUSES.IN_PROGRESS,
         notifyActorUserId: user.id,
       });
+      autoStatusUpdateError = statusResult.error || null;
     }
 
     setReplyBody('');
     await Promise.all([loadMessages(selectedTicket.id), loadTickets(selectedTicket.id)]);
+
+    if (autoStatusUpdateError) {
+      showMessage(
+        '一部完了',
+        autoStatusUpdateError.message || '回答は送信しましたが、ステータス更新に失敗しました'
+      );
+      return;
+    }
+
     showMessage('送信完了', '回答を送信しました');
   };
 
@@ -1812,22 +1816,6 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
   }, [prizeOrganizationOptions, selectedPrizeOrganization]);
 
   useEffect(() => {
-    if (!selectedPrizeDistributionId) {
-      return;
-    }
-
-    /** 選択中景品が現在の絞り込み結果に残っているか */
-    const hasSelectedPrizeDistribution = filteredPrizeDistributions.some(
-      (item) => item.id === selectedPrizeDistributionId
-    );
-
-    if (!hasSelectedPrizeDistribution) {
-      setSelectedPrizeDistributionId('');
-      setPrizeCriteriaDraft('');
-    }
-  }, [filteredPrizeDistributions, selectedPrizeDistributionId]);
-
-  useEffect(() => {
     setPrizeCriteriaDraft(selectedPrizeDistribution?.distribution_criteria || '');
   }, [selectedPrizeDistribution?.distribution_criteria, selectedPrizeDistribution?.id]);
 
@@ -1901,6 +1889,16 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
    */
   const togglePrizeDistributionSection = () => {
     setIsPrizeDistributionSectionExpanded((currentValue) => !currentValue);
+  };
+
+  /**
+   * 景品配布基準の編集モーダルを閉じる
+   * @returns {void}
+   */
+  const closePrizeDistributionEditor = () => {
+    setIsPrizeDistributionEditorVisible(false);
+    setSelectedPrizeDistributionId('');
+    setPrizeCriteriaDraft('');
   };
 
   /**
@@ -1979,9 +1977,9 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
       return;
     }
 
-    setSelectedPrizeDistributionId((currentSelectedId) =>
-      currentSelectedId === nextSelectedId ? '' : nextSelectedId
-    );
+    setSelectedPrizeDistributionId(nextSelectedId);
+    setPrizeCriteriaDraft(prizeDistribution?.distribution_criteria || '');
+    setIsPrizeDistributionEditorVisible(true);
   };
 
   /**
@@ -2008,24 +2006,6 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
       return;
     }
 
-    /** 確認ダイアログ文言 */
-    const confirmMessage = '選択した景品配布基準を更新しますか？';
-    if (Platform.OS === 'web') {
-      if (!window.confirm(confirmMessage)) {
-        return;
-      }
-    } else {
-      const confirmed = await new Promise((resolve) => {
-        Alert.alert('確認', confirmMessage, [
-          { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
-          { text: '更新', onPress: () => resolve(true) },
-        ]);
-      });
-      if (!confirmed) {
-        return;
-      }
-    }
-
     setIsSavingPrizeDistribution(true);
     /** 更新結果 */
     const { data, error } = await updatePrizeDistributionCriteria({
@@ -2042,7 +2022,9 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
     setPrizeDistributions((currentPrizeDistributions) =>
       currentPrizeDistributions.map((item) => (item.id === data?.id ? { ...item, ...data } : item))
     );
-    setPrizeCriteriaDraft(data?.distribution_criteria || normalizedCriteria);
+    setSelectedPrizeDistributionId('');
+    setIsPrizeDistributionEditorVisible(false);
+    setPrizeCriteriaDraft('');
     showMessage('更新完了', '景品配布基準を更新しました');
   };
 
@@ -4033,234 +4015,285 @@ const SupportDeskScreen = ({ navigation, screenName, screenDescription, roleType
             </View>
             {isPrizeDistributionSectionExpanded ? (
               <>
-            <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-              団体を選び、変更したい景品配布基準をタップすると内容を編集できます。
-            </Text>
-
-            <Text style={[styles.label, { color: theme.text }]}>団体を選択</Text>
-            <TextInput
-              value={prizeOrganizationSearch}
-              onChangeText={handlePrizeOrganizationSearchChange}
-              onFocus={() => setIsPrizeOrganizationDropdownOpen(true)}
-              placeholder="団体名を入力して候補を絞り込み..."
-              placeholderTextColor={theme.textSecondary}
-              style={[
-                styles.compactInput,
-                { borderColor: theme.border, backgroundColor: theme.background, color: theme.text },
-              ]}
-            />
-
-            <View
-              style={[
-                styles.selectedSummaryCard,
-                { borderColor: theme.border, backgroundColor: theme.background },
-              ]}
-            >
-              <View style={styles.selectedSummaryContent}>
-                <Text style={[styles.selectedSummaryLabel, { color: theme.textSecondary }]}>
-                  選択中の団体
+                <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+                  団体で絞り込んだあと、変更したい景品配布基準をタップするとポップアップで編集できます。
                 </Text>
-                <Text style={[styles.selectedSummaryValue, { color: theme.text }]}>
-                  {selectedPrizeOrganizationLabel}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.inlineActionButton, { borderColor: theme.border }]}
-                onPress={handlePrizeOrganizationReset}
-              >
-                <Text style={[styles.inlineActionButtonText, { color: theme.textSecondary }]}>すべて表示</Text>
-              </TouchableOpacity>
-            </View>
 
-            {isPrizeOrganizationDropdownOpen ? (
-              <View
-                style={[
-                  styles.dropdownOptionList,
-                  { borderColor: theme.border, backgroundColor: theme.background },
-                ]}
-              >
-                {filteredPrizeOrganizationOptions.length === 0 ? (
-                  <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-                    該当する団体候補がありません
-                  </Text>
-                ) : (
-                  <>
-                    {visiblePrizeOrganizationOptions.map((option) => {
-                      /** 選択中団体かどうか */
-                      const isSelected = option.value === selectedPrizeOrganization;
-
-                      return (
-                        <Pressable
-                          key={option.value}
-                          onPress={() => handlePrizeOrganizationSelect(option.value)}
-                          style={[
-                            styles.dropdownOptionItem,
-                            {
-                              borderColor: theme.border,
-                              backgroundColor: isSelected ? theme.primary : theme.surface,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.dropdownOptionTitle,
-                              { color: isSelected ? '#FFFFFF' : theme.text },
-                            ]}
-                          >
-                            {option.label}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.dropdownOptionMeta,
-                              { color: isSelected ? 'rgba(255,255,255,0.86)' : theme.textSecondary },
-                            ]}
-                          >
-                            景品 {option.count} 件
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-
-                    {filteredPrizeOrganizationOptions.length > visiblePrizeOrganizationOptions.length ? (
-                      <Text style={[styles.dropdownOverflowText, { color: theme.textSecondary }]}>
-                        ほか {filteredPrizeOrganizationOptions.length - visiblePrizeOrganizationOptions.length} 件あります。さらに入力すると絞り込めます。
-                      </Text>
-                    ) : null}
-                  </>
-                )}
-              </View>
-            ) : null}
-
-            <Text style={[styles.label, { color: theme.text }]}>選択中団体内を検索</Text>
-            <TextInput
-              value={prizeSearch}
-              onChangeText={setPrizeSearch}
-              placeholder="企画名・景品名・景品番号・配布基準で検索..."
-              placeholderTextColor={theme.textSecondary}
-              style={[
-                styles.compactInput,
-                { borderColor: theme.border, backgroundColor: theme.background, color: theme.text, marginBottom: 10 },
-              ]}
-            />
-
-            {isLoadingPrizeDist ? (
-              <SkeletonLoader lines={4} baseColor={theme.border} />
-            ) : prizeDistributions.length === 0 ? (
-              <EmptyState
-                icon={'\u{1F381}'}
-                title="景品配布基準データがありません"
-                description="更新ボタンで再取得してください。"
-                theme={theme}
-              />
-            ) : (
-              (() => {
-                if (filteredPrizeDistributions.length === 0) {
-                  return (
-                    <Text style={[styles.helpText, { color: theme.textSecondary, textAlign: 'center', paddingVertical: 16 }]}>
-                      該当する景品配布基準がありません
-                    </Text>
-                  );
-                }
-
-                return (
-                  <View style={styles.messageList}>
-                    {filteredPrizeDistributions.map((item) => {
-                      /** 選択中の景品配布基準かどうか */
-                      const isSelected = item.id === selectedPrizeDistributionId;
-                      return (
-                        <Pressable
-                          key={item.id}
-                          style={[
-                            styles.messageItem,
-                            {
-                              borderColor: isSelected ? theme.primary : theme.border,
-                              backgroundColor: isSelected ? `${theme.primary}12` : theme.background,
-                              borderLeftWidth: isSelected ? 4 : 1,
-                              borderLeftColor: isSelected ? theme.primary : theme.border,
-                            },
-                          ]}
-                          onPress={() => handlePrizeDistributionSelect(item)}
-                        >
-                          {/* 団体名・企画名 */}
-                          <Text style={[styles.messageAuthor, { color: theme.textSecondary }]} numberOfLines={1}>
-                            {item.organization_name || '-'} / {item.event_name || '-'}
-                          </Text>
-                          {/* 景品番号・景品名・数量 */}
-                          <Text style={[styles.messageBody, { color: theme.text, fontWeight: '700' }]}>
-                            {item.prize_number ? `[${item.prize_number}] ` : ''}
-                            {item.prize_name || '-'}
-                            {item.prize_count ? `  （${item.prize_count}）` : ''}
-                          </Text>
-                          {/* 配布基準 */}
-                          {item.distribution_criteria ? (
-                            <Text style={[styles.messageBody, { color: theme.text, marginTop: 4 }]}>
-                              {item.distribution_criteria}
-                            </Text>
-                          ) : null}
-                          <Text
-                            style={[styles.messageDate, { color: isSelected ? theme.primary : theme.textSecondary }]}
-                          >
-                            {isSelected ? '選択中' : 'タップして編集'}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                );
-              })()
-            )}
-
-            <Text style={[styles.label, { color: theme.text, marginTop: 12 }]}>選択した景品配布基準を編集</Text>
-            {selectedPrizeDistribution ? (
-              <>
-                <View
-                  style={[
-                    styles.selectedSummaryCard,
-                    { borderColor: theme.border, backgroundColor: theme.background, marginBottom: 12 },
-                  ]}
-                >
-                  <View style={styles.selectedSummaryContent}>
-                    <Text style={[styles.selectedSummaryLabel, { color: theme.textSecondary }]}>
-                      編集対象
-                    </Text>
-                    <Text style={[styles.selectedSummaryValue, { color: theme.text }]}>
-                      {selectedPrizeDistribution.organization_name || '-'} / {selectedPrizeDistribution.event_name || '-'}
-                    </Text>
-                    <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-                      {selectedPrizeDistribution.prize_number ? `[${selectedPrizeDistribution.prize_number}] ` : ''}
-                      {selectedPrizeDistribution.prize_name || '-'}
-                      {selectedPrizeDistribution.prize_count ? ` （${selectedPrizeDistribution.prize_count}）` : ''}
-                    </Text>
-                  </View>
-                </View>
-
+                <Text style={[styles.label, { color: theme.text }]}>団体を選択</Text>
                 <TextInput
-                  value={prizeCriteriaDraft}
-                  onChangeText={setPrizeCriteriaDraft}
-                  multiline
-                  placeholder="景品配布基準の内容を入力してください"
+                  value={prizeOrganizationSearch}
+                  onChangeText={handlePrizeOrganizationSearchChange}
+                  onFocus={() => setIsPrizeOrganizationDropdownOpen(true)}
+                  placeholder="団体名を入力して候補を絞り込み..."
                   placeholderTextColor={theme.textSecondary}
                   style={[
-                    styles.replyInput,
+                    styles.compactInput,
                     { borderColor: theme.border, backgroundColor: theme.background, color: theme.text },
                   ]}
                 />
 
-                <TouchableOpacity
-                  style={[styles.sendButton, { backgroundColor: theme.primary }]}
-                  onPress={handlePrizeDistributionSave}
-                  disabled={isSavingPrizeDistribution}
+                <View
+                  style={[
+                    styles.selectedSummaryCard,
+                    { borderColor: theme.border, backgroundColor: theme.background },
+                  ]}
                 >
-                  <Text style={styles.sendButtonText}>
-                    {isSavingPrizeDistribution ? '更新中...' : '景品配布基準を更新'}
-                  </Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <Text style={[styles.helpText, { color: theme.textSecondary }]}>
-                一覧から変更したい景品配布基準を選択してください。
-              </Text>
-            )}
+                  <View style={styles.selectedSummaryContent}>
+                    <Text style={[styles.selectedSummaryLabel, { color: theme.textSecondary }]}>
+                      選択中の団体
+                    </Text>
+                    <Text style={[styles.selectedSummaryValue, { color: theme.text }]}>
+                      {selectedPrizeOrganizationLabel}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.inlineActionButton, { borderColor: theme.border }]}
+                    onPress={handlePrizeOrganizationReset}
+                  >
+                    <Text style={[styles.inlineActionButtonText, { color: theme.textSecondary }]}>すべて表示</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {isPrizeOrganizationDropdownOpen ? (
+                  <View
+                    style={[
+                      styles.dropdownOptionList,
+                      { borderColor: theme.border, backgroundColor: theme.background },
+                    ]}
+                  >
+                    {filteredPrizeOrganizationOptions.length === 0 ? (
+                      <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+                        該当する団体候補がありません
+                      </Text>
+                    ) : (
+                      <>
+                        {visiblePrizeOrganizationOptions.map((option) => {
+                          /** 選択中団体かどうか */
+                          const isSelected = option.value === selectedPrizeOrganization;
+
+                          return (
+                            <Pressable
+                              key={option.value}
+                              onPress={() => handlePrizeOrganizationSelect(option.value)}
+                              style={[
+                                styles.dropdownOptionItem,
+                                {
+                                  borderColor: theme.border,
+                                  backgroundColor: isSelected ? theme.primary : theme.surface,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.dropdownOptionTitle,
+                                  { color: isSelected ? '#FFFFFF' : theme.text },
+                                ]}
+                              >
+                                {option.label}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.dropdownOptionMeta,
+                                  { color: isSelected ? 'rgba(255,255,255,0.86)' : theme.textSecondary },
+                                ]}
+                              >
+                                景品 {option.count} 件
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+
+                        {filteredPrizeOrganizationOptions.length > visiblePrizeOrganizationOptions.length ? (
+                          <Text style={[styles.dropdownOverflowText, { color: theme.textSecondary }]}>
+                            ほか {filteredPrizeOrganizationOptions.length - visiblePrizeOrganizationOptions.length} 件あります。さらに入力すると絞り込めます。
+                          </Text>
+                        ) : null}
+                      </>
+                    )}
+                  </View>
+                ) : null}
+
+                <Text style={[styles.label, { color: theme.text }]}>選択中団体内を検索</Text>
+                <TextInput
+                  value={prizeSearch}
+                  onChangeText={setPrizeSearch}
+                  placeholder="企画名・景品名・景品番号・配布基準で検索..."
+                  placeholderTextColor={theme.textSecondary}
+                  style={[
+                    styles.compactInput,
+                    { borderColor: theme.border, backgroundColor: theme.background, color: theme.text, marginBottom: 10 },
+                  ]}
+                />
+
+                {isLoadingPrizeDist ? (
+                  <SkeletonLoader lines={4} baseColor={theme.border} />
+                ) : prizeDistributions.length === 0 ? (
+                  <EmptyState
+                    icon={'\u{1F381}'}
+                    title="景品配布基準データがありません"
+                    description="更新ボタンで再取得してください。"
+                    theme={theme}
+                  />
+                ) : (
+                  (() => {
+                    if (filteredPrizeDistributions.length === 0) {
+                      return (
+                        <Text
+                          style={[
+                            styles.helpText,
+                            { color: theme.textSecondary, textAlign: 'center', paddingVertical: 16 },
+                          ]}
+                        >
+                          該当する景品配布基準がありません
+                        </Text>
+                      );
+                    }
+
+                    return (
+                      <View style={styles.messageList}>
+                        {filteredPrizeDistributions.map((item) => {
+                          /** 編集中の景品配布基準かどうか */
+                          const isEditing =
+                            isPrizeDistributionEditorVisible && item.id === selectedPrizeDistributionId;
+
+                          return (
+                            <Pressable
+                              key={item.id}
+                              style={[
+                                styles.messageItem,
+                                {
+                                  borderColor: isEditing ? theme.primary : theme.border,
+                                  backgroundColor: isEditing ? `${theme.primary}12` : theme.background,
+                                  borderLeftWidth: isEditing ? 4 : 1,
+                                  borderLeftColor: isEditing ? theme.primary : theme.border,
+                                },
+                              ]}
+                              onPress={() => handlePrizeDistributionSelect(item)}
+                            >
+                              <Text style={[styles.messageAuthor, { color: theme.textSecondary }]} numberOfLines={1}>
+                                {item.organization_name || '-'} / {item.event_name || '-'}
+                              </Text>
+                              <Text style={[styles.messageBody, { color: theme.text, fontWeight: '700' }]}>
+                                {item.prize_number ? `[${item.prize_number}] ` : ''}
+                                {item.prize_name || '-'}
+                                {item.prize_count ? `  （${item.prize_count}）` : ''}
+                              </Text>
+                              {item.distribution_criteria ? (
+                                <Text style={[styles.messageBody, { color: theme.text, marginTop: 4 }]}>
+                                  {item.distribution_criteria}
+                                </Text>
+                              ) : null}
+                              <Text
+                                style={[
+                                  styles.messageDate,
+                                  { color: isEditing ? theme.primary : theme.textSecondary },
+                                ]}
+                              >
+                                {isEditing ? '編集中' : 'タップしてポップアップ編集'}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    );
+                  })()
+                )}
+
+                <Modal
+                  visible={isPrizeDistributionEditorVisible}
+                  transparent={true}
+                  animationType="fade"
+                  onRequestClose={closePrizeDistributionEditor}
+                >
+                  <Pressable style={styles.modalOverlay} onPress={closePrizeDistributionEditor}>
+                    <Pressable
+                      style={[
+                        styles.prizeEditorModal,
+                        { borderColor: theme.border, backgroundColor: theme.surface },
+                      ]}
+                      onPress={() => {}}
+                    >
+                      <View style={styles.prizeEditorHeader}>
+                        <View style={styles.prizeEditorHeaderContent}>
+                          <Text style={[styles.sectionTitle, { color: theme.text }]}>景品配布基準を編集</Text>
+                          <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+                            一覧は閉じずに、そのままこのポップアップで更新できます。
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.inlineActionButton, { borderColor: theme.border }]}
+                          onPress={closePrizeDistributionEditor}
+                        >
+                          <Text style={[styles.inlineActionButtonText, { color: theme.textSecondary }]}>閉じる</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {selectedPrizeDistribution ? (
+                        <>
+                          <View
+                            style={[
+                              styles.selectedSummaryCard,
+                              { borderColor: theme.border, backgroundColor: theme.background, marginBottom: 12 },
+                            ]}
+                          >
+                            <View style={styles.selectedSummaryContent}>
+                              <Text style={[styles.selectedSummaryLabel, { color: theme.textSecondary }]}>
+                                編集対象
+                              </Text>
+                              <Text style={[styles.selectedSummaryValue, { color: theme.text }]}>
+                                {selectedPrizeDistribution.organization_name || '-'} / {selectedPrizeDistribution.event_name || '-'}
+                              </Text>
+                              <Text style={[styles.helpText, { color: theme.textSecondary }]}>
+                                {selectedPrizeDistribution.prize_number ? `[${selectedPrizeDistribution.prize_number}] ` : ''}
+                                {selectedPrizeDistribution.prize_name || '-'}
+                                {selectedPrizeDistribution.prize_count ? ` （${selectedPrizeDistribution.prize_count}）` : ''}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <Text style={[styles.label, { color: theme.text, marginTop: 0 }]}>配布基準</Text>
+                          <TextInput
+                            value={prizeCriteriaDraft}
+                            onChangeText={setPrizeCriteriaDraft}
+                            multiline
+                            placeholder="景品配布基準の内容を入力してください"
+                            placeholderTextColor={theme.textSecondary}
+                            style={[
+                              styles.replyInput,
+                              styles.prizeEditorInput,
+                              { borderColor: theme.border, backgroundColor: theme.background, color: theme.text },
+                            ]}
+                          />
+
+                          <View style={styles.prizeEditorActions}>
+                            <TouchableOpacity
+                              style={[
+                                styles.prizeEditorSecondaryButton,
+                                { borderColor: theme.border, backgroundColor: theme.background },
+                              ]}
+                              onPress={closePrizeDistributionEditor}
+                              disabled={isSavingPrizeDistribution}
+                            >
+                              <Text style={[styles.prizeEditorSecondaryButtonText, { color: theme.textSecondary }]}>
+                                キャンセル
+                              </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={[styles.prizeEditorPrimaryButton, { backgroundColor: theme.primary }]}
+                              onPress={handlePrizeDistributionSave}
+                              disabled={isSavingPrizeDistribution}
+                            >
+                              <Text style={styles.prizeEditorPrimaryButtonText}>
+                                {isSavingPrizeDistribution ? '更新中...' : 'この内容で更新'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </>
+                      ) : null}
+                    </Pressable>
+                  </Pressable>
+                </Modal>
               </>
             ) : null}
           </View>
@@ -4623,6 +4656,63 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     textAlignVertical: 'top',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 24,
+  },
+  prizeEditorModal: {
+    width: '100%',
+    maxWidth: 640,
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 18,
+    gap: 12,
+  },
+  prizeEditorHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  prizeEditorHeaderContent: {
+    flex: 1,
+    gap: 4,
+  },
+  prizeEditorInput: {
+    minHeight: 160,
+    marginTop: 0,
+  },
+  prizeEditorActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  prizeEditorSecondaryButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  prizeEditorSecondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  prizeEditorPrimaryButton: {
+    flex: 1.3,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  prizeEditorPrimaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
   sendButton: {
     borderRadius: 10,

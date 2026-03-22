@@ -80,10 +80,8 @@ const buildQuestionTitlePreview = (detail) => {
  * @param {string} detail - 質問詳細
  * @returns {string} タイトル
  */
-const buildQuestionTicketTitle = (config, detail) => {
-  /** タイトル用プレビュー */
-  const preview = buildQuestionTitlePreview(detail);
-  return preview ? `${config.title}: ${preview}` : config.title;
+const buildQuestionTicketTitle = (config) => {
+  return config.title;
 };
 
 /**

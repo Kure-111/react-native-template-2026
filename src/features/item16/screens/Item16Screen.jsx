@@ -469,19 +469,20 @@ const Item16Screen = ({ navigation, route }) => {
   };
 
   /**
-   * 送信先ラベルを表示用に組み立てる
-   * @returns {string} 送信先ラベル
+   * 送信完了メッセージを組み立てる
+   * 質問系統では対応先を画面に出さない
+   * @returns {string} 送信完了メッセージ
    */
-  const getSubmitDestinationLabel = () => {
+  const getSubmitSuccessMessage = () => {
     if (activeTab === SUPPORT_TAB_TYPES.QUESTION) {
-      return selectedQuestionConfig?.targetLabel || '担当部署';
+      return '連絡案件を送信しました。';
     }
 
     if (activeTab === SUPPORT_TAB_TYPES.EMERGENCY) {
-      return '本部・警備部';
+      return '本部・警備部に連絡案件を送信しました。';
     }
 
-    return '本部';
+    return '本部に連絡案件を送信しました。';
   };
 
   /**
@@ -703,13 +704,6 @@ const Item16Screen = ({ navigation, route }) => {
     const tab = SUPPORT_TABS.find((item) => item.key === activeTab);
     return tab?.title || '';
   }, [activeTab]);
-
-  /**
-   * 選択中の質問種別設定
-   */
-  const selectedQuestionConfig = useMemo(() => {
-    return QUESTION_TYPES.find((item) => item.key === questionType) || QUESTION_TYPES[0];
-  }, [questionType]);
 
   /**
    * 現在タブで表示する最新案件の種別一覧
@@ -1222,7 +1216,7 @@ const Item16Screen = ({ navigation, route }) => {
       if (result.warning) {
         showMessage('送信完了（一部警告）', `連絡案件を登録しました。\n${result.warning}`);
       } else {
-        showMessage('送信完了', `${getSubmitDestinationLabel()}に連絡案件を送信しました。`);
+        showMessage('送信完了', getSubmitSuccessMessage());
       }
       loadMyContacts();
     };
@@ -1299,7 +1293,6 @@ const Item16Screen = ({ navigation, route }) => {
           onChangeQuestionType={setQuestionType}
           questionDetail={questionDetail}
           onChangeQuestionDetail={setQuestionDetail}
-          renderOptionButtons={renderOptionButtons}
         />
       );
     }
