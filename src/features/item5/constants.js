@@ -70,10 +70,11 @@ export const UNABLE_TO_MOVE = 'unable_to_move';
 export const ADMIN_ROLE_IDS = [
   '0ed76a89-e49c-4389-b029-66140f0640ca', // 実長
   '565c0702-b387-4a94-8a94-7fb50f3ffe49', // 渉外部
+  '218895bb-a3bc-4754-b4e5-55ade68374a6', // 管理者
 ];
 
 /** 管理ロール名一覧（権限判定に使用） */
-export const ADMIN_ROLE_NAMES = ['実長', '渉外部'];
+export const ADMIN_ROLE_NAMES = ['実長', '渉外部', '管理者'];
 
 /** 実長ロール名（全データ削除の権限判定に使用） */
 export const JITCHO_ROLE_NAME = '実長';

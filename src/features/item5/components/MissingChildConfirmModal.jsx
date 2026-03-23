@@ -98,7 +98,6 @@ const MissingChildConfirmModal = ({ isVisible, childData, onConfirm, onCancel, i
                   isHighlighted
                 />
               )}
-              <ConfirmRow label="発見時刻" value={formatDateTime(childData.discovered_at)} theme={theme} />
             </View>
 
             {/* 注意文 */}

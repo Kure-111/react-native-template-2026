@@ -74,32 +74,12 @@ const MissingChildForm = ({ onSubmit }) => {
   const [shelterTent, setShelterTent] = useState('');
   /** 迎えに来て欲しい場所（移動不可時のみ） */
   const [pickupLocation, setPickupLocation] = useState('');
-  /** 発見時刻（現在時刻で自動補完） */
-  const [discoveredAt] = useState(new Date().toISOString());
   /** バリデーションエラーメッセージ */
   const [validationError, setValidationError] = useState('');
 
   /** 移動不可が選択されているかどうか */
   const isUnableToMove = shelterTent === UNABLE_TO_MOVE;
 
-  /**
-   * 発見時刻を表示用にフォーマットする
-   * @returns {string} フォーマット済み日時
-   */
-  const formatDiscoveredAt = () => {
-    const date = new Date(discoveredAt);
-    /** 年 */
-    const year = date.getFullYear();
-    /** 月 */
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    /** 日 */
-    const day = date.getDate().toString().padStart(2, '0');
-    /** 時 */
-    const hours = date.getHours().toString().padStart(2, '0');
-    /** 分 */
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    return `${year}/${month}/${day} ${hours}:${minutes}`;
-  };
 
   /**
    * 保護テント変更時のハンドラ
@@ -161,7 +141,6 @@ const MissingChildForm = ({ onSubmit }) => {
       discovery_location: discoveryLocation.trim(),
       shelter_tent: shelterTent,
       pickup_location: isUnableToMove ? pickupLocation.trim() : null,
-      discovered_at: discoveredAt,
     };
 
     onSubmit(childData);
@@ -242,14 +221,6 @@ const MissingChildForm = ({ onSubmit }) => {
           </Text>
         </View>
       )}
-
-      {/* 発見時刻（編集不可） */}
-      <View style={styles.fieldContainer}>
-        <Text style={[styles.fieldLabel, { color: theme.text }]}>発見時刻</Text>
-        <View style={[styles.readonlyField, { backgroundColor: theme.background, borderColor: theme.border }]}>
-          <Text style={[styles.readonlyText, { color: theme.textSecondary }]}>{formatDiscoveredAt()}</Text>
-        </View>
-      </View>
 
       {/* バリデーションエラー */}
       {validationError !== '' && (

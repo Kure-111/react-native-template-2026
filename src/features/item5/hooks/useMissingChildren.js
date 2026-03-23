@@ -136,8 +136,8 @@ export const useMissingChildren = () => {
 
     /** 通知本文 */
     const body = isUrgent
-      ? `${childData.discovery_location}で移動不可の迷子が発見されました。名前: ${childData.name}、特徴: ${childData.characteristics}、迎え場所: ${childData.pickup_location}。至急対応をお願いします。`
-      : `${childData.discovery_location}で迷子が発見されました。名前: ${childData.name}、特徴: ${childData.characteristics}、保護先: ${shelterLabel}`;
+      ? `${childData.discovery_location}で移動不可の迷子が発見されました。特徴: ${childData.characteristics}、迎え場所: ${childData.pickup_location}。至急対応をお願いします。`
+      : `${childData.discovery_location}で迷子が発見されました。特徴: ${childData.characteristics}、保護先: ${shelterLabel}`;
 
     /** 通知メタデータ */
     const metadata = {
@@ -190,20 +190,17 @@ export const useMissingChildren = () => {
     }
 
     /**
-     * 移動不可の案件で、未対応からステータスが変更された場合
-     * 登録者にステータス変更通知を送信する（登録者がその場で待っているため）
+     * ステータスが変更された場合、管理ロール全員に通知を送信する
+     * 移動不可の案件の場合は、登録者にも同じ通知を送信する
      */
-    if (
-      originalChild &&
-      originalChild.shelter_tent === UNABLE_TO_MOVE &&
-      originalChild.status === 'pending' &&
-      status !== 'pending' &&
-      originalChild.reported_by
-    ) {
+    if (originalChild && status !== originalChild.status) {
       /** 新しいステータスの日本語ラベル */
       const statusLabel = MISSING_CHILD_STATUS_LABELS[status] || status;
       /** 通知タイトル */
-      const notifTitle = '【迷子対応】移動不可の迷子のステータスが変更されました';
+      const isUrgent = originalChild.shelter_tent === UNABLE_TO_MOVE;
+      const notifTitle = isUrgent
+        ? '【迷子対応】移動不可の迷子のステータスが変更されました'
+        : '【迷子対応】迷子のステータスが変更されました';
       /** 通知本文（コメントがあれば含める） */
       const notifBody = adminComment
         ? `発見場所「${originalChild.discovery_location}」の迷子のステータスが「${statusLabel}」に変更されました。\nコメント: ${adminComment}`
@@ -212,16 +209,37 @@ export const useMissingChildren = () => {
       const notifMetadata = {
         type: 'missing_child',
         missingChildId: id,
-        isUrgent: true,
+        isUrgent,
+        discovered_at: originalChild.discovered_at,
       };
 
-      await sendNotificationToUser(
-        originalChild.reported_by,
+      /** 管理ロール全員に通知を送信 */
+      const { error: adminNotifError } = await sendNotificationToRoles(
+        ADMIN_ROLE_IDS,
         notifTitle,
         notifBody,
         notifMetadata,
         senderUserId
       );
+
+      if (adminNotifError) {
+        console.error('管理ロール通知送信失敗:', adminNotifError);
+      }
+
+      /** 移動不可の案件の場合、登録者にも通知を送信（登録者がその場で待っているため） */
+      if (isUrgent && originalChild.reported_by) {
+        const { error: userNotifError } = await sendNotificationToUser(
+          originalChild.reported_by,
+          notifTitle,
+          notifBody,
+          notifMetadata,
+          senderUserId
+        );
+
+        if (userNotifError) {
+          console.error('登録者通知送信失敗:', userNotifError);
+        }
+      }
     }
 
     setIsLoading(false);

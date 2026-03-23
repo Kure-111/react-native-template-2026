@@ -46,7 +46,7 @@ const STATUS_FILTER_OPTIONS = [
  * @param {Object} props.navigation - React Navigationのnavigationオブジェクト
  * @returns {JSX.Element} 迷子検索画面
  */
-const Item5Screen = ({ navigation }) => {
+const Item5Screen = ({ navigation, route }) => {
   const { theme } = useTheme();
   const { userInfo } = useAuth();
 
@@ -100,6 +100,24 @@ const Item5Screen = ({ navigation }) => {
   } = useMissingChildren();
 
   /**
+   * 通知から遷移した時のパラメータを監視してタブを切り替える
+   */
+  useEffect(() => {
+    if (route?.params?.initialTab) {
+      setActiveTab(route.params.initialTab);
+    }
+  }, [route?.params?.initialTab]);
+
+  /**
+   * 管理ロールの場合、常にステータス件数を取得（タブバッジ表示用）
+   */
+  useEffect(() => {
+    if (isAdmin) {
+      fetchStatusCounts();
+    }
+  }, [isAdmin, fetchStatusCounts]);
+
+  /**
    * タブ切り替え時にデータを取得する
    */
   useEffect(() => {
@@ -107,9 +125,8 @@ const Item5Screen = ({ navigation }) => {
       fetchMyChildren(userInfo.user_id);
     } else if (activeTab === TAB_MANAGE && isAdmin) {
       fetchAllChildren(statusFilter);
-      fetchStatusCounts();
     }
-  }, [activeTab, userInfo?.id, isAdmin, statusFilter, fetchMyChildren, fetchAllChildren, fetchStatusCounts]);
+  }, [activeTab, userInfo?.id, isAdmin, statusFilter, fetchMyChildren, fetchAllChildren]);
 
   /**
    * 成功メッセージを一定時間後に消す
@@ -139,10 +156,11 @@ const Item5Screen = ({ navigation }) => {
 
     setIsSubmitting(true);
 
-    /** 登録データに登録者IDを追加（auth.uid() と一致する user_id を使用） */
+    /** 登録データに登録者IDと送信時刻を追加 */
     const dataWithUser = {
       ...pendingChildData,
       reported_by: userInfo.user_id,
+      discovered_at: new Date().toISOString(),
     };
 
     const { success, notificationError } = await registerChild(dataWithUser, userInfo.user_id);
@@ -250,13 +268,30 @@ const Item5Screen = ({ navigation }) => {
               }}
               activeOpacity={0.7}
             >
-              <Text style={[
-                styles.tabText,
-                { color: theme.textSecondary },
-                isActive && { color: theme.primary, fontWeight: '600' },
-              ]}>
-                {tab.label}
-              </Text>
+              <View style={styles.tabLabelContainer}>
+                <Text style={[
+                  styles.tabText,
+                  { color: theme.textSecondary },
+                  isActive && { color: theme.primary, fontWeight: '600' },
+                ]}>
+                  {tab.label}
+                </Text>
+                {tab.key === TAB_MANAGE && isAdmin && (
+                  <>
+                    {(() => {
+                      /** 未対応+対応中+保留中の合計 */
+                      const unreadCount = (statusCounts[MISSING_CHILD_STATUS.PENDING] || 0)
+                        + (statusCounts[MISSING_CHILD_STATUS.IN_PROGRESS] || 0)
+                        + (statusCounts[MISSING_CHILD_STATUS.ON_HOLD] || 0);
+                      return unreadCount > 0 && (
+                        <View style={styles.badge}>
+                          <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+                        </View>
+                      );
+                    })()}
+                  </>
+                )}
+              </View>
             </TouchableOpacity>
           );
         })}
@@ -490,6 +525,28 @@ const styles = StyleSheet.create({
   /** タブテキスト */
   tabText: {
     fontSize: 14,
+  },
+  /** タブラベルコンテナ（テキスト+バッジ） */
+  tabLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  /** バッジ */
+  badge: {
+    backgroundColor: '#F44336',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    minWidth: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  /** バッジテキスト */
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   /** タブコンテンツ */
   tabContent: {
