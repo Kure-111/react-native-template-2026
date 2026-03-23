@@ -106,6 +106,7 @@ const CustomDrawerContent = (props) => {
     1: '企画・屋台一覧',
     3: 'チケット配布率',
     4: '落とし物検索',
+    5: '迷子検索',
     9: '実長機能',
     10: '本部',
     11: '当日部員',
@@ -135,6 +136,9 @@ const CustomDrawerContent = (props) => {
   const PERMISSION_NAME_MAP = {
     1: '企画・屋台一覧',
     4: '落とし物検索',
+    5: '迷子検索',
+    9: '実長機能',
+    10: '本部',
     11: '当日部員',
   };
 

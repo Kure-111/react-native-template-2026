@@ -70,7 +70,7 @@ const WrappedEventsStallsList01Screen = createWrappedScreen(EventsStallsList01Sc
 const WrappedItem2Screen = createWrappedScreen(Item2Screen, '項目2');
 const WrappedItem3Screen = createWrappedScreen(Item3Screen, '項目3');
 const WrappedItem4Screen = createWrappedScreen(Item4Screen, '落とし物検索');
-const WrappedItem5Screen = createWrappedScreen(Item5Screen, '項目5');
+const WrappedItem5Screen = createWrappedScreen(Item5Screen, '迷子検索');
 const WrappedItem6Screen = createWrappedScreen(Item6Screen, '項目6');
 const WrappedItem7Screen = createWrappedScreen(Item7Screen, '項目7');
 const WrappedItem8Screen = createWrappedScreen(Item8Screen, '項目8');
@@ -127,7 +127,7 @@ const DrawerNavigator = () => {
       <Drawer.Screen name="Item2" component={WrappedItem2Screen} />
       <Drawer.Screen name="Item3" component={WrappedItem3Screen} />
       <Drawer.Screen name="Item4" component={WrappedItem4Screen} options={{ title: '落とし物検索' }} />
-      <Drawer.Screen name="Item5" component={WrappedItem5Screen} />
+      <Drawer.Screen name="Item5" component={WrappedItem5Screen} options={{ title: '迷子検索' }} />
       <Drawer.Screen name="Item6" component={WrappedItem6Screen} />
       <Drawer.Screen name="Item7" component={WrappedItem7Screen} />
       <Drawer.Screen name="Item8" component={WrappedItem8Screen} />
