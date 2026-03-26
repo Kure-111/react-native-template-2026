@@ -54,6 +54,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                                 stall_locations(
                                     name, 
                                     stall_number,
+                                    area_letter_id,
                                     stall_area_letters(
                                         id,
                                         area_id, 
@@ -64,6 +65,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                                 ), 
                                 stall_organizations(name)
                             `)
+                            .eq('is_published', true)
                             .then(res => ({ ...res, type: TABS.STALLS }))
                     );
                 }
@@ -71,6 +73,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                     promises.push(
                         supabase.from('events')
                             .select('id, name, description, image_path, category_id, updated_at, location_id, event_organization_id, event_locations(id, name, building_id, building_locations(id, name, area_id, display_order)), event_organizations(name)')
+                            .eq('is_published', true)
                             .then(res => ({ ...res, type: TABS.EVENTS }))
                     );
                 }
@@ -186,7 +189,9 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
 
                             if (result.type === TABS.STALLS && item.stall_locations) {
                                 const lName = item.stall_locations.name || '';
-                                const areaLetterInfo = item.stall_locations.stall_area_letters;
+                                // 配列で返ってくる可能性も考慮
+                                const alInfo = item.stall_locations.stall_area_letters;
+                                const areaLetterInfo = Array.isArray(alInfo) ? alInfo[0] : alInfo;
 
                                 locationName = lName;
                                 listLocationName = lName;
@@ -294,7 +299,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                 filteredData.sort((a, b) => {
                     switch (sortOrder) {
                         case SORT_OPTIONS.NAME_ASC:
-                            return (a.displayName || '').localeCompare(b.displayName || '', 'ja');
+                            return (a.displayName || '').localeCompare(b.displayName || '', 'ja', { numeric: true });
                         case SORT_OPTIONS.CATEGORY_ASC: {
                             const orderDiff = (a.categoryDisplayOrder ?? 9999) - (b.categoryDisplayOrder ?? 9999);
                             if (orderDiff !== 0) return orderDiff;
@@ -306,10 +311,10 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                         case SORT_OPTIONS.LOCATION_ASC: {
                             const diff = (a.buildingLocationOrder ?? 9999) - (b.buildingLocationOrder ?? 9999);
                             if (diff !== 0) return diff;
-                            return (a.listLocationName || '').localeCompare(b.listLocationName || '', 'ja');
+                            return (a.listLocationName || '').localeCompare(b.listLocationName || '', 'ja', { numeric: true });
                         }
                         case SORT_OPTIONS.GROUP_ASC:
-                            return (a.groupName || '').localeCompare(b.groupName || '', 'ja');
+                            return (a.groupName || '').localeCompare(b.groupName || '', 'ja', { numeric: true });
                         default:
                             return 0;
                     }

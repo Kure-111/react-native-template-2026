@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, TextInput, StyleSheet, TouchableOpacity, Text, Platform } from 'react-native';
+import { View, TextInput, StyleSheet, TouchableOpacity, Text, Platform, ScrollView, useWindowDimensions } from 'react-native';
 import { Ionicons } from '../../../shared/components/icons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { AREA_ALL } from '../constants';
@@ -29,6 +29,8 @@ const FilterBar = ({
     onToggleFilters,
 }) => {
     const { theme } = useTheme();
+    const { width, height: SCREEN_HEIGHT } = useWindowDimensions();
+    const isMobile = Platform.OS !== 'web' || width < 768;
     const [showBuildingFilter, setShowBuildingFilter] = useState(false);
 
     const hasFilters = selectedCategories.length > 0 ||
@@ -199,120 +201,128 @@ const FilterBar = ({
 
             {/* 下段：ファセット絞り込み（トグルで表示/非表示） */}
             {showFilters && (
-                <View style={styles.filtersContainer}>
+                <View style={[
+                    styles.filtersWrapper,
+                    isMobile && { maxHeight: SCREEN_HEIGHT * 0.6 }
+                ]}>
+                    <ScrollView 
+                        style={styles.filtersScrollView}
+                        contentContainerStyle={styles.filtersContainer}
+                        nestedScrollEnabled={true}
+                    >
+                        {/* クリアボタン */}
+                        {hasFilters && (
+                            <TouchableOpacity
+                                style={[styles.clearAllBtn, { borderColor: theme.border, borderRadius: theme.borderRadius }]}
+                                onPress={() => {
+                                    onClearCategories();
+                                    onAreaChange(AREA_ALL);
+                                    onBuildingChange('すべて');
+                                    onStallLetterChange('すべて');
+                                    setShowBuildingFilter(false);
+                                }}
+                            >
+                                <Ionicons name="close" size={14} color={theme.textSecondary} />
+                                <Text style={[styles.clearAllText, { color: theme.textSecondary }]}>絞り込み解除</Text>
+                            </TouchableOpacity>
+                        )}
 
-                    {/* クリアボタン */}
-                    {hasFilters && (
-                        <TouchableOpacity
-                            style={[styles.clearAllBtn, { borderColor: theme.border, borderRadius: theme.borderRadius }]}
-                            onPress={() => {
-                                onClearCategories();
-                                onAreaChange(AREA_ALL);
-                                onBuildingChange('すべて');
-                                onStallLetterChange('すべて');
-                                setShowBuildingFilter(false);
-                            }}
-                        >
-                            <Ionicons name="close" size={14} color={theme.textSecondary} />
-                            <Text style={[styles.clearAllText, { color: theme.textSecondary }]}>絞り込み解除</Text>
-                        </TouchableOpacity>
-                    )}
-
-                    {/* 企画カテゴリ */}
-                    {eventCategories.length > 0 && (
-                        <View style={styles.categorySection}>
-                            <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>
-                                企画カテゴリ
-                            </Text>
-                            <View style={styles.chipRow}>
-                                {eventCategories.map(renderCategoryChip)}
-                            </View>
-                        </View>
-                    )}
-
-                    {/* 屋台カテゴリ */}
-                    {stallCategories.length > 0 && (
-                        <View style={styles.categorySection}>
-                            <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>
-                                屋台カテゴリ
-                            </Text>
-                            <View style={styles.chipRow}>
-                                {stallCategories.map(renderCategoryChip)}
-                            </View>
-                        </View>
-                    )}
-
-                    {/* エリア絞り込み */}
-                    {areas && areas.length > 0 && (
-                        <View style={[styles.categorySection, { marginTop: 4 }]}>
-                            <View style={styles.sectionHeaderRow}>
+                        {/* 企画カテゴリ */}
+                        {eventCategories.length > 0 && (
+                            <View style={styles.categorySection}>
                                 <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>
-                                    エリア（大まかな場所）
+                                    企画カテゴリ
                                 </Text>
-                                <TouchableOpacity
-                                    style={styles.moreDetailBtn}
-                                    onPress={() => setShowBuildingFilter(prev => !prev)}
-                                >
-                                    <Text style={[styles.moreDetailText, { color: theme.primary }]}>
-                                        {showBuildingFilter ? '詳細を閉じる' : 'さらに詳しく'}
-                                    </Text>
-                                    <Ionicons
-                                        name={showBuildingFilter ? "chevron-up" : "chevron-down"}
-                                        size={14}
-                                        color={theme.primary}
-                                    />
-                                </TouchableOpacity>
-                            </View>
-                            <View style={styles.chipRow}>
-                                {renderAreaChip(AREA_ALL, AREA_ALL)}
-                                {areas.map(area => renderAreaChip(area.id, area.name))}
-                            </View>
-                        </View>
-                    )}
-
-                    {/* 建物・屋台エリア絞り込み（詳細） */}
-                    {showBuildingFilter && (
-                        <View style={[styles.filtersContainer, { marginTop: 0, gap: 8 }]}>
-                            {/* 建物 */}
-                            {buildings && buildings.length > 0 && (
-                                <View style={[styles.categorySection, { marginTop: 0, paddingLeft: 8 }]}>
-                                    <Text style={[styles.sectionLabel, { color: theme.textSecondary, fontSize: 10 }]}>
-                                        建物で絞り込む
-                                    </Text>
-                                    <View style={styles.chipRow}>
-                                        {renderBuildingChip({ id: 'すべて', name: 'すべて' })}
-                                        {buildings
-                                            .filter(b => selectedArea === AREA_ALL || b.area_id === selectedArea)
-                                            .map(renderBuildingChip)
-                                        }
-                                    </View>
+                                <View style={styles.chipRow}>
+                                    {eventCategories.map(renderCategoryChip)}
                                 </View>
-                            )}
+                            </View>
+                        )}
 
-                            {/* 屋台エリア記号 */}
-                            {stallAreaLetters && stallAreaLetters.length > 0 && (
-                                <View style={[styles.categorySection, { marginTop: 4, paddingLeft: 8 }]}>
-                                    <Text style={[styles.sectionLabel, { color: theme.textSecondary, fontSize: 10 }]}>
-                                        屋台エリアで絞り込む
-                                    </Text>
-                                    <View style={styles.chipRow}>
-                                        {renderLetterChip({ id: 'all_letters', area_letter: 'すべて' })}
-                                        {(() => {
-                                            const seenLetters = new Set();
-                                            return stallAreaLetters
-                                                .filter(l => selectedArea === AREA_ALL || l.area_id === selectedArea)
-                                                .filter(l => {
-                                                    if (seenLetters.has(l.area_letter)) return false;
-                                                    seenLetters.add(l.area_letter);
-                                                    return true;
-                                                })
-                                                .map(renderLetterChip);
-                                        })()}
-                                    </View>
+                        {/* 屋台カテゴリ */}
+                        {stallCategories.length > 0 && (
+                            <View style={styles.categorySection}>
+                                <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>
+                                    屋台カテゴリ
+                                </Text>
+                                <View style={styles.chipRow}>
+                                    {stallCategories.map(renderCategoryChip)}
                                 </View>
-                            )}
-                        </View>
-                    )}
+                            </View>
+                        )}
+
+                        {/* エリア絞り込み */}
+                        {areas && areas.length > 0 && (
+                            <View style={[styles.categorySection, { marginTop: 4 }]}>
+                                <View style={styles.sectionHeaderRow}>
+                                    <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>
+                                        エリア（大まかな場所）
+                                    </Text>
+                                    <TouchableOpacity
+                                        style={styles.moreDetailBtn}
+                                        onPress={() => setShowBuildingFilter(prev => !prev)}
+                                    >
+                                        <Text style={[styles.moreDetailText, { color: theme.primary }]}>
+                                            {showBuildingFilter ? '詳細を閉じる' : 'さらに詳しく'}
+                                        </Text>
+                                        <Ionicons
+                                            name={showBuildingFilter ? "chevron-up" : "chevron-down"}
+                                            size={14}
+                                            color={theme.primary}
+                                        />
+                                    </TouchableOpacity>
+                                </View>
+                                <View style={styles.chipRow}>
+                                    {renderAreaChip(AREA_ALL, AREA_ALL)}
+                                    {areas.map(area => renderAreaChip(area.id, area.name))}
+                                </View>
+                            </View>
+                        )}
+
+                        {/* 建物・屋台エリア絞り込み（詳細） */}
+                        {showBuildingFilter && (
+                            <View style={[styles.filtersContainer, { marginTop: 0, gap: 8 }]}>
+                                {/* 建物 */}
+                                {buildings && buildings.length > 0 && (
+                                    <View style={[styles.categorySection, { marginTop: 0, paddingLeft: 8 }]}>
+                                        <Text style={[styles.sectionLabel, { color: theme.textSecondary, fontSize: 10 }]}>
+                                            建物で絞り込む
+                                        </Text>
+                                        <View style={styles.chipRow}>
+                                            {renderBuildingChip({ id: 'すべて', name: 'すべて' })}
+                                            {buildings
+                                                .filter(b => selectedArea === AREA_ALL || b.area_id === selectedArea)
+                                                .map(renderBuildingChip)
+                                            }
+                                        </View>
+                                    </View>
+                                )}
+
+                                {/* 屋台エリア記号 */}
+                                {stallAreaLetters && stallAreaLetters.length > 0 && (
+                                    <View style={[styles.categorySection, { marginTop: 4, paddingLeft: 8 }]}>
+                                        <Text style={[styles.sectionLabel, { color: theme.textSecondary, fontSize: 10 }]}>
+                                            屋台エリアで絞り込む
+                                        </Text>
+                                        <View style={styles.chipRow}>
+                                            {renderLetterChip({ id: 'all_letters', area_letter: 'すべて' })}
+                                            {(() => {
+                                                const seenLetters = new Set();
+                                                return stallAreaLetters
+                                                    .filter(l => selectedArea === AREA_ALL || l.area_id === selectedArea)
+                                                    .filter(l => {
+                                                        if (seenLetters.has(l.area_letter)) return false;
+                                                        seenLetters.add(l.area_letter);
+                                                        return true;
+                                                    })
+                                                    .map(renderLetterChip);
+                                            })()}
+                                        </View>
+                                    </View>
+                                )}
+                            </View>
+                        )}
+                    </ScrollView>
                 </View>
             )}
         </View>
@@ -374,9 +384,16 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: 'bold',
     },
-    filtersContainer: {
+    filtersWrapper: {
         marginTop: 12,
+        overflow: 'hidden',
+    },
+    filtersScrollView: {
+        flexGrow: 0,
+    },
+    filtersContainer: {
         gap: 12,
+        paddingBottom: 8, // 下部に少し余白を設ける
     },
     clearAllBtn: {
         flexDirection: 'row',
