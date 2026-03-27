@@ -44,3 +44,5 @@ yarn-error.*
 # Serena MCP (自動生成キャッシュ)
 .serena/memories/
 .serena/logs/
+
+ai_tasks/

@@ -66,6 +66,19 @@ const DetailModal = ({ visible, item, onClose }) => {
 
     const typeBadgeColor = item.itemType === TABS.STALLS ? '#f97316' : '#3b82f6';
     const typeLabel = item.itemType === TABS.STALLS ? '屋台' : '企画';
+    const formatTimeToMinute = (timeValue) => {
+        if (!timeValue) return '';
+        const [hour = '', minute = ''] = String(timeValue).split(':');
+        if (!hour || !minute) return String(timeValue);
+        return `${hour}:${minute}`;
+    };
+
+    const startTimeText = formatTimeToMinute(item.start_time);
+    const endTimeText = formatTimeToMinute(item.end_time);
+    const hasEventTime = item.itemType === TABS.EVENTS && (item.start_time || item.end_time);
+    const eventTimeText = startTimeText && endTimeText
+        ? `${startTimeText} - ${endTimeText}`
+        : (startTimeText || endTimeText || '設定なし');
 
     return (
         <Modal
@@ -142,6 +155,22 @@ const DetailModal = ({ visible, item, onClose }) => {
                                         <Text style={[styles.infoValue, { color: theme.text }]}>{item.groupName || '設定なし'}</Text>
                                     </View>
                                 </View>
+
+                                {hasEventTime && (
+                                    <>
+                                        <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
+                                        <View style={styles.infoRow}>
+                                            <View style={styles.iconContainer}>
+                                                <Ionicons name="time" size={20} color={theme.primary} />
+                                            </View>
+                                            <View style={styles.infoTextContainer}>
+                                                <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>開催時間</Text>
+                                                <Text style={[styles.infoValue, { color: theme.text }]}>{eventTimeText}</Text>
+                                            </View>
+                                        </View>
+                                    </>
+                                )}
 
                             </View>
 

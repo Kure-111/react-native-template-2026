@@ -163,7 +163,7 @@ const FilterBar = ({
                     <Ionicons name="search" size={20} color={theme.textSecondary} style={styles.searchIcon} />
                     <TextInput
                         style={[styles.searchInput, { color: theme.text }]}
-                        placeholder="キーワードで検索 (名前・団体名)"
+                        placeholder="キーワードで検索 (名前・団体名・エリア・建物)"
                         placeholderTextColor={theme.textSecondary}
                         value={searchQuery}
                         onChangeText={onSearchChange}

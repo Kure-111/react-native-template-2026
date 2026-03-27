@@ -1,6 +1,51 @@
 import { useState, useEffect } from 'react';
+import Fuse from 'fuse.js';
 import { getSupabaseClient } from '../../../services/supabase/client';
 import { TABS, SORT_OPTIONS } from '../constants';
+
+const katakanaToHiragana = (value) => {
+    return (value || '').replace(/[\u30a1-\u30f6]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0x60));
+};
+
+const normalizeSearchText = (value) => {
+    return katakanaToHiragana(value || '')
+        .normalize('NFKC')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+};
+
+const calculatePrefixPriorityScore = (item, tokens) => {
+    const fields = ['displayName', 'displayNameKana', 'groupName', 'groupNameKana', 'categoryName', 'areaName', 'areaNameKana', 'buildingName', 'buildingNameKana', 'locationName'];
+    const FIELD_WEIGHTS = {
+        displayName: 60,
+        displayNameKana: 56,
+        groupName: 28,
+        groupNameKana: 26,
+        categoryName: 18,
+        areaName: 18,
+        areaNameKana: 18,
+        buildingName: 18,
+        buildingNameKana: 18,
+        locationName: 14,
+    };
+
+    return tokens.reduce((total, token) => {
+        const tokenScore = fields.reduce((maxFieldScore, field) => {
+            const value = item._search[field] || '';
+            if (!value.includes(token)) return maxFieldScore;
+
+            const baseWeight = FIELD_WEIGHTS[field] || 0;
+            if (value.startsWith(token)) {
+                return Math.max(maxFieldScore, baseWeight + 20);
+            }
+
+            return Math.max(maxFieldScore, baseWeight);
+        }, 0);
+
+        return total + tokenScore;
+    }, 0);
+};
 
 /**
  * Supabaseから提供されるItem1データ（屋台・企画）を取得し、フィルタリング・ソートを行うフック
@@ -50,7 +95,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                     promises.push(
                         supabase.from('stalls')
                             .select(`
-                                id, name, description, image_path, category_id, updated_at, location_id, stall_organization_id, 
+                                id, name, name_kana, description, image_path, category_id, updated_at, location_id, stall_organization_id, 
                                 stall_locations(
                                     name, 
                                     stall_number,
@@ -60,10 +105,10 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                                         area_id, 
                                         building_id,
                                         area_letter,
-                                        building_locations(id, name, display_order)
+                                        building_locations(id, name, name_kana, display_order)
                                     )
                                 ), 
-                                stall_organizations(name)
+                                stall_organizations(name, name_kana)
                             `)
                             .eq('is_published', true)
                             .then(res => ({ ...res, type: TABS.STALLS }))
@@ -72,7 +117,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                 if (fetchEvents) {
                     promises.push(
                         supabase.from('events')
-                            .select('id, name, description, image_path, category_id, updated_at, location_id, event_organization_id, event_locations(id, name, building_id, building_locations(id, name, area_id, display_order)), event_organizations(name)')
+                            .select('id, name, name_kana, description, start_time, end_time, image_path, category_id, updated_at, location_id, event_organization_id, event_locations(id, name, building_id, building_locations(id, name, name_kana, area_id, display_order)), event_organizations(name, name_kana)')
                             .eq('is_published', true)
                             .then(res => ({ ...res, type: TABS.EVENTS }))
                     );
@@ -81,7 +126,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                 // カテゴリ・エリアマスタの取得
                 promises.push(
                     supabase.from('area_locations')
-                        .select('id, name')
+                        .select('id, name, name_kana')
                         .then(res => ({ ...res, type: 'AREA_LOCATIONS' }))
                 );
                 promises.push(
@@ -98,7 +143,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                 );
                 promises.push(
                     supabase.from('building_locations')
-                        .select('id, name, area_id')
+                        .select('id, name, name_kana, area_id')
                         .order('display_order', { ascending: true })
                         .then(res => ({ ...res, type: 'BUILDING_LOCATIONS' }))
                 );
@@ -165,14 +210,18 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
 
                 // --- 2.6 エリアIDから名前へのマップ作成 ---
                 let areaNameMap = {};
+                let areaNameKanaMap = {};
                 areasList.forEach(a => {
                     areaNameMap[a.id] = a.name;
+                    areaNameKanaMap[a.id] = a.name_kana || '';
                 });
 
                 // 建物IDから名前へのマップ作成
                 let buildingNameMap = {};
+                let buildingNameKanaMap = {};
                 buildingsList.forEach(b => {
                     buildingNameMap[b.id] = b.name;
+                    buildingNameKanaMap[b.id] = b.name_kana || '';
                 });
 
                 // --- 3. データの結合と正規化 ---
@@ -186,6 +235,10 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                             let areaId = null;
                             let buildingId = null;
                             let buildingLocationOrder = 9999;
+                            let itemNameKana = item.name_kana || '';
+                            let groupNameKana = '';
+                            let areaNameKana = '';
+                            let buildingNameKana = '';
 
                             if (result.type === TABS.STALLS && item.stall_locations) {
                                 const lName = item.stall_locations.name || '';
@@ -203,15 +256,15 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
 
                                 const areaName = areaNameMap[areaId] || '';
                                 const buildingName = areaLetterInfo?.building_locations?.name || buildingNameMap[buildingId] || '';
+                                areaNameKana = areaNameKanaMap[areaId] || '';
+                                buildingNameKana = areaLetterInfo?.building_locations?.name_kana || buildingNameKanaMap[buildingId] || '';
                                 locationName = [areaName, buildingName, lName].filter(Boolean).join(' ');
                                 listLocationName = lName;
                                 item.areaName = areaName;
                                 item.buildingName = buildingName;
                             } else if (result.type === TABS.EVENTS && item.event_locations) {
                                 const lName = item.event_locations.name || '';
-
                                 locationName = lName;
-                                listLocationName = lName;
 
                                 areaId = item.event_locations.building_locations?.area_id || item.event_locations.area_id || null;
                                 buildingId = item.event_locations.building_locations?.id || item.event_locations.building_id || null;
@@ -219,8 +272,10 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
 
                                 const areaName = areaNameMap[areaId] || '';
                                 const buildingName = item.event_locations.building_locations?.name || buildingNameMap[buildingId] || '';
+                                areaNameKana = areaNameKanaMap[areaId] || '';
+                                buildingNameKana = item.event_locations.building_locations?.name_kana || buildingNameKanaMap[buildingId] || '';
                                 locationName = [areaName, buildingName, lName].filter(Boolean).join(' ');
-                                listLocationName = lName;
+                                listLocationName = buildingName || lName;
                                 item.areaName = areaName;
                                 item.buildingName = buildingName;
                             }
@@ -228,24 +283,30 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                             let groupName = '';
                             if (result.type === TABS.STALLS) {
                                 groupName = item.stall_organizations?.name || '';
+                                groupNameKana = item.stall_organizations?.name_kana || '';
                             } else {
                                 groupName = item.event_organizations?.name || '';
+                                groupNameKana = item.event_organizations?.name_kana || '';
                             }
 
                             return {
                                 ...item,
                                 itemType: result.type,
                                 displayName: item.name,
+                                displayNameKana: itemNameKana,
                                 locationName: locationName,
                                 listLocationName: listLocationName,
                                 buildingLocationOrder,
                                 groupName: groupName,
+                                groupNameKana,
                                 categoryName: categoryMap[item.category_id] || item.category_id,
                                 categoryDisplayOrder: categoryOrderMap[item.category_id] ?? 9999,
                                 areaId: areaId,
                                 buildingId: buildingId,
                                 areaName: item.areaName || '',
+                                areaNameKana,
                                 buildingName: item.buildingName || '',
+                                buildingNameKana,
                                 areaLetter: item.areaLetter || '',
                             };
                         });
@@ -285,14 +346,78 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
 
                 // キーワードで絞り込み（あいまい検索）
                 if (searchQuery) {
-                    const query = searchQuery.toLowerCase();
-                    filteredData = filteredData.filter(item => {
-                        const nameMatch = item.displayName?.toLowerCase().includes(query);
-                        const groupMatch = item.groupName?.toLowerCase().includes(query);
-                        const areaMatch = item.areaName?.toLowerCase().includes(query);
-                        const buildingMatch = item.buildingName?.toLowerCase().includes(query);
-                        return nameMatch || groupMatch || areaMatch || buildingMatch;
+                    const normalizedQuery = normalizeSearchText(searchQuery);
+                    const queryTokens = normalizedQuery.split(' ').filter(Boolean);
+
+                    const searchableItems = filteredData.map(item => ({
+                        ...item,
+                        _search: {
+                            displayName: normalizeSearchText(item.displayName || ''),
+                            displayNameKana: normalizeSearchText(item.displayNameKana || ''),
+                            groupName: normalizeSearchText(item.groupName || ''),
+                            groupNameKana: normalizeSearchText(item.groupNameKana || ''),
+                            categoryName: normalizeSearchText(item.categoryName || ''),
+                            areaName: normalizeSearchText(item.areaName || ''),
+                            areaNameKana: normalizeSearchText(item.areaNameKana || ''),
+                            buildingName: normalizeSearchText(item.buildingName || ''),
+                            buildingNameKana: normalizeSearchText(item.buildingNameKana || ''),
+                            locationName: normalizeSearchText(item.locationName || ''),
+                        }
+                    }));
+
+                    const partialMatchedItems = searchableItems.filter(item => {
+                        const searchFields = [
+                            item._search.displayName,
+                            item._search.displayNameKana,
+                            item._search.groupName,
+                            item._search.groupNameKana,
+                            item._search.categoryName,
+                            item._search.areaName,
+                            item._search.areaNameKana,
+                            item._search.buildingName,
+                            item._search.buildingNameKana,
+                            item._search.locationName,
+                        ];
+
+                        return queryTokens.every(token => searchFields.some(field => field.includes(token)));
                     });
+
+                    if (partialMatchedItems.length > 0) {
+                        filteredData = partialMatchedItems
+                            .sort((a, b) => {
+                                const aScore = calculatePrefixPriorityScore(a, queryTokens);
+                                const bScore = calculatePrefixPriorityScore(b, queryTokens);
+                                if (aScore !== bScore) {
+                                    return bScore - aScore;
+                                }
+                                return (a.displayName || '').localeCompare(b.displayName || '', 'ja', { numeric: true });
+                            })
+                            .map(({ _search, ...rest }) => rest);
+                    } else {
+                        const fuse = new Fuse(searchableItems, {
+                            includeScore: false,
+                            threshold: 0.35,
+                            ignoreLocation: true,
+                            minMatchCharLength: 1,
+                            keys: [
+                                { name: '_search.displayName', weight: 0.5 },
+                                { name: '_search.displayNameKana', weight: 0.46 },
+                                { name: '_search.groupName', weight: 0.2 },
+                                { name: '_search.groupNameKana', weight: 0.22 },
+                                { name: '_search.categoryName', weight: 0.14 },
+                                { name: '_search.areaName', weight: 0.12 },
+                                { name: '_search.areaNameKana', weight: 0.12 },
+                                { name: '_search.buildingName', weight: 0.12 },
+                                { name: '_search.buildingNameKana', weight: 0.12 },
+                                { name: '_search.locationName', weight: 0.1 },
+                            ],
+                        });
+
+                        filteredData = fuse.search(normalizedQuery).map(result => {
+                            const { _search, ...rest } = result.item;
+                            return rest;
+                        });
+                    }
                 }
 
                 // --- 5. 並べ替え処理 ---
