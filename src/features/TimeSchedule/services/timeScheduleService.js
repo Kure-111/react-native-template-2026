@@ -11,14 +11,10 @@ const EVENT_SCHEDULE_SLOTS_TABLE = 'event_schedule_slots';
 const BUILDING_LOCATIONS_TABLE = 'building_locations';
 /** エリアテーブル名 */
 const AREA_LOCATIONS_TABLE = 'area_locations';
+/** 企画運営団体テーブル名 */
+const EVENT_ORGANIZATIONS_TABLE = 'event_organizations';
 /** 企画テーブル名 */
 const EVENTS_TABLE = 'events';
-/** 屋台テーブル名 */
-const STALLS_TABLE = 'stalls';
-/** 屋台場所テーブル名 */
-const STALL_LOCATIONS_TABLE = 'stall_locations';
-/** 屋台団体テーブル名 */
-const STALL_ORGANIZATIONS_TABLE = 'stall_organizations';
 
 /** 運用開始時刻（分） */
 const OPERATION_START_MINUTES = 9 * 60;
@@ -30,63 +26,18 @@ const TIME_SLOT_INTERVAL_MINUTES = 15;
 /** source_type の定数 */
 const SOURCE_TYPES = {
   EVENT: 'event',
-  STALL: 'stall',
 };
 
 /** events 取得時の優先 select 句 */
 const EVENT_SELECT_PRIMARY =
-  'id,name,name_kana,description,schedule_dates,schedule_start_times,schedule_end_times,image_path,category_id,event_organization_id,location_id,event_locations(name,building_id,building_locations(name)),event_organizations(name,name_kana)';
+  'id,name,name_kana,description,schedule_dates,schedule_start_times,schedule_end_times,image_path,category_id,event_organization_id,location_id,event_locations(name,building_id,building_locations(name,area_id)),event_organizations(name,name_kana)';
 
 /** events 取得時のフォールバック select 句 */
 const EVENT_SELECT_FALLBACK =
-  'id,name,description,schedule_dates,schedule_start_times,schedule_end_times,start_time,end_time,image_path,category_id,event_organization_id,location_id,event_locations(name),event_organizations(name)';
-
-/** stalls 取得時の優先 select 句 */
-const STALL_SELECT_PRIMARY =
-  'id,name,name_kana,description,image_path,category_id,stall_organization_id,location_id';
-
-/** stalls 取得時のフォールバック select 句 */
-const STALL_SELECT_FALLBACK =
-  'id,name,description,image_path,category_id,stall_organization_id,location_id';
+  'id,name,description,schedule_dates,schedule_start_times,schedule_end_times,start_time,end_time,image_path,category_id,event_organization_id,location_id,event_locations(name,building_id,building_locations(name,area_id)),event_organizations(name,name_kana)';
 
 /** events の最終フォールバック select 句 */
 const EVENT_SELECT_LAST_RESORT = 'id,name,description,image_path,category_id,event_organization_id,location_id,schedule_dates,schedule_start_times,schedule_end_times,start_time,end_time';
-
-/** stalls の最終フォールバック select 句 */
-const STALL_SELECT_LAST_RESORT = 'id,name,description,image_path,category_id,stall_organization_id,location_id';
-
-/**
- * 指定IDの名称マップを取得する
- * @param {Object} params - パラメータ
- * @param {string} params.tableName - テーブル名
- * @param {Array<string>} params.ids - 対象ID配列
- * @param {Array<string>} [params.selectCandidates] - select句候補
- * @returns {Promise<Map<string, {name: string, nameKana: string}>>} 名称マップ
- */
-const selectNameMapByIds = async ({ tableName, ids, selectCandidates = ['id,name,name_kana', 'id,name'] }) => {
-  /** 正規化したID配列 */
-  const normalizedIds = uniqStringArray(ids);
-  if (normalizedIds.length === 0) {
-    return new Map();
-  }
-
-  /** 取得結果 */
-  const rows = await selectRowsWithCandidates({
-    tableName,
-    selectCandidates,
-    applyFilters: (query) => query.in('id', normalizedIds),
-  });
-
-  /** 名称マップ */
-  const nameMap = new Map();
-  (rows || []).forEach((row) => {
-    nameMap.set(String(row.id || ''), {
-      name: String(row.name || ''),
-      nameKana: String(row.name_kana || ''),
-    });
-  });
-  return nameMap;
-};
 
 /** 文字列日付の妥当性パターン */
 const SCHEDULE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -184,6 +135,76 @@ const uniqStringArray = (values) => {
     .map((value) => String(value || '').trim())
     .filter(Boolean);
   return Array.from(new Set(normalizedValues));
+};
+
+/**
+ * 文字列を比較用に正規化する
+ * @param {string} value - 元文字列
+ * @returns {string} 正規化文字列
+ */
+const normalizeTextKey = (value) => {
+  return String(value || '').trim().toLowerCase();
+};
+
+/**
+ * エリア一覧から解決用インデックスを作成する
+ * @param {Array<Object>} areaLocations - エリア一覧
+ * @returns {Map<string, string>} 正規化キー -> エリアID
+ */
+const buildAreaResolveMap = (areaLocations) => {
+  /** 解決用Map */
+  const resolveMap = new Map();
+
+  (Array.isArray(areaLocations) ? areaLocations : []).forEach((area) => {
+    /** エリアID */
+    const areaId = String(area?.area_id || '').trim();
+    if (!areaId) {
+      return;
+    }
+
+    /** 照合候補 */
+    const candidates = [areaId, area?.area_name, area?.area_name_kana, area?.area_code];
+    candidates.forEach((candidate) => {
+      /** 正規化キー */
+      const normalizedKey = normalizeTextKey(candidate);
+      if (!normalizedKey) {
+        return;
+      }
+      resolveMap.set(normalizedKey, areaId);
+    });
+  });
+
+  return resolveMap;
+};
+
+/**
+ * 候補値からエリアIDを解決する
+ * @param {Object} params - パラメータ
+ * @param {Array<string>} params.candidates - 候補値一覧
+ * @param {Map<string,string>} params.areaResolveMap - エリア解決Map
+ * @returns {string} 解決済みエリアID（解決不可時は先頭候補）
+ */
+const resolveAreaIdFromCandidates = ({ candidates, areaResolveMap }) => {
+  /** 正規化済み候補一覧 */
+  const normalizedCandidates = uniqStringArray(candidates);
+  if (normalizedCandidates.length === 0) {
+    return '';
+  }
+
+  for (const candidate of normalizedCandidates) {
+    /** 正規化キー */
+    const normalizedKey = normalizeTextKey(candidate);
+    if (!normalizedKey) {
+      continue;
+    }
+    /** 解決済みエリアID */
+    const resolvedAreaId = areaResolveMap.get(normalizedKey);
+    if (resolvedAreaId) {
+      return resolvedAreaId;
+    }
+  }
+
+  return normalizedCandidates[0];
 };
 
 /**
@@ -302,48 +323,6 @@ const selectRowsWithCandidates = async ({ tableName, selectCandidates, applyFilt
   throw new Error(`${tableName} の取得に失敗しました: ${lastError?.message || 'unknown error'}`);
 };
 
-/**
- * 公開済みデータを select 句フォールバック付きで取得する
- * @param {Object} params - パラメータ
- * @param {string} params.tableName - テーブル名
- * @param {string} params.idColumn - IDカラム名
- * @param {Array<string>} params.ids - 取得対象ID配列
- * @param {string} params.primarySelect - 優先select句
- * @param {string} params.fallbackSelect - フォールバックselect句
- * @returns {Promise<Array<Object>>} 取得結果
- */
-const selectPublishedRowsByIds = async ({ tableName, idColumn, ids, primarySelect, fallbackSelect }) => {
-  /** Supabaseクライアント */
-  const supabase = getSupabaseClient();
-
-  /** 優先クエリ結果 */
-  const primaryResult = await supabase
-    .from(tableName)
-    .select(primarySelect)
-    .in(idColumn, ids)
-    .eq('is_published', true);
-
-  if (!primaryResult.error) {
-    return primaryResult.data || [];
-  }
-
-  if (!shouldFallbackSelect(primaryResult.error) || !fallbackSelect) {
-    throw new Error(`${tableName} の取得に失敗しました: ${primaryResult.error.message}`);
-  }
-
-  /** フォールバッククエリ結果 */
-  const fallbackResult = await supabase
-    .from(tableName)
-    .select(fallbackSelect)
-    .in(idColumn, ids)
-    .eq('is_published', true);
-
-  if (fallbackResult.error) {
-    throw new Error(`${tableName} の取得に失敗しました: ${fallbackResult.error.message}`);
-  }
-
-  return fallbackResult.data || [];
-};
 
 /**
  * 公開済みデータを複数 select 候補で取得する
@@ -355,13 +334,34 @@ const selectPublishedRowsByIds = async ({ tableName, idColumn, ids, primarySelec
  * @returns {Promise<Array<Object>>} 取得結果
  */
 const selectPublishedRowsByIdsWithCandidates = async ({ tableName, idColumn, ids, selectCandidates }) => {
-  /** 取得結果 */
-  const rows = await selectRowsWithCandidates({
-    tableName,
-    selectCandidates,
-    applyFilters: (query) => query.in(idColumn, ids).eq('is_published', true),
-  });
-  return rows;
+  try {
+    /** is_published 列がある前提で取得 */
+    const rows = await selectRowsWithCandidates({
+      tableName,
+      selectCandidates,
+      applyFilters: (query) => query.in(idColumn, ids).eq('is_published', true),
+    });
+    return rows;
+  } catch (error) {
+    /**
+     * 環境によって is_published 列が存在しない場合があるため、
+     * そのケースのみ公開フラグ条件なしで再試行する。
+     */
+    const missingPublishedColumn =
+      isMissingColumnError({ message: error?.message }) &&
+      String(error?.message || '').toLowerCase().includes('is_published');
+
+    if (!missingPublishedColumn) {
+      throw error;
+    }
+
+    const rows = await selectRowsWithCandidates({
+      tableName,
+      selectCandidates,
+      applyFilters: (query) => query.in(idColumn, ids),
+    });
+    return rows;
+  }
 };
 
 /**
@@ -456,72 +456,6 @@ const selectEventDetailsByIds = async (eventIds) => {
   return eventMap;
 };
 
-/**
- * 屋台詳細を取得する
- * @param {Array<string>} stallIds - 屋台ID配列
- * @returns {Promise<Map<string, Object>>} ID -> 屋台詳細
- */
-const selectStallDetailsByIds = async (stallIds) => {
-  /** 正規化した屋台ID配列 */
-  const normalizedStallIds = uniqStringArray(stallIds);
-  if (normalizedStallIds.length === 0) {
-    return new Map();
-  }
-
-  /** 屋台詳細取得結果 */
-  const data = await selectPublishedRowsByIdsWithCandidates({
-    tableName: STALLS_TABLE,
-    idColumn: 'id',
-    ids: normalizedStallIds,
-    selectCandidates: [STALL_SELECT_PRIMARY, STALL_SELECT_FALLBACK, STALL_SELECT_LAST_RESORT],
-  });
-
-  /** 場所ID配列 */
-  const stallLocationIds = uniqStringArray((data || []).map((row) => row.location_id));
-  /** 団体ID配列 */
-  const stallOrganizationIds = uniqStringArray((data || []).map((row) => row.stall_organization_id));
-
-  /** 屋台場所名称マップ */
-  const stallLocationNameMap = await selectNameMapByIds({
-    tableName: STALL_LOCATIONS_TABLE,
-    ids: stallLocationIds,
-    selectCandidates: ['id,name'],
-  });
-  /** 屋台団体名称マップ */
-  const stallOrganizationNameMap = await selectNameMapByIds({
-    tableName: STALL_ORGANIZATIONS_TABLE,
-    ids: stallOrganizationIds,
-    selectCandidates: ['id,name'],
-  });
-
-  /** 屋台詳細Map */
-  const stallMap = new Map();
-  (data || []).forEach((row) => {
-    /** 場所情報 */
-    const locationInfo = stallLocationNameMap.get(String(row.location_id || '')) || {
-      name: '',
-      nameKana: '',
-    };
-    /** 団体情報 */
-    const organizationInfo = stallOrganizationNameMap.get(String(row.stall_organization_id || '')) || {
-      name: '',
-      nameKana: '',
-    };
-
-    stallMap.set(String(row.id), {
-      ...row,
-      stall_locations: {
-        name: locationInfo.name,
-        name_kana: locationInfo.nameKana,
-      },
-      stall_organizations: {
-        name: organizationInfo.name,
-        name_kana: organizationInfo.nameKana,
-      },
-    });
-  });
-  return stallMap;
-};
 
 /**
  * エリアマスタ一覧を取得する
@@ -637,6 +571,62 @@ const selectBuildingLocations = async () => {
 };
 
 /**
+ * 企画運営団体マスタ一覧を取得する
+ * @returns {Promise<Array<Object>>} 団体一覧
+ */
+const selectEventOrganizations = async () => {
+  /** Supabaseクライアント */
+  const supabase = getSupabaseClient();
+  /** 候補クエリ */
+  const queryCandidates = [
+    () =>
+      supabase
+        .from(EVENT_ORGANIZATIONS_TABLE)
+        .select('id,name,name_kana,display_order')
+        .order('display_order', { ascending: true })
+        .order('name', { ascending: true }),
+    () =>
+      supabase
+        .from(EVENT_ORGANIZATIONS_TABLE)
+        .select('id,name,name_kana')
+        .order('name', { ascending: true }),
+    () => supabase.from(EVENT_ORGANIZATIONS_TABLE).select('id,name').order('name', { ascending: true }),
+  ];
+
+  /** 最後のエラー */
+  let lastError = null;
+  for (const buildQuery of queryCandidates) {
+    /** 団体一覧取得結果 */
+    const { data, error } = await buildQuery();
+    if (!error) {
+      /** 正規化済み団体一覧 */
+      const normalizedRows = (data || [])
+        .map((row, index) => ({
+          group_id: String(row.id || '').trim(),
+          group_name: String(row.name || '').trim(),
+          group_name_kana: String(row.name_kana || '').trim(),
+          display_order: Number.isFinite(Number(row.display_order)) ? Number(row.display_order) : index + 1,
+        }))
+        .filter((row) => Boolean(row.group_id) && Boolean(row.group_name));
+
+      return normalizedRows.sort((left, right) => {
+        if (left.display_order !== right.display_order) {
+          return left.display_order - right.display_order;
+        }
+        return String(left.group_name || '').localeCompare(String(right.group_name || ''), 'ja', { numeric: true });
+      });
+    }
+
+    lastError = error;
+    if (!shouldFallbackSelect(error)) {
+      break;
+    }
+  }
+
+  throw new Error(`event_organizations の取得に失敗しました: ${lastError?.message || 'unknown error'}`);
+};
+
+/**
  * 利用可能な開催日一覧を取得する
  * @returns {Promise<Array<string>>} 開催日一覧（YYYY-MM-DD）
  */
@@ -709,6 +699,7 @@ const selectEventScheduleSlots = async ({ scheduleDate }) => {
     let query = supabase
       .from(EVENT_SCHEDULE_SLOTS_TABLE)
       .select(candidate.selectText)
+      .eq('source_type', SOURCE_TYPES.EVENT)
       .eq('schedule_date', normalizedDate)
       .order('start_time', { ascending: true })
       .order('end_time', { ascending: true });
@@ -733,33 +724,47 @@ const selectEventScheduleSlots = async ({ scheduleDate }) => {
 };
 
 /**
- * スロットにイベント/屋台詳細を結合する
+ * スロットにイベント詳細を結合する
  * @param {Array<Object>} slots - スロット一覧
+ * @param {Array<Object>} areaLocations - エリア一覧
  * @returns {Promise<Array<Object>>} 詳細付きスロット
  */
-const attachSourceDetailsToSlots = async (slots) => {
+const attachSourceDetailsToSlots = async (slots, areaLocations = []) => {
   /** event ソースID一覧 */
   const eventIds = uniqStringArray(
     (slots || []).filter((slot) => slot.source_type === SOURCE_TYPES.EVENT).map((slot) => slot.source_id)
   );
-  /** stall ソースID一覧 */
-  const stallIds = uniqStringArray(
-    (slots || []).filter((slot) => slot.source_type === SOURCE_TYPES.STALL).map((slot) => slot.source_id)
-  );
 
   /** イベント詳細Map */
-  const eventMap = await selectEventDetailsByIds(eventIds);
-  /** 屋台詳細Map */
-  const stallMap = await selectStallDetailsByIds(stallIds);
+  let eventMap = new Map();
+  /** イベント取得エラー */
+  let eventError = null;
+
+  try {
+    eventMap = await selectEventDetailsByIds(eventIds);
+  } catch (error) {
+    eventError = error;
+    console.warn('[TimeSchedule] events詳細取得に失敗:', error?.message || error);
+  }
+
+  if (eventError) {
+    throw new Error(`events の詳細取得に失敗しました: ${eventError?.message || 'unknown'}`);
+  }
+
+  /** エリア解決Map */
+  const areaResolveMap = buildAreaResolveMap(areaLocations);
 
   return (slots || [])
     .map((slot) => {
       /** 参照元タイプ */
       const sourceType = slot.source_type;
+      if (sourceType !== SOURCE_TYPES.EVENT) {
+        return null;
+      }
       /** 参照元ID */
       const sourceId = String(slot.source_id);
       /** 参照詳細 */
-      const sourceDetail = sourceType === SOURCE_TYPES.EVENT ? eventMap.get(sourceId) : stallMap.get(sourceId);
+      const sourceDetail = eventMap.get(sourceId);
 
       if (!sourceDetail) {
         return null;
@@ -775,57 +780,32 @@ const attachSourceDetailsToSlots = async (slots) => {
       }
 
       /** イベント開催日程配列 */
-      const eventSchedules =
-        sourceType === SOURCE_TYPES.EVENT
-          ? normalizeEventSchedules({ slot, sourceDetail })
-          : {
-              scheduleDates: [],
-              scheduleStartTimes: [],
-              scheduleEndTimes: [],
-            };
+      const eventSchedules = normalizeEventSchedules({ slot, sourceDetail });
 
       return {
         ...slot,
         source_type: sourceType,
         source_id: sourceId,
         source_detail: sourceDetail,
-        itemType: sourceType === SOURCE_TYPES.EVENT ? 'EVENTS' : 'STALLS',
+        itemType: 'EVENTS',
         displayName: sourceDetail.name || '',
         schedule_date: slot.schedule_date || null,
         schedule_dates: eventSchedules.scheduleDates,
         schedule_start_times: eventSchedules.scheduleStartTimes,
         schedule_end_times: eventSchedules.scheduleEndTimes,
-        groupName:
-          sourceType === SOURCE_TYPES.EVENT
-            ? sourceDetail.event_organizations?.name || ''
-            : sourceDetail.stall_organizations?.name || '',
-        locationName:
-          sourceType === SOURCE_TYPES.EVENT
-            ? sourceDetail.event_locations?.name || ''
-            : sourceDetail.stall_locations?.name || '',
-        buildingLocationId:
-          sourceType === SOURCE_TYPES.EVENT
-            ? String(sourceDetail.event_locations?.building_id || '')
-            : String(sourceDetail.stall_locations?.building_id || ''),
-        buildingLocationName:
-          sourceType === SOURCE_TYPES.EVENT
-            ? sourceDetail.event_locations?.building_locations?.name || ''
-            : sourceDetail.stall_locations?.building_locations?.name || sourceDetail.stall_locations?.name || '',
-        areaId:
-          sourceType === SOURCE_TYPES.EVENT
-            ? String(
-                sourceDetail.event_locations?.building_locations?.area_id ||
-                  slot.area_code ||
-                  slot.area_name ||
-                  ''
-              )
-            : String(
-                sourceDetail.stall_locations?.area_id ||
-                  sourceDetail.stall_locations?.building_locations?.area_id ||
-                  slot.area_code ||
-                  slot.area_name ||
-                  ''
-              ),
+        groupName: sourceDetail.event_organizations?.name || '',
+        groupNameKana: sourceDetail.event_organizations?.name_kana || '',
+        locationName: sourceDetail.event_locations?.name || '',
+        buildingLocationId: String(sourceDetail.event_locations?.building_id || ''),
+        buildingLocationName: sourceDetail.event_locations?.building_locations?.name || '',
+        areaId: resolveAreaIdFromCandidates({
+          candidates: [
+            sourceDetail.event_locations?.building_locations?.area_id,
+            slot.area_code,
+            slot.area_name,
+          ],
+          areaResolveMap,
+        }),
         description: sourceDetail.description || '',
         startMinutes,
         endMinutes,
@@ -888,7 +868,7 @@ const buildTimeScheduleTimeline = (detailedSlots, selectedBuildingIds = []) => {
  * @param {Object} params - パラメータ
  * @param {string|Date} params.scheduleDate - 取得対象日
  * @param {Array<string>} [params.buildingIds] - 建物ID絞り込み
- * @returns {Promise<{areas:Array<Object>, areaLocations:Array<Object>, slots:Array<Object>, timeline:Array<Object>, availableDates:Array<string>, resolvedScheduleDate:string}>} 表示データ
+ * @returns {Promise<{areas:Array<Object>, areaLocations:Array<Object>, eventOrganizations:Array<Object>, slots:Array<Object>, timeline:Array<Object>, availableDates:Array<string>, resolvedScheduleDate:string}>} 表示データ
  */
 const selectTimeScheduleTimeline = async ({ scheduleDate, buildingIds = [] }) => {
   /** 利用可能な開催日 */
@@ -902,16 +882,19 @@ const selectTimeScheduleTimeline = async ({ scheduleDate, buildingIds = [] }) =>
   const areas = await selectBuildingLocations();
   /** エリア一覧 */
   const areaLocations = await selectAreaLocations();
+  /** 団体一覧 */
+  const eventOrganizations = await selectEventOrganizations();
   /** スロット一覧 */
   const slots = await selectEventScheduleSlots({ scheduleDate: resolvedScheduleDate });
   /** 詳細付きスロット */
-  const detailedSlots = await attachSourceDetailsToSlots(slots);
+  const detailedSlots = await attachSourceDetailsToSlots(slots, areaLocations);
   /** タイムライン */
   const timeline = buildTimeScheduleTimeline(detailedSlots, buildingIds);
 
   return {
     areas,
     areaLocations,
+    eventOrganizations,
     slots: detailedSlots,
     timeline,
     availableDates,
@@ -922,6 +905,7 @@ const selectTimeScheduleTimeline = async ({ scheduleDate, buildingIds = [] }) =>
 export const timeScheduleService = {
   selectAreaLocations,
   selectBuildingLocations,
+  selectEventOrganizations,
   selectAvailableScheduleDates,
   selectEventScheduleSlots,
   selectTimeScheduleTimeline,
