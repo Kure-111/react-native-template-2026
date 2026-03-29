@@ -15,6 +15,27 @@ const normalizeSearchText = (value) => {
         .trim();
 };
 
+const getEventDisplaySchedule = (eventItem) => {
+    const scheduleDates = Array.isArray(eventItem.schedule_dates) ? eventItem.schedule_dates : [];
+    const scheduleStartTimes = Array.isArray(eventItem.schedule_start_times) ? eventItem.schedule_start_times : [];
+    const scheduleEndTimes = Array.isArray(eventItem.schedule_end_times) ? eventItem.schedule_end_times : [];
+    const slotCount = Math.min(scheduleDates.length, scheduleStartTimes.length, scheduleEndTimes.length);
+
+    if (slotCount <= 0) {
+        return {
+            startTime: null,
+            endTime: null,
+            scheduleCount: 0,
+        };
+    }
+
+    return {
+        startTime: scheduleStartTimes[0] || null,
+        endTime: scheduleEndTimes[0] || null,
+        scheduleCount: slotCount,
+    };
+};
+
 const calculatePrefixPriorityScore = (item, tokens) => {
     const fields = ['displayName', 'displayNameKana', 'groupName', 'groupNameKana', 'categoryName', 'areaName', 'areaNameKana', 'buildingName', 'buildingNameKana', 'locationName'];
     const FIELD_WEIGHTS = {
@@ -104,8 +125,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                                         id,
                                         area_id, 
                                         building_id,
-                                        area_letter,
-                                        building_locations(id, name, name_kana, display_order)
+                                        area_letter
                                     )
                                 ), 
                                 stall_organizations(name, name_kana)
@@ -117,7 +137,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                 if (fetchEvents) {
                     promises.push(
                         supabase.from('events')
-                            .select('id, name, name_kana, description, start_time, end_time, image_path, category_id, updated_at, location_id, event_organization_id, event_locations(id, name, building_id, building_locations(id, name, name_kana, area_id, display_order)), event_organizations(name, name_kana)')
+                            .select('id, name, name_kana, description, schedule_dates, schedule_start_times, schedule_end_times, image_path, category_id, updated_at, location_id, event_organization_id, event_locations(id, name, building_id, building_locations(id, name, name_kana, area_id, display_order)), event_organizations(name, name_kana)')
                             .eq('is_published', true)
                             .then(res => ({ ...res, type: TABS.EVENTS }))
                     );
@@ -143,7 +163,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                 );
                 promises.push(
                     supabase.from('building_locations')
-                        .select('id, name, name_kana, area_id')
+                        .select('id, name, name_kana, area_id, display_order')
                         .order('display_order', { ascending: true })
                         .then(res => ({ ...res, type: 'BUILDING_LOCATIONS' }))
                 );
@@ -219,9 +239,11 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                 // 建物IDから名前へのマップ作成
                 let buildingNameMap = {};
                 let buildingNameKanaMap = {};
+                let buildingDisplayOrderMap = {};
                 buildingsList.forEach(b => {
                     buildingNameMap[b.id] = b.name;
                     buildingNameKanaMap[b.id] = b.name_kana || '';
+                    buildingDisplayOrderMap[b.id] = b.display_order ?? 9999;
                 });
 
                 // --- 3. データの結合と正規化 ---
@@ -251,18 +273,23 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
 
                                 areaId = areaLetterInfo?.area_id;
                                 buildingId = areaLetterInfo?.building_id;
-                                buildingLocationOrder = areaLetterInfo?.building_locations?.display_order ?? 9999;
+                                buildingLocationOrder = buildingDisplayOrderMap[buildingId] ?? 9999;
                                 item.areaLetter = areaLetterInfo?.area_letter || ''; // エリア記号を追加
 
                                 const areaName = areaNameMap[areaId] || '';
-                                const buildingName = areaLetterInfo?.building_locations?.name || buildingNameMap[buildingId] || '';
+                                const buildingName = buildingNameMap[buildingId] || '';
                                 areaNameKana = areaNameKanaMap[areaId] || '';
-                                buildingNameKana = areaLetterInfo?.building_locations?.name_kana || buildingNameKanaMap[buildingId] || '';
+                                buildingNameKana = buildingNameKanaMap[buildingId] || '';
                                 locationName = [areaName, buildingName, lName].filter(Boolean).join(' ');
                                 listLocationName = lName;
                                 item.areaName = areaName;
                                 item.buildingName = buildingName;
                             } else if (result.type === TABS.EVENTS && item.event_locations) {
+                                const scheduleInfo = getEventDisplaySchedule(item);
+                                item.start_time = scheduleInfo.startTime;
+                                item.end_time = scheduleInfo.endTime;
+                                item.scheduleCount = scheduleInfo.scheduleCount;
+
                                 const lName = item.event_locations.name || '';
                                 locationName = lName;
 
