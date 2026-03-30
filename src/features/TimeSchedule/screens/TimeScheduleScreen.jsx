@@ -88,6 +88,9 @@ const BOOKMARK_THEME_COLORS = [
 ];
 /** ブックマークの既定テーマカラー */
 const DEFAULT_BOOKMARK_THEME_COLOR = BOOKMARK_THEME_COLORS[0];
+
+/** オブジェクトの own プロパティ判定ショートハンド */
+const HAS_OWN = Object.prototype.hasOwnProperty;
 /** ブックマーク背景と文字色の最小コントラスト比 */
 const MIN_BOOKMARK_CONTRAST_RATIO = 4.5;
 /** ここより暗い背景ではブックマーク色を段階補正する背景輝度しきい値 */
@@ -561,6 +564,28 @@ const normalizeBookmarkThemeColor = (colorText) => {
     return result;
   }, {});
   return allowedColorMap[normalizedColor] || DEFAULT_BOOKMARK_THEME_COLOR;
+};
+
+/**
+ * 色上書きMapから指定IDの色を取得する（未設定時は空文字）
+ * @param {Object} colorMap - 色上書きMap
+ * @param {string} bookmarkId - ブックマークID
+ * @returns {string} 正規化済み色（未設定時は空文字）
+ */
+const pickBookmarkOverrideColor = (colorMap, bookmarkId) => {
+  /** 正規化したID */
+  const normalizedBookmarkId = String(bookmarkId || '').trim();
+  if (!normalizedBookmarkId) {
+    return '';
+  }
+
+  /** Mapとして扱える値 */
+  const normalizedColorMap = colorMap && typeof colorMap === 'object' ? colorMap : {};
+  if (!HAS_OWN.call(normalizedColorMap, normalizedBookmarkId)) {
+    return '';
+  }
+
+  return normalizeBookmarkThemeColor(normalizedColorMap[normalizedBookmarkId]);
 };
 
 /**
@@ -1199,8 +1224,9 @@ const TimeScheduleScreen = ({ navigation }) => {
       const defaultBookmarkColor =
         BOOKMARK_THEME_COLORS[index % BOOKMARK_THEME_COLORS.length] || DEFAULT_BOOKMARK_THEME_COLOR;
       /** 保存済み上書きカラー */
-      const overriddenBookmarkColor = normalizeBookmarkThemeColor(
-        defaultBookmarkColorMap[`${DEFAULT_BOOKMARK_ID_PREFIX}${buildingId}`]
+      const overriddenBookmarkColor = pickBookmarkOverrideColor(
+        defaultBookmarkColorMap,
+        `${DEFAULT_BOOKMARK_ID_PREFIX}${buildingId}`
       );
       return {
         id: `${DEFAULT_BOOKMARK_ID_PREFIX}${buildingId}`,
@@ -1233,8 +1259,9 @@ const TimeScheduleScreen = ({ navigation }) => {
       const defaultBookmarkColor =
         BOOKMARK_THEME_COLORS[index % BOOKMARK_THEME_COLORS.length] || DEFAULT_BOOKMARK_THEME_COLOR;
       /** 保存済み上書きカラー（モーダル表示中は下書き色を参照） */
-      const overriddenBookmarkColor = normalizeBookmarkThemeColor(
-        effectiveDefaultBookmarkColorMapForModal[`${DEFAULT_BOOKMARK_ID_PREFIX}${buildingId}`]
+      const overriddenBookmarkColor = pickBookmarkOverrideColor(
+        effectiveDefaultBookmarkColorMapForModal,
+        `${DEFAULT_BOOKMARK_ID_PREFIX}${buildingId}`
       );
       return {
         id: `${DEFAULT_BOOKMARK_ID_PREFIX}${buildingId}`,
@@ -3274,9 +3301,9 @@ const TimeScheduleScreen = ({ navigation }) => {
               </View>
             ) : null}
 
-            <Text style={[styles.settingsModalDescription, { color: theme.textSecondary }]}>
+            <Text style={[styles.settingsModalDescription, { color: theme.textSecondary }]}> 
               {activeBookmarkListTab === BOOKMARK_LIST_TABS.DEFAULT
-                ? 'デフォルトは表示/非表示のみ切り替えできます。'
+                ? 'デフォルトは表示/非表示の切り替えとテーマカラー変更ができます。'
                 : 'マイリストでは表示/非表示の切替、並び替え、設定編集、削除、追加ができます。'}
             </Text>
 
@@ -3400,7 +3427,7 @@ const TimeScheduleScreen = ({ navigation }) => {
                       </TouchableOpacity>
                     </View>
 
-                    {isMyListTab ? (
+                    {(isMyListTab || isSystemBookmark) ? (
                       <TouchableOpacity
                         style={[
                           styles.bookmarkIconButton,
