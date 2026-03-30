@@ -1443,6 +1443,19 @@ const TimeScheduleScreen = ({ navigation }) => {
     const groupCandidates = Array.from(groupCandidateMap.values())
       .filter((candidate) => Boolean(candidate.key))
       .sort((left, right) => {
+        /** 左かな名 */
+        const leftKana = String(left.labelKana || '').trim();
+        /** 右かな名 */
+        const rightKana = String(right.labelKana || '').trim();
+        if (leftKana && rightKana) {
+          const kanaCompareResult = leftKana.localeCompare(rightKana, 'ja', { numeric: true });
+          if (kanaCompareResult !== 0) {
+            return kanaCompareResult;
+          }
+        } else if (leftKana || rightKana) {
+          return leftKana ? -1 : 1;
+        }
+
         return String(left.label || '').localeCompare(String(right.label || ''), 'ja', { numeric: true });
       });
 

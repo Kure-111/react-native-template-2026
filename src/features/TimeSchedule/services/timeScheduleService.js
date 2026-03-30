@@ -582,12 +582,6 @@ const selectEventOrganizations = async () => {
     () =>
       supabase
         .from(EVENT_ORGANIZATIONS_TABLE)
-        .select('id,name,name_kana,display_order')
-        .order('display_order', { ascending: true })
-        .order('name', { ascending: true }),
-    () =>
-      supabase
-        .from(EVENT_ORGANIZATIONS_TABLE)
         .select('id,name,name_kana')
         .order('name', { ascending: true }),
     () => supabase.from(EVENT_ORGANIZATIONS_TABLE).select('id,name').order('name', { ascending: true }),
@@ -605,14 +599,24 @@ const selectEventOrganizations = async () => {
           group_id: String(row.id || '').trim(),
           group_name: String(row.name || '').trim(),
           group_name_kana: String(row.name_kana || '').trim(),
-          display_order: Number.isFinite(Number(row.display_order)) ? Number(row.display_order) : index + 1,
+          display_order: index + 1,
         }))
         .filter((row) => Boolean(row.group_id) && Boolean(row.group_name));
 
       return normalizedRows.sort((left, right) => {
-        if (left.display_order !== right.display_order) {
-          return left.display_order - right.display_order;
+        /** 左かな名 */
+        const leftKana = String(left.group_name_kana || '').trim();
+        /** 右かな名 */
+        const rightKana = String(right.group_name_kana || '').trim();
+        if (leftKana && rightKana) {
+          const kanaCompareResult = leftKana.localeCompare(rightKana, 'ja', { numeric: true });
+          if (kanaCompareResult !== 0) {
+            return kanaCompareResult;
+          }
+        } else if (leftKana || rightKana) {
+          return leftKana ? -1 : 1;
         }
+
         return String(left.group_name || '').localeCompare(String(right.group_name || ''), 'ja', { numeric: true });
       });
     }
