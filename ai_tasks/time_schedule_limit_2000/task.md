@@ -1,0 +1,7 @@
+- `[x]` タイムスケジュールの運用終了時間の短縮 (22:00 -> 20:00)
+    - `[x]` `src/features/TimeSchedule/services/timeScheduleService.js` の `OPERATION_END_MINUTES` を修正 (1320 -> 1200)
+    - `[x]` `docs/プロジェクト仕様書_TimeSchedule.md` の運用終了時間 20:00 への更新
+- `[ ]` 動作確認
+    - `[ ]` ブラウザでのタイムライン表示範囲の確認 (20:00 終了)
+- `[ ]` 編集履歴の追記
+    - `[ ]` `docs/Codex編集履歴.md` への記録

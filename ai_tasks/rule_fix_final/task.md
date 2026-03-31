@@ -1,0 +1,3 @@
+- [x] 指定された ai_tasks フォルダ内に実装計画を作成する
+- [x] グローバルルール (/home/sho16/.gemini/GEMINI.md) の内容をクリーンアップする
+- [x] 最終的な walkthrough.md を作成し、物理ファイルの存在を確認する

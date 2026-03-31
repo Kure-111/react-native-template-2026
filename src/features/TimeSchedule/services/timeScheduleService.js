@@ -17,7 +17,7 @@ const EVENTS_TABLE = 'events';
 /** 運用開始時刻（分） */
 const OPERATION_START_MINUTES = 9 * 60;
 /** 運用終了時刻（分） */
-const OPERATION_END_MINUTES = 22 * 60; // 終了時刻を22時までに延長（必要に応じて）
+const OPERATION_END_MINUTES = 20 * 60; // 終了時刻を20時までに設定
 /** 15分刻み */
 const TIME_SLOT_INTERVAL_MINUTES = 15;
 
