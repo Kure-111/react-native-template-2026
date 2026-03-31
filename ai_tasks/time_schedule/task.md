@@ -1,4 +1,0 @@
-- [ ] `useEventsStallsList01Data.js` のデータ取得クエリにオプション時間フィールドを追加
-- [ ] `DetailModal.jsx` のデータ処理ロジック（`buildScheduleRows`）にオプション時間を追加
-- [ ] `DetailModal.jsx` のレンダリング部分にオプション時間の表示を追加
-- [ ] タイムスケジュール画面と企画一覧画面の両方で表示を確認
