@@ -5,8 +5,6 @@
 
 import { getSupabaseClient } from '../../../services/supabase/client';
 
-/** スロットテーブル名 */
-const EVENT_SCHEDULE_SLOTS_TABLE = 'event_schedule_slots';
 /** 建物テーブル名 */
 const BUILDING_LOCATIONS_TABLE = 'building_locations';
 /** エリアテーブル名 */
@@ -19,25 +17,25 @@ const EVENTS_TABLE = 'events';
 /** 運用開始時刻（分） */
 const OPERATION_START_MINUTES = 9 * 60;
 /** 運用終了時刻（分） */
-const OPERATION_END_MINUTES = 20 * 60;
+const OPERATION_END_MINUTES = 22 * 60; // 終了時刻を22時までに延長（必要に応じて）
 /** 15分刻み */
 const TIME_SLOT_INTERVAL_MINUTES = 15;
 
-/** source_type の定数 */
-const SOURCE_TYPES = {
-  EVENT: 'event',
+/** アイテム種別 */
+const ITEM_TYPES = {
+  EVENTS: 'EVENTS',
 };
 
 /** events 取得時の優先 select 句 */
 const EVENT_SELECT_PRIMARY =
-  'id,name,name_kana,description,schedule_dates,schedule_start_times,schedule_end_times,image_path,category_id,event_organization_id,location_id,event_locations(name,building_id,building_locations(name,area_id)),event_organizations(name,name_kana)';
+  'id,name,name_kana,description,schedule_dates,schedule_start_times,schedule_end_times,schedule_entry_start_times,schedule_entry_labels,schedule_exit_end_times,schedule_exit_labels,image_path,category_id,event_organization_id,location_id,event_locations(name,building_id,building_locations(name,area_id)),event_organizations(name,name_kana)';
 
 /** events 取得時のフォールバック select 句 */
 const EVENT_SELECT_FALLBACK =
-  'id,name,description,schedule_dates,schedule_start_times,schedule_end_times,start_time,end_time,image_path,category_id,event_organization_id,location_id,event_locations(name,building_id,building_locations(name,area_id)),event_organizations(name,name_kana)';
+  'id,name,description,schedule_dates,schedule_start_times,schedule_end_times,schedule_entry_start_times,schedule_entry_labels,schedule_exit_end_times,schedule_exit_labels,start_time,end_time,image_path,category_id,event_organization_id,location_id,event_locations(name,building_id,building_locations(name,area_id)),event_organizations(name,name_kana)';
 
 /** events の最終フォールバック select 句 */
-const EVENT_SELECT_LAST_RESORT = 'id,name,description,image_path,category_id,event_organization_id,location_id,schedule_dates,schedule_start_times,schedule_end_times,start_time,end_time';
+const EVENT_SELECT_LAST_RESORT = 'id,name,description,image_path,category_id,event_organization_id,location_id,schedule_dates,schedule_start_times,schedule_end_times,schedule_entry_start_times,schedule_entry_labels,schedule_exit_end_times,schedule_exit_labels,start_time,end_time';
 
 /** 文字列日付の妥当性パターン */
 const SCHEDULE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -163,7 +161,7 @@ const buildAreaResolveMap = (areaLocations) => {
     }
 
     /** 照合候補 */
-    const candidates = [areaId, area?.area_name, area?.area_name_kana, area?.area_code];
+    const candidates = [areaId, area?.area_name, area?.area_name_kana];
     candidates.forEach((candidate) => {
       /** 正規化キー */
       const normalizedKey = normalizeTextKey(candidate);
@@ -365,47 +363,41 @@ const selectPublishedRowsByIdsWithCandidates = async ({ tableName, idColumn, ids
 };
 
 /**
- * イベントの開催日配列を正規化する
- * @param {Object} params - パラメータ
- * @param {Object} params.slot - スロット
- * @param {Object} params.sourceDetail - イベント詳細
- * @returns {{scheduleDates:Array<string>, scheduleStartTimes:Array<string>, scheduleEndTimes:Array<string>}} 正規化済み配列
- */
-const normalizeEventSchedules = ({ slot, sourceDetail }) => {
-  /** DBキャッシュ日付配列 */
-  const scheduleDates = Array.isArray(sourceDetail?.schedule_dates)
-    ? sourceDetail.schedule_dates
-    : [];
-  /** DBキャッシュ開始時刻配列 */
-  const scheduleStartTimes = Array.isArray(sourceDetail?.schedule_start_times)
-    ? sourceDetail.schedule_start_times
-    : [];
-  /** DBキャッシュ終了時刻配列 */
-  const scheduleEndTimes = Array.isArray(sourceDetail?.schedule_end_times)
-    ? sourceDetail.schedule_end_times
-    : [];
-
-  if (scheduleDates.length > 0 && scheduleStartTimes.length > 0 && scheduleEndTimes.length > 0) {
-    return {
-      scheduleDates,
-      scheduleStartTimes,
-      scheduleEndTimes,
-    };
-  }
-
-  /** スロット日付 */
-  const slotDate = slot?.schedule_date || null;
-  /** スロット開始時刻 */
-  const slotStartTime = slot?.start_time || sourceDetail?.start_time || null;
-  /** スロット終了時刻 */
-  const slotEndTime = slot?.end_time || sourceDetail?.end_time || null;
-
-  return {
-    scheduleDates: slotDate ? [slotDate] : [],
-    scheduleStartTimes: slotStartTime ? [slotStartTime] : [],
-    scheduleEndTimes: slotEndTime ? [slotEndTime] : [],
-  };
-};
+  * 企画の全開催時間スロットを生成する
+  * @param {Object} event - イベント詳細
+  * @returns {Array<Object>} スロット配列
+  */
+ const expandEventToSlots = (event) => {
+   if (!event || !Array.isArray(event.schedule_dates)) {
+     return [];
+   }
+ 
+   return event.schedule_dates.map((date, index) => {
+     /** 開始時刻 */
+     const startTime = (event.schedule_start_times && event.schedule_start_times[index]) || null;
+     /** 終了時刻 */
+     const endTime = (event.schedule_end_times && event.schedule_end_times[index]) || null;
+ 
+     if (!date || !startTime || !endTime) {
+       return null;
+     }
+ 
+     return {
+       id: `${event.id}_${index}`,
+       source_id: String(event.id),
+       schedule_date: date,
+       start_time: startTime,
+       end_time: endTime,
+       // オプション時間
+       entry_start_time: (event.schedule_entry_start_times && event.schedule_entry_start_times[index]) || null,
+       entry_label: (event.schedule_entry_labels && event.schedule_entry_labels[index]) || null,
+       exit_end_time: (event.schedule_exit_end_times && event.schedule_exit_end_times[index]) || null,
+       exit_label: (event.schedule_exit_labels && event.schedule_exit_labels[index]) || null,
+       source_type: 'event',
+       source_detail: event,
+     };
+   }).filter(Boolean);
+ };
 
 /**
  * 運用時間の15分スロットを作成する
@@ -631,41 +623,31 @@ const selectEventOrganizations = async () => {
 };
 
 /**
- * 利用可能な開催日一覧を取得する
+ * 利用可能な開催日一覧を企画テーブルから取得する
  * @returns {Promise<Array<string>>} 開催日一覧（YYYY-MM-DD）
  */
 const selectAvailableScheduleDates = async () => {
   /** Supabaseクライアント */
   const supabase = getSupabaseClient();
-  /** 候補クエリ */
-  const queryCandidates = [
-    () =>
-      supabase
-        .from(EVENT_SCHEDULE_SLOTS_TABLE)
-        .select('schedule_date,is_visible_time_schedule')
-        .eq('is_visible_time_schedule', true),
-    () => supabase.from(EVENT_SCHEDULE_SLOTS_TABLE).select('schedule_date'),
-  ];
 
-  /** 最後のエラー */
-  let lastError = null;
-  for (const buildQuery of queryCandidates) {
-    /** 開催日取得結果 */
-    const { data, error } = await buildQuery();
-    if (!error) {
-      return sortScheduleDates((data || []).map((row) => String(row.schedule_date || '')));
-    }
-    lastError = error;
-    if (!shouldFallbackSelect(error)) {
-      break;
-    }
+  /** 全企画の開催日配列を取得 */
+  const { data, error } = await supabase
+    .from(EVENTS_TABLE)
+    .select('schedule_dates')
+    .eq('is_published', true)
+    .not('schedule_dates', 'is', null);
+
+  if (error) {
+    throw new Error(`利用可能な開催日の取得に失敗しました: ${error.message}`);
   }
 
-  throw new Error(`event_schedule_slots の開催日取得に失敗しました: ${lastError?.message || 'unknown error'}`);
+  /** フラット化してユニークな日付リストを作成 */
+  const allDates = (data || []).flatMap((row) => row.schedule_dates || []);
+  return sortScheduleDates([...new Set(allDates)]);
 };
 
 /**
- * 日付・エリア条件で開催スロットを取得する
+ * 日付条件で開催スロットを取得する (eventsテーブルから展開)
  * @param {Object} params - パラメータ
  * @param {string|Date} params.scheduleDate - 取得対象日
  * @returns {Promise<Array<Object>>} スロット一覧
@@ -676,55 +658,27 @@ const selectEventScheduleSlots = async ({ scheduleDate }) => {
   /** Supabaseクライアント */
   const supabase = getSupabaseClient();
 
-  /** クエリ候補 */
-  const queryCandidates = [
-    {
-      selectText: 'id,source_type,source_id,schedule_date,start_time,end_time,area_code,is_visible_time_schedule',
-      hasVisibleFlag: true,
-    },
-    {
-      selectText: 'id,source_type,source_id,schedule_date,start_time,end_time,area_code',
-      hasVisibleFlag: false,
-    },
-    {
-      selectText: 'id,source_type,source_id,schedule_date,start_time,end_time,area_name,is_visible_time_schedule',
-      hasVisibleFlag: true,
-    },
-    {
-      selectText: 'id,source_type,source_id,schedule_date,start_time,end_time,area_name',
-      hasVisibleFlag: false,
-    },
-  ];
+  /** 対象日付が含まれる企画を取得 */
+  const { data, error } = await supabase
+    .from(EVENTS_TABLE)
+    .select(EVENT_SELECT_PRIMARY)
+    .eq('is_published', true)
+    .contains('schedule_dates', [normalizedDate]);
 
-  /** 最後のエラー */
-  let lastError = null;
-  for (const candidate of queryCandidates) {
-    /** スロット取得クエリ */
-    let query = supabase
-      .from(EVENT_SCHEDULE_SLOTS_TABLE)
-      .select(candidate.selectText)
-      .eq('source_type', SOURCE_TYPES.EVENT)
-      .eq('schedule_date', normalizedDate)
-      .order('start_time', { ascending: true })
-      .order('end_time', { ascending: true });
-
-    if (candidate.hasVisibleFlag) {
-      query = query.eq('is_visible_time_schedule', true);
-    }
-
-    /** スロット一覧取得結果 */
-    const { data, error } = await query;
-    if (!error) {
-      return data || [];
-    }
-
-    lastError = error;
-    if (!shouldFallbackSelect(error)) {
-      break;
-    }
+  if (error) {
+    throw new Error(`スロット情報の取得に失敗しました: ${error.message}`);
   }
 
-  throw new Error(`event_schedule_slots の取得に失敗しました: ${lastError?.message || 'unknown error'}`);
+  /** 各企画から対象日のスロットを展開 */
+  const slots = (data || []).flatMap((event) => {
+    return expandEventToSlots(event).filter((s) => s.schedule_date === normalizedDate);
+  });
+
+  return slots.sort((left, right) => {
+    const leftMin = parseTimeTextToMinutes(left.start_time) || 0;
+    const rightMin = parseTimeTextToMinutes(right.start_time) || 0;
+    return leftMin - rightMin;
+  });
 };
 
 /**
@@ -736,7 +690,7 @@ const selectEventScheduleSlots = async ({ scheduleDate }) => {
 const attachSourceDetailsToSlots = async (slots, areaLocations = []) => {
   /** event ソースID一覧 */
   const eventIds = uniqStringArray(
-    (slots || []).filter((slot) => slot.source_type === SOURCE_TYPES.EVENT).map((slot) => slot.source_id)
+    (slots || []).filter((slot) => slot.source_type === 'event').map((slot) => slot.source_id)
   );
 
   /** イベント詳細Map */
@@ -761,58 +715,49 @@ const attachSourceDetailsToSlots = async (slots, areaLocations = []) => {
   return (slots || [])
     .map((slot) => {
       /** 参照元タイプ */
-      const sourceType = slot.source_type;
-      if (sourceType !== SOURCE_TYPES.EVENT) {
+      const sourceType = slot.source_type || 'event';
+      if (sourceType !== 'event') {
         return null;
       }
+      const sourceId = slot.source_id;
+      const sourceDetail = eventMap.get(sourceId) || {};
+      const startMinutes = parseTimeTextToMinutes(slot.start_time) || 0;
+      const endMinutes = parseTimeTextToMinutes(slot.end_time) || 0;
+      const entryStartMinutes = parseTimeTextToMinutes(slot.entry_start_time);
+      const exitEndMinutes = parseTimeTextToMinutes(slot.exit_end_time);
+
       /** 参照元ID */
-      const sourceId = String(slot.source_id);
-      /** 参照詳細 */
-      const sourceDetail = eventMap.get(sourceId);
-
-      if (!sourceDetail) {
-        return null;
-      }
-
-      /** 開始分 */
-      const startMinutes = parseTimeTextToMinutes(slot.start_time);
-      /** 終了分 */
-      const endMinutes = parseTimeTextToMinutes(slot.end_time);
-
-      if (startMinutes === null || endMinutes === null || startMinutes >= endMinutes) {
-        return null;
-      }
-
-      /** イベント開催日程配列 */
-      const eventSchedules = normalizeEventSchedules({ slot, sourceDetail });
-
       return {
         ...slot,
         source_type: sourceType,
         source_id: sourceId,
         source_detail: sourceDetail,
-        itemType: 'EVENTS',
+        itemType: ITEM_TYPES.EVENTS,
         displayName: sourceDetail.name || '',
+        startMinutes,
+        endMinutes,
+        entryStartMinutes,
+        exitEndMinutes,
         schedule_date: slot.schedule_date || null,
-        schedule_dates: eventSchedules.scheduleDates,
-        schedule_start_times: eventSchedules.scheduleStartTimes,
-        schedule_end_times: eventSchedules.scheduleEndTimes,
+        schedule_dates: sourceDetail.schedule_dates || [],
+        schedule_start_times: sourceDetail.schedule_start_times || [],
+        schedule_end_times: sourceDetail.schedule_end_times || [],
+        schedule_entry_labels: sourceDetail.schedule_entry_labels || [],
+        schedule_entry_start_times: sourceDetail.schedule_entry_start_times || [],
+        schedule_exit_labels: sourceDetail.schedule_exit_labels || [],
+        schedule_exit_end_times: sourceDetail.schedule_exit_end_times || [],
         groupName: sourceDetail.event_organizations?.name || '',
         groupNameKana: sourceDetail.event_organizations?.name_kana || '',
         locationName: sourceDetail.event_locations?.name || '',
         buildingLocationId: String(sourceDetail.event_locations?.building_id || ''),
         buildingLocationName: sourceDetail.event_locations?.building_locations?.name || '',
-        areaId: resolveAreaIdFromCandidates({
-          candidates: [
-            sourceDetail.event_locations?.building_locations?.area_id,
-            slot.area_code,
-            slot.area_name,
-          ],
-          areaResolveMap,
-        }),
+        areaId:
+          slot.areaId ||
+          resolveAreaIdFromCandidates({
+            candidates: [sourceDetail.event_locations?.building_locations?.area_id],
+            areaResolveMap,
+          }),
         description: sourceDetail.description || '',
-        startMinutes,
-        endMinutes,
       };
     })
     .filter(Boolean);

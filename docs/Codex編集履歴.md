@@ -1,4 +1,4 @@
-﻿# Codex邱ｨ髮・ｱ･豁ｴ
+# Codex邱ｨ髮・ｱ･豁ｴ
 
 譛邨よ峩譁ｰ: 2026-03-08
 
@@ -11,20 +11,15 @@
 
 - 螟画峩繧ｻ繝・ヨ縺斐→縺ｫ1繧ｨ繝ｳ繝医Μ繧定ｿｽ蜉
 - 譛菴朱剞縲梧律莉倥阪檎ｷｨ髮・・阪悟ｯｾ雎｡繝輔ぃ繧､繝ｫ縲阪瑚ｦ∫ｴ・阪ｒ谿九☆
-- 莉墓ｧ伜愛譁ｭ繧・㍾隕√↑豕ｨ諢冗せ縺後≠繧後・縲瑚｣懆ｶｳ縲阪↓險倬鹸
+- 譛€菴朱剞縲梧律莉倥€阪€檎ｷｨ髮・€・€阪€悟ｯｾ雎｡繝輔ぃ繧､繝ｫ縲阪€瑚ｦ∫ｴ・€阪ｒ谿九☆
+- 莉墓ｧ伜愛譁ｭ繧・㍾隕√↑豕ｨ諢冗せ縺後≠繧後・縲瑚｣懆ｶｳ縲↓險倬鹸
 
 ---
 
 ## 螟画峩繝ｭ繧ｰ
 
-| 譌･莉・| 邱ｨ髮・・| 蟇ｾ雎｡繝輔ぃ繧､繝ｫ | 螟画峩蜀・ｮｹ | 陬懆ｶｳ |
+| 譌･莉・| 邱ｨ髮・€・| 蟇ｾ雎｡繝輔ぃ繧､繝ｫ | 螟画峩蜀・ｮｹ | 陬懆ｶｳ |
 | --- | --- | --- | --- | --- |
-| 2026-02-20 | Codex | `docs/繝励Ο繧ｸ繧ｧ繧ｯ繝亥・菴鍋炊隗｣.md`<br>`docs/邂｡逅・Κ邨ｱ蜷医す繧ｹ繝・Β逅・ｧ｣.md`<br>`docs/Codex邱ｨ髮・ｱ･豁ｴ.md`<br>`AGENTS.md`<br>`docs/AI逕ｨ繝励Ο繝ｳ繝励ヨ/AGENTS.md` | 蜈ｨ菴鍋炊隗｣MD繝ｻ邂｡逅・Κ邨ｱ蜷育炊隗｣MD繝ｻ邱ｨ髮・ｱ･豁ｴMD繧呈眠隕丈ｽ懈・縺励∽ｻ雁ｾ後・繧ｹ繝ｬ繝・ラ縺ｧ繧りｪｭ繧縺溘ａ縺ｮ蜿ら・繝ｫ繝ｼ繝ｫ繧但GENTS縺ｸ霑ｽ蜉 | 繝ｦ繝ｼ繧ｶ繝ｼ萓晞ｼ縲後←縺薙〒繧ゆｽｿ縺医ｋ繧医≧縺ｫ縲榊ｯｾ蠢・|
-
-| 2026-02-23 | Codex | `supabase/functions/dispatch-notification/index.ts`<br>`docs/邂｡逅・Κ邨ｱ蜷医す繧ｹ繝・Β逅・ｧ｣.md`<br>`docs/繝励Ο繧ｸ繧ｧ繧ｯ繝亥・菴鍋炊隗｣.md`<br>`docs/Codex邱ｨ髮・ｱ･豁ｴ.md` | 莨∫判蛻ｶ菴憺Κ縺ｧ逋ｺ逕溘＠縺ｦ縺・◆騾夂衍騾∽ｿ｡403繧定ｪｿ譟ｻ縲・dge Function隱榊庄繧剃ｿｮ豁｣縺励√Ο繝ｼ繝ｫ騾夂衍縺ｮ螳滄°逕ｨ繝輔Ο繝ｼ繧定ｨｱ蜿ｯ縲Ｗersion 8 繧偵ョ繝励Ο繧､縺励∝次蝗縺ｨ蟇ｾ蜃ｦ繧堤炊隗｣繝峨く繝･繝｡繝ｳ繝医∈霑ｽ險・| `item16` 縺九ｉ縺ｮ騾｣邨｡譯井ｻｶ騾夂衍縺ｧ `dispatch-notification` 縺・403 縺ｫ縺ｪ繧峨↑縺・％縺ｨ繧貞ｮ滓ｩ溽｢ｺ隱・|
-
-| 2026-02-27 | Codex | `kaita.md`<br>`docs/繝励Ο繧ｸ繧ｧ繧ｯ繝亥・菴鍋炊隗｣.md`<br>`docs/邂｡逅・Κ邨ｱ蜷医す繧ｹ繝・Β逅・ｧ｣.md`<br>`docs/Codex邱ｨ髮・ｱ･豁ｴ.md` | `develop` 霑ｽ蜉md・・kaita.md`・峨ｒ菴懈･ｭ繝悶Λ繝ｳ繝√∈蜿肴丐縲ゆｼ∫判閠・い繧ｫ繧ｦ繝ｳ繝井ｽ懈・繧定ｪｿ譟ｻ縺励｀CP隱崎ｨｼ繧ｨ繝ｩ繝ｼ縺ｨ縲後Γ繝ｼ繝ｫ遒ｺ隱榊ｿ・・繝ｭ繝ｼ繝ｫ莉倅ｸ弱・邂｡逅・ｨｩ髯舌′蠢・ｦ√阪→縺・≧蛻ｶ邏・ｒ逅・ｧ｣繝峨く繝･繝｡繝ｳ繝医∈霑ｽ險・| API莉｣譖ｿ縺ｧ `signUp` 閾ｪ菴薙・謌仙粥縺励◆縺後～Email not confirmed` 縺ｮ縺溘ａ繝ｭ繧ｰ繧､繝ｳ荳榊庄 |
-
 | 2026-03-07 | Codex | `docs/繧｢繝励Μ逅・ｧ｣.md`<br>`docs/AI逕ｨ繝励Ο繝ｳ繝励ヨ/AGENTS.md`<br>`AGENTS.md`<br>`.codex/instructions.md`<br>`.claude/CLAUDE.md`<br>`.github/copilot-instructions.md`<br>`.cursorrules`<br>`.windsurfrules`<br>`GEMINI.md`<br>`docs/繝励Ο繧ｸ繧ｧ繧ｯ繝亥・菴鍋炊隗｣.md`<br>`docs/邂｡逅・Κ邨ｱ蜷医す繧ｹ繝・Β逅・ｧ｣.md`<br>`docs/AI逕ｨ繝励Ο繝ｳ繝励ヨ/README.md`<br>`docs/Codex邱ｨ髮・ｱ･豁ｴ.md` | 繧｢繝励Μ蜈ｨ菴薙・逅・ｧ｣繧帝寔邏・＠縺・`docs/繧｢繝励Μ逅・ｧ｣.md` 繧呈眠隕丈ｽ懈・縺励∝・AI蜷代￠蜈･蜿｣繝輔ぃ繧､繝ｫ縺九ｉ蠢・ｪｭ蛹悶ゆｼ∫判邂｡逅・Κ邨ｱ蜷医す繧ｹ繝・Β繧堤樟蝨ｨ縺ｮ荳ｻ髢狗匱蟇ｾ雎｡縺ｨ縺励※譏手ｨ倥＠縲・壼ｸｸ邱ｨ髮・ｯ・峇繧・`item12`縲彖item16` 縺ｨ `support` 蜻ｨ霎ｺ縺ｫ邨ｱ荳 | `docs/邂｡逅・Κ邨ｱ蜷医す繧ｹ繝・Β莉墓ｧ俶嶌.md` 繧堤樟陦悟ｮ溯｣・・荳ｻ莉墓ｧ倥→縺励※謇ｱ縺・°逕ｨ縺ｫ蟇・○縺・|
 | 2026-03-07 | Codex | `src/features/support/components/SupportDeskScreen.jsx`<br>`docs/Codex邱ｨ髮・ｱ･豁ｴ.md` | 莨夊ｨ亥ｯｾ蠢懊・譎ｯ蜩・・蟶・渕貅悶き繝ｼ繝峨ｒ謾ｹ蝟・＠縲∝屮菴薙＃縺ｨ縺ｮ讀懃ｴ｢莉倥″繝励Ν繝繧ｦ繝ｳ驕ｸ謚槭→縲・∈謚槫屮菴灘・縺ｧ縺ｮ譎ｯ蜩・・蟶・渕貅匁､懃ｴ｢縺ｫ蟇ｾ蠢・| `npm run build` 繧貞ｮ溯｡後＠縲仝eb 繝薙Ν繝画・蜉溘ｒ遒ｺ隱・|
 | 2026-03-07 | Codex | `src/features/support/components/SupportDeskScreen.jsx`<br>`public/service-worker.js`<br>`supabase/functions/dispatch-notification/index.ts`<br>`docs/繧｢繝励Μ逅・ｧ｣.md`<br>`docs/邂｡逅・Κ邨ｱ蜷医す繧ｹ繝・Β逅・ｧ｣.md`<br>`docs/Codex邱ｨ髮・ｱ･豁ｴ.md` | 莨夊ｨ亥ｯｾ蠢懊・蝗｣菴馴∈謚櫁｡ｨ遉ｺ繧定ｦ九ｄ縺吶￥隱ｿ謨ｴ縺励仝eb Push 繧・PWA 邨ゆｺ・凾縺ｧ繧・OS 騾夂衍繝昴ャ繝励い繝・・縺ｨ縺励※蜃ｺ縺励ｄ縺吶＞繧医≧繧ｵ繝ｼ繝薙せ繝ｯ繝ｼ繧ｫ繝ｼ陦ｨ遉ｺ繧ｪ繝励す繝ｧ繝ｳ縺ｨ Edge Function 驟堺ｿ｡繧ｪ繝励す繝ｧ繝ｳ繧貞ｼｷ蛹・| `shared` 驟堺ｸ九・邱ｨ髮・○縺壹～npm run build` 謌仙粥繧堤｢ｺ隱・|
@@ -63,19 +58,6 @@
 | 2026-03-22 | Codex | `src/services/pushSubscriptionService.js`<br>`src/shared/services/webPushService.js`<br>`src/shared/contexts/AuthContext.js`<br>`src/services/supabase/supportNotificationService.js`<br>`src/services/supabase/supportTicketService.js`<br>`src/features/item16/screens/Item16Screen.jsx`<br>`src/features/support/components/SupportDeskScreen.jsx`<br>`src/features/notifications/screens/NotificationListScreen.jsx`<br>`src/shared/utils/notificationNavigation.js`<br>`src/shared/hooks/usePushNavigationListener.js`<br>`public/service-worker.js`<br>`src/features/item13/screens/Item13Screen.jsx`<br>`src/features/item14/screens/Item14Screen.jsx`<br>`src/features/item15/screens/Item15Screen.jsx`<br>`supabase/functions/dispatch-notification/index.ts`<br>`supabase/functions/push-subscription/index.ts`<br>`docs/アプリ理解.md`<br>`docs/管理部統合システム理解.md`<br>`docs/Codex編集履歴.md` | ユーザー要望に合わせて、2026-03-22 に追加していた通知デバッグ系の変更をロールバックした。Push 再購読強制、`clientOrigin` を使った localhost 購読整理、通知失敗の画面警告、通知一覧からの案件直行、音なしトースト向け Push 調整は元に戻し、通知以外の UI 修正は維持した | `npm run build` |
 | 2026-03-27 | Codex | docs/プロジェクト仕様書_TimeSchedule.md | TimeSchedule 機能の新規仕様書草案を追加し、日ごと表示・5分単位スロット・限定カテゴリ表示を初期要件として明文化。未確定事項を対話で確定できるように整理した | 仕様草案作成（実装未着手） |
 | 2026-03-27 | Codex | docs/プロジェクト仕様書_TimeSchedule.md<br>docs/Codex編集履歴.md | TimeSchedule 仕様を対話結果に合わせて更新。初期表示（祭1日目+前回表示日復元）、表示対象をカテゴリではなくエリア判定へ変更、横スクロールカードとエリア絞り込み、運用時間 9:00-20:00 を明記。events/stalls に開催日がない課題に対し、日程管理用の新規テーブル案を追記した | 仕様更新（DB再設計方針の草案追加） |
-| 2026-03-27 | Codex | docs/プロジェクト仕様書_TimeSchedule.md<br>docs/Codex編集履歴.md | TimeSchedule 仕様を追加更新。ロード時のみ取得（時間単位自動更新なし）、当日分のみ表示、絞り込み条件の再起動後復元、企画屋台一覧モーダル流用を確定。加えて、複数日かつ日別に異なる開催時間を `event_schedule_slots` の日付別複数レコードで管理するロジックを明文化した | 仕様更新（データ管理ロジック確定版） |
-| 2026-03-27 | Codex | docs/プロジェクト仕様書_TimeSchedule.md<br>docs/Codex編集履歴.md | event_dates とは分離して新規テーブルを使う方針を反映し、テーブル名を `event_schedule_slots` で確定。`source_id` は `text` で統一し、理由と注意点（FK不可のためサービス層で存在チェック）を追記。`area_name` のマスタ管理について比較説明と推奨案（area_code化）を追加した | 仕様更新（DB詳細設計の確定・補足） |
-| 2026-03-27 | Codex | docs/プロジェクト仕様書_TimeSchedule.md<br>docs/Codex編集履歴.md | `area_name` のマスタ管理を確定し、TimeSchedule 仕様を `area_code` 運用へ更新。`event_schedule_slots` は `area_code` 保持に変更し、新規マスタ `time_schedule_areas`（表示名・表示順・有効フラグ）とのリレーション方針を追記した | 仕様更新（エリア管理方式の確定） |
-| 2026-03-27 | Codex | docs/プロジェクト仕様書_TimeSchedule.md<br>docs/Codex編集履歴.md | TimeSchedule の詳細モーダル要件を確定し、企画屋台一覧の既存詳細モーダルと完全同一仕様（表示項目・レイアウト・操作）を使用する方針へ更新。未確定事項を「なし」に変更した | 仕様更新（最終未確定項目の確定） |
-| 2026-03-27 | Codex | db/migrations/20260327_create_time_schedule_tables.sql<br>docs/プロジェクト仕様書_TimeSchedule.md<br>docs/Codex編集履歴.md | TimeSchedule マイグレーションに events 連携を追加。`event_schedule_slots` への参照存在チェックトリガー、events旧時間カラム（start_time/end_time/start_times/end_times）からの移行処理、旧カラム削除処理を実装し、仕様書にも時間参照の一本化方針を追記した | DB構造更新（events時間カラム廃止・schedule連携化） |
-| 2026-03-27 | Codex | db/migrations/20260327_create_time_schedule_tables.sql<br>src/features/01_Events&Stalls_list/hooks/useEventsStallsList01Data.js<br>src/features/01_Events&Stalls_list/components/DetailModal.jsx<br>docs/プロジェクト仕様書_TimeSchedule.md<br>docs/Codex編集履歴.md | events 連携を強化するため、`event_schedule_slots` 同期用の `events.schedule_*` 参照カラムを追加。スロット変更時に events キャッシュを更新するトリガーを導入し、一覧・詳細モーダルの取得ロジックを `schedule_start_times` / `schedule_end_times` 参照へ切替えた。events旧時間カラム削除後も一覧表示が継続するよう調整した | 実装更新（events参照カラム連携 + 一覧/モーダル取得切替） |
-| 2026-03-27 | Codex | src/features/TimeSchedule/services/timeScheduleService.js<br>docs/Codex編集履歴.md | TimeSchedule 本体サービスを新規実装。`time_schedule_areas` / `event_schedule_slots` の取得、参照元イベント・屋台詳細の結合、運用時間(9:00-20:00)の5分タイムライン投影、開始時刻昇順+名称順ソートを追加した | 実装更新（2: TimeScheduleサービス実装） |
-| 2026-03-27 | Codex | src/features/TimeSchedule/screens/TimeScheduleScreen.jsx<br>src/features/TimeSchedule/services/timeScheduleService.js<br>src/features/TimeSchedule/constants.js<br>docs/Codex編集履歴.md | TimeSchedule 画面へサービス接続を実装。日付切替・エリア複数絞り込み・再起動時復元（AsyncStorage）・5分タイムライン表示を追加し、詳細表示は企画屋台一覧と同一 `DetailModal` を流用する形で統合した。あわせてサービスの `itemType` を既存モーダル互換値に調整した | 実装更新（3: 画面接続 + モーダル統合） |
-| 2026-03-27 | Codex | src/navigation/DrawerNavigator.jsx<br>src/navigation/components/CustomDrawerContent.jsx<br>docs/Codex編集履歴.md | TimeSchedule 画面をナビゲーションへ追加し、Drawer.Screen を企画・屋台一覧の直下へ配置。カスタムドロワーでも同順序で「タイムスケジュール」項目を挿入した | 実装更新（ナビゲーション追加・表示順調整） |
-| 2026-03-27 | Codex | src/features/01_Events&Stalls_list/components/DetailModal.jsx<br>src/features/TimeSchedule/services/timeScheduleService.js<br>docs/Codex編集履歴.md | 詳細モーダルに開催日表示を追加。日ごとに時間が異なる場合は日付ごとに個別表示し、全日程で同一時間の場合は「全日程」形式でまとめて表示するよう更新。TimeSchedule経由でも同判定できるよう events の `schedule_*` 配列をサービス取得へ追加した | 実装更新（詳細モーダル開催日表示の拡張） |
-| 2026-03-27 | Codex | src/features/01_Events&Stalls_list/components/DetailModal.jsx<br>docs/Codex編集履歴.md | 詳細モーダルの開催情報を「開催日程」に統合表示するよう更新。祭日数（開始日〜終了日）を基準に `全日程` / `3日のうちn日` 表示へ対応し、日ごとに時間が異なるケースは時間帯ごとに日付一覧付きで分離表示するロジックを追加した | 実装更新（開催日程統合表示ロジック） |
-| 2026-03-27 | Codex | src/features/TimeSchedule/services/timeScheduleService.js<br>docs/Codex編集履歴.md | TimeSchedule サービスのDB互換性を強化。`events` / `stalls` 詳細取得でスキーマ差分時のフォールバック select を追加し、`schedule_*` 配列が未構成な環境でも `event_schedule_slots` の `schedule_date/start_time/end_time` から開催日程を復元できるようにした | 実装更新（現行DB構造差分への耐性向上） |
-| 2026-03-27 | Codex | src/features/TimeSchedule/services/timeScheduleService.js<br>docs/Codex編集履歴.md | TimeSchedule のエリア絞り込み互換性を修正。`event_schedule_slots` が `area_name` カラム運用の環境へフォールバックした場合でも、画面側 `area_code` 選択値を名称へ変換して絞り込めるよう調整した | 実装更新（エリア絞り込みのDB差分吸収） |
 | 2026-03-29 | Codex | src/features/TimeSchedule/services/timeScheduleService.js<br>src/features/TimeSchedule/screens/TimeScheduleScreen.jsx<br>docs/Codex編集履歴.md | TimeSchedule を運用要件に合わせて改修。日付移動を `event_schedule_slots` の存在日付に限定し、エリア絞り込みを `area_locations` 基準へ置換。あわせて空行の「該当なし」を削除し、時間帯をまたぐイベントに継続表示フラグを付与して連結表示へ対応した | 実装更新（TimeSchedule運用改善） |
 | 2026-03-29 | Codex | src/features/TimeSchedule/screens/TimeScheduleScreen.jsx<br>docs/Codex編集履歴.md | TimeSchedule の列評価をブックマーク方式へ拡張。建物/エリア/団体の軸選択、検索選択、名前付き保存、ユーザー別のローカル保存を追加し、同一評価軸で同時間帯に重なる企画は同一基準内で隣列レーンへ自動拡張する表示に変更した | 実装更新（列評価軸ブックマーク + 重複レーン拡張） |
 | 2026-03-29 | Codex | src/features/TimeSchedule/screens/TimeScheduleScreen.jsx<br>docs/Codex編集履歴.md | TimeSchedule のブックマーク設定フローを二段階化。既存表示項目の設定変更は設定モーダルで下書き保存して一覧へ戻す挙動に変更し、本体反映は一覧モーダルの「設定を反映する」押下時のみ行うよう統一した。あわせて一覧行メタを軸名固定表示から選択項目名表示へ変更し、設定モーダル内に現在選択中項目のサマリ表示を追加した | 実装更新（設定反映フロー改善 + 選択項目可視化） |
@@ -139,3 +121,7 @@
 | 2026-03-29 | Codex | src/features/TimeSchedule/screens/TimeScheduleScreen.jsx<br>docs/Codex編集履歴.md | 評価軸候補検索の `name_kana` 適用漏れを修正。エリア候補生成の最終整形で `labelKana` が落ちていたため保持するよう変更し、建物に加えてエリアでもかな検索がヒットするようにした | 実装更新（エリアかな検索の漏れ修正） |
 | 2026-03-29 | Codex | src/features/TimeSchedule/services/timeScheduleService.js<br>src/features/TimeSchedule/screens/TimeScheduleScreen.jsx<br>docs/Codex編集履歴.md | 表示項目設定の候補参照元をマスタ統一。建物は `building_locations`、エリアは `area_locations`、団体は `event_organizations` から生成するよう変更し、団体候補が当日スロット有無に依存しないようにした | 実装更新（候補生成のマスタ参照統一） |
 | 2026-03-31 | Codex | docs/プロジェクト仕様書_TimeSchedule.md<br>docs/Codex編集履歴.md | TimeSchedule 仕様書を現行実装へ更新。5分刻み前提を15分目盛りへ修正し、表示方式をエリア絞り込み中心からブックマーク軸（建物/エリア/団体）中心へ改訂。データ参照テーブル、フォールバック挙動、モーダルの下書き反映方式を明文化した | ドキュメント更新（TimeSchedule 現行仕様反映） |
+| 2026-03-31 | Codex | src/features/TimeSchedule/services/timeScheduleService.js<br>docs/プロジェクト仕様書_TimeSchedule.md<br>docs/Codex編集履歴.md | redundantな `time_schedule_areas` テーブルを完全に廃止し、場所管理を `area_locations` へ一元化。`event_schedule_slots.area_id` への移行に伴う不要なフォールバックロジックやドキュメント記述を整理した | 実装更新（テーブル構成の簡素化・統合） |
+| 2026-03-31 | Codex | `src/features/TimeSchedule/services/timeScheduleService.js`<br>`ikomasai-hp-admin/.../EventsStallsManagement.tsx`<br>`EventStallRegistration.tsx`<br>`docs/Codex編集履歴.md` | TimeSchedule 機能のDB構造を event_schedule_slots から events テーブルの配列カラム（schedule_dates等）参照へ移行し、管理画面の時間登録 UI をモダンな TimeSelect とガラスモーフィズム風の追加オプション時間登録 UI へ刷新。CSVインポートも新構造へ対応させ、構文と型定義を修正した | 実装更新（タイムスケジュール配列化・Admin UI モダン化） |
+| 2026-03-31 | Antigravity | `src/features/01_Events&Stalls_list/components/DetailModal.jsx`<br>`docs/プロジェクト仕様書_企画屋台一覧.md`<br>`ai_tasks/optional_time_layout/` | 企画詳細モーダルの開催日程におけるオプション時間（準備・片付け）のレイアウトを、スマホ・PC両対応のレスポンシブな形式に修正。等幅数字（tabular-nums）とコロンの垂直位置微調整により、案内テキストと開始位置の整列を含め視認性を大幅に向上させた | `useWindowDimensions` によるレイアウト切り替えと `fontVariant: ['tabular-nums']` の適用。仕様書も最新の状態に更新 |
+| 2026-03-31 | Antigravity | `docs/プロジェクト仕様書_TimeSchedule.md`<br>`ai_tasks/time_schedule_spec_update/` | TimeSchedule の仕様書を最新の実装（DB構造の配列化、オプション時間対応、レスポンシブ表示）に合わせて更新。運用終了時刻を 22:00（実装準拠）へ修正し、データ要件を `events` 配列カラム参照の最新構造へ刷新した | 実装と仕様書の整合性を確保 |

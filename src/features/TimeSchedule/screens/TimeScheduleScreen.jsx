@@ -1829,12 +1829,16 @@ const TimeScheduleScreen = ({ navigation }) => {
    */
   const sortedScheduleItems = useMemo(() => {
     return [...visibleScheduleItems].sort((left, right) => {
-      if (left.startMinutes !== right.startMinutes) {
-        return left.startMinutes - right.startMinutes;
+      const leftStart = typeof left.entryStartMinutes === 'number' ? left.entryStartMinutes : left.startMinutes;
+      const rightStart = typeof right.entryStartMinutes === 'number' ? right.entryStartMinutes : right.startMinutes;
+      if (leftStart !== rightStart) {
+        return leftStart - rightStart;
       }
 
-      const leftDuration = left.endMinutes - left.startMinutes;
-      const rightDuration = right.endMinutes - right.startMinutes;
+      const leftEnd = typeof left.exitEndMinutes === 'number' ? left.exitEndMinutes : left.endMinutes;
+      const rightEnd = typeof right.exitEndMinutes === 'number' ? right.exitEndMinutes : right.endMinutes;
+      const leftDuration = leftEnd - leftStart;
+      const rightDuration = rightEnd - rightStart;
       if (leftDuration !== rightDuration) {
         return rightDuration - leftDuration;
       }
@@ -1875,10 +1879,13 @@ const TimeScheduleScreen = ({ navigation }) => {
       const laidOutCards = [];
 
       groupItems.forEach((item) => {
+        const itemStart = typeof item.entryStartMinutes === 'number' ? item.entryStartMinutes : item.startMinutes;
+        const itemEnd = typeof item.exitEndMinutes === 'number' ? item.exitEndMinutes : item.endMinutes;
+        
         /** 表示開始分 */
-        const clampedStartMinutes = Math.max(item.startMinutes, OPERATION_START_MINUTES);
+        const clampedStartMinutes = Math.max(itemStart, OPERATION_START_MINUTES);
         /** 表示終了分 */
-        const clampedEndMinutes = Math.min(item.endMinutes, OPERATION_END_MINUTES);
+        const clampedEndMinutes = Math.min(itemEnd, OPERATION_END_MINUTES);
         if (clampedEndMinutes <= clampedStartMinutes) {
           return;
         }
@@ -2838,12 +2845,37 @@ const TimeScheduleScreen = ({ navigation }) => {
                           marginRight: index === criterionGroups.length - 1 ? 0 : TIMELINE_CARD_GAP,
                           borderColor: theme.border,
                           backgroundColor: group.criterionColor || DEFAULT_BOOKMARK_THEME_COLOR,
+                          ...(isMobileLayout
+                            ? {
+                                flexDirection: 'row',
+                                paddingHorizontal: 0,
+                                overflow: 'hidden',
+                              }
+                            : {}),
                         },
                       ]}
                     >
-                      <Text numberOfLines={1} style={[styles.locationHeaderText, { color: theme.text }]}> 
-                        {group.criterionLabel}
-                      </Text>
+                      {isMobileLayout ? (
+                        Array.from({ length: group.laneCount }).map((_, laneIndex) => (
+                          <View
+                            key={laneIndex}
+                            style={{
+                              width: TIMELINE_CARD_WIDTH,
+                              marginRight: laneIndex === group.laneCount - 1 ? 0 : TIMELINE_CARD_GAP,
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Text numberOfLines={1} style={[styles.locationHeaderText, { color: theme.text }]}> 
+                              {group.criterionLabel}
+                            </Text>
+                          </View>
+                        ))
+                      ) : (
+                        <Text numberOfLines={1} style={[styles.locationHeaderText, { color: theme.text }]}> 
+                          {group.criterionLabel}
+                        </Text>
+                      )}
                     </View>
                   ))}
                 </View>
@@ -2971,7 +3003,16 @@ const TimeScheduleScreen = ({ navigation }) => {
                         );
                       })}
 
-                    {laidOutScheduleCards.map((item) => (
+                    {laidOutScheduleCards.map((item) => {
+                      const itemStart = typeof item.entryStartMinutes === 'number' ? item.entryStartMinutes : item.startMinutes;
+                      const itemEnd = typeof item.exitEndMinutes === 'number' ? item.exitEndMinutes : item.endMinutes;
+                      
+                      const entryDuration = Math.max(0, item.startMinutes - itemStart);
+                      const mainDuration = Math.max(0, item.endMinutes - item.startMinutes);
+                      const exitDuration = Math.max(0, itemEnd - item.endMinutes);
+                      const hasOptionalTimes = entryDuration > 0 || exitDuration > 0;
+
+                      return (
                       <TouchableOpacity
                         key={`${item.source_type}-${item.source_id}-${item.startMinutes}-${item.endMinutes}`}
                         style={[
@@ -2983,26 +3024,71 @@ const TimeScheduleScreen = ({ navigation }) => {
                             left: item.columnIndex * (TIMELINE_CARD_WIDTH + TIMELINE_CARD_GAP),
                             top: item.top,
                             height: item.height,
+                            ...(hasOptionalTimes && {
+                              padding: 0,
+                              overflow: 'hidden',
+                              flexDirection: 'column',
+                            }),
                           },
                         ]}
                         onPress={() => handlePressItem(item)}
                       >
-                        {/** カード表示用の場所名（建物 + 場所） */}
-                        {(() => {
-                          const cardLocationName = buildBuildingLocationLabel(
-                            item?.buildingLocationName,
-                            item?.locationName
-                          );
-                          return (
-                            <>
-                        <Text style={[styles.itemTitle, { color: theme.text }]} numberOfLines={1}>{item.displayName}</Text>
-                        <Text style={[styles.itemMeta, { color: theme.textSecondary }]} numberOfLines={1}>{buildCardTimeRangeLabel(item.start_time, item.end_time)}</Text>
-                        <Text style={[styles.itemMeta, { color: theme.textSecondary }]} numberOfLines={1}>{cardLocationName || item.locationName || '場所未設定'}</Text>
-                            </>
-                          );
-                        })()}
+                        {hasOptionalTimes ? (
+                          <>
+                            {/** 準備時間ブロック */}
+                            {entryDuration > 0 && (
+                              <View style={{ flex: entryDuration, minHeight: 16, backgroundColor: toAlphaColor(theme.text, 0.08), borderBottomWidth: 1, borderBottomColor: toAlphaColor(theme.border, 0.5), borderBottomStyle: 'dashed', paddingHorizontal: 4, paddingVertical: 1, justifyContent: 'center' }}>
+                                <Text style={[styles.itemMeta, { color: theme.textSecondary, fontSize: 10, lineHeight: 12 }]} numberOfLines={1}>
+                                  {item.entry_label || '準備'}　{item.entry_start_time}〜
+                                </Text>
+                              </View>
+                            )}
+                            {/** 企画本番ブロック */}
+                            <View style={{ flex: mainDuration, paddingHorizontal: 12, paddingVertical: 10, gap: 4, justifyContent: 'flex-start' }}>
+                              {(() => {
+                                const cardLocationName = buildBuildingLocationLabel(
+                                  item?.buildingLocationName,
+                                  item?.locationName
+                                );
+                                return (
+                                  <>
+                                    <Text style={[styles.itemTitle, { color: theme.text }]} numberOfLines={1}>{item.displayName}</Text>
+                                    <Text style={[styles.itemMeta, { color: theme.textSecondary }]} numberOfLines={1}>{buildCardTimeRangeLabel(item.start_time, item.end_time)}</Text>
+                                    <Text style={[styles.itemMeta, { color: theme.textSecondary }]} numberOfLines={1}>{cardLocationName || item.locationName || '場所未設定'}</Text>
+                                  </>
+                                );
+                              })()}
+                            </View>
+                            {/** 片付け時間ブロック */}
+                            {exitDuration > 0 && (
+                              <View style={{ flex: exitDuration, minHeight: 16, backgroundColor: toAlphaColor(theme.text, 0.08), borderTopWidth: 1, borderTopColor: toAlphaColor(theme.border, 0.5), borderTopStyle: 'dashed', paddingHorizontal: 4, paddingVertical: 1, justifyContent: 'center' }}>
+                                <Text style={[styles.itemMeta, { color: theme.textSecondary, fontSize: 10, lineHeight: 12 }]} numberOfLines={1}>
+                                  {item.exit_label || '片付け'}　〜{item.exit_end_time}
+                                </Text>
+                              </View>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {/** カード表示用の場所名（建物 + 場所） - 従来通り */}
+                            {(() => {
+                              const cardLocationName = buildBuildingLocationLabel(
+                                item?.buildingLocationName,
+                                item?.locationName
+                              );
+                              return (
+                                <>
+                                  <Text style={[styles.itemTitle, { color: theme.text }]} numberOfLines={1}>{item.displayName}</Text>
+                                  <Text style={[styles.itemMeta, { color: theme.textSecondary }]} numberOfLines={1}>{buildCardTimeRangeLabel(item.start_time, item.end_time)}</Text>
+                                  <Text style={[styles.itemMeta, { color: theme.textSecondary }]} numberOfLines={1}>{cardLocationName || item.locationName || '場所未設定'}</Text>
+                                </>
+                              );
+                            })()}
+                          </>
+                        )}
                       </TouchableOpacity>
-                    ))}
+                      );
+                    })}
                   </View>
                 </ScrollView>
               </View>
@@ -3187,9 +3273,15 @@ const TimeScheduleScreen = ({ navigation }) => {
                         {
                           borderColor: isSelected ? theme.primary : theme.border,
                           backgroundColor: isSelected ? theme.primary : theme.background,
+                          justifyContent: 'center',
+                          alignItems: 'center',
                         },
                       ]}
-                    />
+                    >
+                      {isSelected && (
+                        <Ionicons name="checkmark" size={14} color={theme.background} />
+                      )}
+                    </View>
                     <Text style={[styles.settingsOptionLabel, { color: theme.text }]}>{candidate.label}</Text>
                   </TouchableOpacity>
                 );

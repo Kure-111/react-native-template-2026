@@ -137,7 +137,7 @@ export const useEventsStallsList01Data = (tabInfo, searchQuery, selectedCategori
                 if (fetchEvents) {
                     promises.push(
                         supabase.from('events')
-                            .select('id, name, name_kana, description, schedule_dates, schedule_start_times, schedule_end_times, image_path, category_id, updated_at, location_id, event_organization_id, event_locations(id, name, building_id, building_locations(id, name, name_kana, area_id, display_order)), event_organizations(name, name_kana)')
+                            .select('id, name, name_kana, description, schedule_dates, schedule_start_times, schedule_end_times, schedule_entry_labels, schedule_entry_start_times, schedule_exit_labels, schedule_exit_end_times, image_path, category_id, updated_at, location_id, event_organization_id, event_locations(id, name, building_id, building_locations(id, name, name_kana, area_id, display_order)), event_organizations(name, name_kana)')
                             .eq('is_published', true)
                             .then(res => ({ ...res, type: TABS.EVENTS }))
                     );

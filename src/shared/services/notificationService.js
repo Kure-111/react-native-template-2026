@@ -191,15 +191,12 @@ const dispatchNotification = async (payload) => {
       return { data: null, error: new Error('ログインセッションが見つかりません。再ログインしてください。') };
     }
 
-    const invokeDispatch = async (token) =>
+    const invokeDispatch = async () =>
       getSupabaseClient().functions.invoke('dispatch-notification', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
         body: payload,
       });
 
-    let { data, error } = await invokeDispatch(accessToken);
+    let { data, error } = await invokeDispatch();
 
     if (error && isUnauthorizedFunctionError(error)) {
       // アクセストークンが期限切れの場合、autoRefreshToken の完了を待ってから再試行する。
@@ -208,7 +205,7 @@ const dispatchNotification = async (payload) => {
       await new Promise((resolve) => setTimeout(resolve, 600));
       const newToken = await getValidAccessToken();
       if (newToken) {
-        ({ data, error } = await invokeDispatch(newToken));
+        ({ data, error } = await invokeDispatch());
       }
     }
 

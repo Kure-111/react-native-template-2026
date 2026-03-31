@@ -11,8 +11,8 @@
 大学祭当日の企画スケジュールを時系列で可視化し、日付ごとに開催状況を確認できる画面を提供する。
 
 ### 1.2 対象範囲
-- 対象は `event_schedule_slots` に登録された `source_type=event` のみ（屋台は表示対象外）
-- 運用時間（09:00〜20:00）内でタイムライン表示
+- 対象は `events` テーブルに登録された、有効な開催日程（`schedule_dates`等）を持つ企画のみ（屋台は表示対象外）
+- 運用時間（09:00〜22:00）内でタイムライン表示
 - 表示対象はブックマーク（建物/エリア/団体）で切り替える
 
 ### 1.3 対象ユーザー
@@ -29,12 +29,12 @@
   - `AsyncStorage` に保存された前回表示日（`time_schedule_selected_date`）
   - 環境変数 `EXPO_PUBLIC_FESTIVAL_START_DATE`（`YYYY-MM-DD` 形式のときのみ）
   - 端末の当日日付
-- 表示可能日（`event_schedule_slots` に存在する開催日）に要求日付が存在しない場合、直近の過去日付へフォールバックする。過去日付がなければ最小日付へフォールバックする
-- 画面上の日付移動は、表示可能日の配列に対して前日/翌日ボタンで行う
+- 表示可能日（`events.schedule_dates` に存在する開催日）に要求日付が存在しない場合、直近の過去日付へフォールバックする。過去日付がなければ最小日付へフォールバックする
+- 画面上の日付移動は、全企画の開催日のユニークな配列に対して前日/翌日ボタンで行う
 
 ### 2.2 タイムライン表示
-- 運用時間は 09:00〜20:00
-- タイムラインの基準目盛りは15分刻み（09:00, 09:15, ... , 20:00）
+- 運用時間は 09:00〜22:00
+- タイムラインの基準目盛りは15分刻み（09:00, 09:15, ... , 22:00）
 - 1時間境界の罫線は強調表示し、それ以外は通常罫線で表示する
 - 同時間帯で重なる企画は同一ブックマーク列内でレーン分割（横方向に増列）して重なりを回避する
 - 該当企画がない列には「該当なし」バッジを表示する
@@ -67,7 +67,9 @@
   - 開催時刻（`HH:mm - HH:mm`）
   - 開催場所（建物 + 場所）
 - カードタップで詳細モーダルを開く
-- 詳細モーダルは `01_Events&Stalls_list` の `DetailModal` を流用し、既存の企画詳細表示仕様と統一する
+- 詳細モーダルおよび時刻表示の仕様詳細は `01_Events&Stalls_list` の `DetailModal` に準拠する
+  - 数字は等幅フォント (`tabular-nums`) を使用し、時刻の垂直整列を維持する
+  - オプション時間（準備・片付け）がある場合、スマホでは縦並び、PCでは横並びのレスポンシブレイアウトで表示する
 
 ### 2.6 更新方式
 - データ取得は以下タイミングで実行する
@@ -100,30 +102,31 @@
 ## 4. データ要件（現行実装準拠）
 
 ### 4.1 参照テーブル
-- `event_schedule_slots`
-- `events`
+- `events` (メインソース)
 - `building_locations`
 - `area_locations`
 - `event_organizations`
 
-### 4.2 `event_schedule_slots` の利用条件
-- `source_type='event'` のみ取得対象
-- 基本条件
-  - `schedule_date = 選択日`
-  - `is_visible_time_schedule = true`（列が存在しない環境では条件なしフォールバック）
-- スキーマ差分互換のため、`area_code` がない環境では `area_name` を利用するフォールバックを持つ
+### 4.2 `events` からのデータ取得条件
+- `is_published = true` かつ `schedule_dates` が存在（非NULL）する企画が対象
+- 画面上の選択日が含まれるレコードのみを取得する（`.contains('schedule_dates', [選択日])`）
+- 取得した配列データから、選択日のインデックスに対応する各項目の値を抽出し、仮想的な「スロット」として展開する
 
-### 4.3 ソース詳細結合
-- `source_id` を `events.id` に結合して表示データを生成する
-- `events` 取得時は select 候補を段階的にフォールバックし、環境差分で一部列やリレーションが欠ける場合でも可能な範囲で表示継続する
-- `schedule_dates` / `schedule_start_times` / `schedule_end_times` が空の場合は、スロット日付・時刻から補完する
+### 4.3 参照する配列カラムとデータ構造
+- `schedule_dates`: 開催日配列 (`YYYY-MM-DD[]`)
+- `schedule_start_times`: 開催開始時刻配列 (`HH:mm:ss[]`)
+- `schedule_end_times`: 開催終了時刻配列 (`HH:mm:ss[]`)
+- `schedule_entry_start_times`: 準備開始時刻配列 (オプション)
+- `schedule_entry_labels`: 準備時間ラベル配列 (オプション)
+- `schedule_exit_end_times`: 片付け終了時刻配列 (オプション)
+- `schedule_exit_labels`: 片付け時間ラベル配列 (オプション)
 
 ### 4.4 表示順と投影
 - 各時刻での表示順
-  - 開始時刻昇順
-  - 同時刻は表示名昇順（日本語ロケール、数値比較あり）
+  - `schedule_start_times[index]` の昇順
+  - 同時刻の場合は企画名（`name`）の昇順（日本語ロケール、数値比較あり）
 - タイムライン投影判定
-  - `start_time <= slot_time < end_time`
+  - `start_minutes <= slot_minutes < end_minutes`
 
 ---
 
@@ -145,5 +148,6 @@
 
 ## 6. 既知の差分メモ
 
-- 本仕様書は 2026/03/31 時点の実装（`src/features/TimeSchedule/screens/TimeScheduleScreen.jsx` / `src/features/TimeSchedule/services/timeScheduleService.js`）に合わせて更新済み
-- 以前の「5分刻み」「エリア絞り込み中心」仕様は廃止し、現行は「15分目盛り + ブックマーク軸表示」が正
+- 本仕様書は 2026/03/31 時点の実装（`src/features/TimeSchedule/services/timeScheduleService.js`）に合わせて更新済み
+- **DB構造の刷新**: `event_schedule_slots` テーブルの直接参照方式を廃止し、`events` テーブルの配列カラム参照へ移行した
+- **表示仕様の精緻化**: 数字の等幅表示（`tabular-nums`）やオプション時間のレスポンシブ対応など、視認性向上のための修正を反映済み

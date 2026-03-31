@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, SafeAreaView, Animated, Dimensions, TouchableWithoutFeedback, Easing } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, SafeAreaView, Animated, Dimensions, TouchableWithoutFeedback, Easing, useWindowDimensions } from 'react-native';
 import { Ionicons } from '../../../shared/components/icons';
 import { useTheme } from '../../../shared/hooks/useTheme';
 import { TABS } from '../constants';
@@ -15,6 +15,46 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
  */
 const DetailModal = ({ visible, item, onClose }) => {
     const { theme } = useTheme();
+    const { width: windowWidth } = useWindowDimensions();
+    const isMobile = windowWidth < 600; // 600px未満をスマホ表示（縦並び）とする
+
+
+    /**
+     * 数字を等幅（tabular-nums）で表示し、コロンの垂直位置を微調整するコンポーネント
+     */
+    const FormattedTime = ({ text, style }) => {
+        if (!text || typeof text !== 'string') return null;
+        
+        // 時刻（HH:mm）が含まれる場合、分割してコロンの高さを微調整
+        if (text.includes(':')) {
+            const parts = text.split(':');
+            return (
+                <View style={[styles.tabularRow, { alignItems: 'center' }]}>
+                    <Text style={[style, styles.tabularNums, { includeFontPadding: false }]}>{parts[0]}</Text>
+                    <Text style={[style, styles.tabularNums, { paddingBottom: 1, includeFontPadding: false, textAlignVertical: 'center' }]}>:</Text>
+                    <Text style={[style, styles.tabularNums, { includeFontPadding: false }]}>{parts[1]}</Text>
+                </View>
+            );
+        }
+
+        return <Text style={[style, styles.tabularNums, { includeFontPadding: false }]}>{text}</Text>;
+    };
+
+    /**
+     * ラベル付きの時刻（例：前 09:30 〜）を等幅で表示するコンポーネント
+     */
+    const FormattedLabelTime = ({ text, style }) => {
+        if (!text || typeof text !== 'string') return null;
+        
+        // 数字部分（時刻）を抽出して等幅にするため、単一のTextとして描画しつつスタイル適用
+        // React NativeではネストしたTextに一部のスタイルが引き継がれる
+        return (
+            <Text style={[style, styles.tabularNums, { includeFontPadding: false }]}>
+                {text}
+            </Text>
+        );
+    };
+
     const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -143,10 +183,23 @@ const DetailModal = ({ visible, item, onClose }) => {
                     ? `${startText} - ${endText}`
                     : (startText || endText || '設定なし');
 
+                /** オプション時間 */
+                const entryLabels = Array.isArray(sourceItem?.schedule_entry_labels) ? sourceItem.schedule_entry_labels : [];
+                const entryStarts = Array.isArray(sourceItem?.schedule_entry_start_times) ? sourceItem.schedule_entry_start_times : [];
+                const exitLabels = Array.isArray(sourceItem?.schedule_exit_labels) ? sourceItem.schedule_exit_labels : [];
+                const exitEnds = Array.isArray(sourceItem?.schedule_exit_end_times) ? sourceItem.schedule_exit_end_times : [];
+
+                const entryLabel = entryLabels[index] || '';
+                const entryStartText = formatTimeToMinute(entryStarts[index]);
+                const exitLabel = exitLabels[index] || '';
+                const exitEndText = formatTimeToMinute(exitEnds[index]);
+
                 return {
                     dateValue: scheduleDates[index],
                     dateLabel: formatDateLabel(scheduleDates[index]),
                     timeLabel,
+                    entryText: entryStartText && startText ? `${entryLabel || '前'} ${entryStartText} \u301c` : '',
+                    exitText: exitEndText && endText ? `\u301c ${exitEndText} ${exitLabel || '後'}` : '',
                     timeKey: `${startText}_${endText}`,
                 };
             });
@@ -162,11 +215,18 @@ const DetailModal = ({ visible, item, onClose }) => {
                 ? `${startText} - ${endText}`
                 : (startText || endText || '設定なし');
 
+            const entryLabel = sourceItem?.schedule_entry_labels?.[0] || sourceItem?.schedule_entry_label || '';
+            const entryStartText = formatTimeToMinute(sourceItem?.schedule_entry_start_times?.[0] || sourceItem?.entry_start_time);
+            const exitLabel = sourceItem?.schedule_exit_labels?.[0] || sourceItem?.schedule_exit_label || '';
+            const exitEndText = formatTimeToMinute(sourceItem?.schedule_exit_end_times?.[0] || sourceItem?.exit_end_time);
+
             return [
                 {
                     dateValue: sourceItem.schedule_date,
                     dateLabel: formatDateLabel(sourceItem.schedule_date),
                     timeLabel,
+                    entryText: entryStartText && startText ? `${entryLabel || '前'} ${entryStartText} \u301c` : '',
+                    exitText: exitEndText && endText ? `\u301c ${exitEndText} ${exitLabel || '後'}` : '',
                     timeKey: `${startText}_${endText}`,
                 }
             ];
@@ -233,6 +293,8 @@ const DetailModal = ({ visible, item, onClose }) => {
         const mappedRows = scheduleRows.map((row) => ({
             dateText: formatDateShortLabel(row.dateValue),
             timeText: row.timeLabel || '設定なし',
+            entryText: row.entryText,
+            exitText: row.exitText,
         }));
 
         return mappedRows;
@@ -353,22 +415,38 @@ const DetailModal = ({ visible, item, onClose }) => {
                                                         <Text style={[styles.scheduleDateText, { color: theme.text }]}>
                                                             {row.dateText}
                                                         </Text>
-                                                        {(() => {
-                                                            const timeRange = splitTimeRangeText(row.timeText);
-                                                            return (
-                                                                <View style={styles.scheduleTimeRangeContainer}>
-                                                                    <Text style={[styles.scheduleTimeStartText, { color: theme.text }]}>
-                                                                        {timeRange.startText}
-                                                                    </Text>
-                                                                    <Text style={[styles.scheduleTimeDashText, { color: theme.text }]}>
-                                                                        {timeRange.hasRange ? '-' : ''}
-                                                                    </Text>
-                                                                    <Text style={[styles.scheduleTimeEndText, { color: theme.text }]}>
-                                                                        {timeRange.endText}
-                                                                    </Text>
+                                                        <View style={styles.scheduleTimeContent}>
+                                                            {(() => {
+                                                                const timeRange = splitTimeRangeText(row.timeText);
+                                                                return (
+                                                                    <View style={styles.scheduleTimeRangeContainer}>
+                                                                        <FormattedTime text={timeRange.startText} style={[styles.scheduleTimeStartText, { color: theme.text }]} />
+                                                                        <Text style={[styles.scheduleTimeDashText, { color: theme.text }]}>
+                                                                            {timeRange.hasRange ? '-' : ''}
+                                                                        </Text>
+                                                                        <FormattedTime text={timeRange.endText} style={[styles.scheduleTimeEndText, { color: theme.text }]} />
+                                                                    </View>
+                                                                );
+                                                            })()}
+                                                            {(row.entryText || row.exitText) ? (
+                                                                <View style={[
+                                                                    styles.optionalTimesContainer, 
+                                                                    isMobile && { flexDirection: 'column', alignItems: 'flex-start', gap: 2 }
+                                                                ]}>
+                                                                    {row.entryText ? (
+                                                                        <FormattedLabelTime text={row.entryText} style={[styles.optionalTimeText, { color: theme.textSecondary }]} />
+                                                                    ) : null}
+                                                                    {!isMobile && row.entryText && row.exitText ? (
+                                                                        <Text style={[styles.optionalTimeText, { color: theme.textSecondary }]}>
+                                                                            ／
+                                                                        </Text>
+                                                                    ) : null}
+                                                                    {row.exitText ? (
+                                                                        <FormattedLabelTime text={row.exitText} style={[styles.optionalTimeText, { color: theme.textSecondary }]} />
+                                                                    ) : null}
                                                                 </View>
-                                                            );
-                                                        })()}
+                                                            ) : null}
+                                                        </View>
                                                     </View>
                                                 ))}
                                             </View>
@@ -522,7 +600,22 @@ const styles = StyleSheet.create({
     },
     scheduleRowContainer: {
         flexDirection: 'row',
+        alignItems: 'flex-start',
+        marginBottom: 8,
+    },
+    scheduleTimeContent: {
+        flex: 1,
+    },
+    optionalTimeText: {
+        fontSize: 12,
+        fontWeight: '500',
+        lineHeight: 18,
+    },
+    optionalTimesContainer: {
+        flexDirection: 'row',
         alignItems: 'center',
+        gap: 12,
+        marginTop: 2,
     },
     scheduleDateText: {
         fontSize: 16,
@@ -537,20 +630,24 @@ const styles = StyleSheet.create({
     scheduleTimeStartText: {
         fontSize: 16,
         fontWeight: '500',
-        width: 50,
-        textAlign: 'right',
+        textAlign: 'left',
     },
     scheduleTimeDashText: {
         fontSize: 16,
         fontWeight: '500',
-        width: 20,
+        marginHorizontal: 8,
         textAlign: 'center',
     },
     scheduleTimeEndText: {
         fontSize: 16,
         fontWeight: '500',
-        width: 50,
         textAlign: 'left',
+    },
+    tabularNums: {
+        fontVariant: ['tabular-nums'],
+    },
+    tabularRow: {
+        flexDirection: 'row',
     },
     divider: {
         height: 1,
