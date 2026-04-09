@@ -934,7 +934,7 @@ const TimeScheduleScreen = ({ navigation }) => {
   /** 認証ユーザー情報 */
   const { user } = useAuth();
   /** 表示モード（timeline または cardList） */
-  const [viewMode, setViewMode] = useState(VIEW_MODE.TIMELINE);
+  const [viewMode, setViewMode] = useState(isMobileLayout ? VIEW_MODE.CARD_LIST : VIEW_MODE.TIMELINE);
   /** カードリストモード用アクティブブックマークID */
   const [cardListActiveBookmarkId, setCardListActiveBookmarkId] = useState('');
   /** 選択中日付 */
@@ -1309,6 +1309,36 @@ const TimeScheduleScreen = ({ navigation }) => {
     return [...defaultBookmarks, ...userBookmarks];
   }, [defaultBookmarks, displayBookmarks]);
 
+  /** ユーザーが作成したブックマーク一覧（デフォルト以外） */
+  const myListBookmarks = useMemo(() => {
+    return (displayBookmarks || []).filter(
+      (bookmark) => !String(bookmark?.id || '').startsWith(DEFAULT_BOOKMARK_ID_PREFIX)
+    );
+  }, [displayBookmarks]);
+
+  /** 現在選択されているタブに応じたブックマーク一覧 */
+  const currentTabBookmarks = useMemo(() => {
+    return activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.DEFAULT ? defaultBookmarks : myListBookmarks;
+  }, [activeTimelineBookmarkTab, defaultBookmarks, myListBookmarks]);
+
+  /** カードリスト表示用に色の可読性を確保したブックマーク一覧 */
+  const cardListResolvedBookmarks = useMemo(() => {
+    return currentTabBookmarks.map(b => ({
+      ...b,
+      color: resolveReadableBookmarkThemeColor(b.color || theme.primary, theme)
+    }));
+  }, [currentTabBookmarks, theme]);
+
+  // リストモード切り替え時やタブ切り替え時に選択状態をよしなに更新する
+  useEffect(() => {
+    if (viewMode === VIEW_MODE.CARD_LIST && currentTabBookmarks.length > 0) {
+      const isCurrentActiveValid = currentTabBookmarks.some((b) => String(b.id) === cardListActiveBookmarkId);
+      if (!isCurrentActiveValid) {
+        setCardListActiveBookmarkId(String(currentTabBookmarks[0].id));
+      }
+    }
+  }, [viewMode, cardListActiveBookmarkId, currentTabBookmarks]);
+
   /** ブックマーク一覧モーダルで扱う下書き込みブックマーク一覧 */
   const mergedBookmarksForModal = useMemo(() => {
     /** モーダル表示中は下書き、非表示時は本体状態を参照 */
@@ -1356,7 +1386,7 @@ const TimeScheduleScreen = ({ navigation }) => {
    */
   const cardListScheduleData = useCardListSchedule(
     selectedDate,
-    mergedBookmarks,
+    currentTabBookmarks,
     cardListActiveBookmarkId,
     setCardListActiveBookmarkId
   );
@@ -2791,80 +2821,23 @@ const TimeScheduleScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {viewMode === VIEW_MODE.CARD_LIST ? (
-          <View style={[styles.currentListTargetSelectionWrap, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-            <Text style={[styles.currentListTargetLabel, { color: theme.textSecondary }]}>表示対象</Text>
-            <View style={styles.currentListTargetTable}>
-              {(mergedBookmarks || []).map((bookmark) => {
-                /** ブックマークID */
-                const bookmarkId = String(bookmark?.id || '');
-                /** 選択中か */
-                const isActiveBookmark = bookmarkId === String(cardListActiveBookmarkId || '');
-                return (
-                  <TouchableOpacity
-                    key={`list-target-${bookmarkId}`}
-                    style={[
-                      styles.currentListTargetCell,
-                      {
-                        borderColor: isActiveBookmark ? theme.primary : theme.border,
-                        backgroundColor: isActiveBookmark ? toAlphaColor(theme.primary, 0.12) : theme.background,
-                      },
-                    ]}
-                    onPress={() => setCardListActiveBookmarkId(bookmarkId)}
-                  >
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        styles.currentListTargetCellText,
-                        {
-                          color: isActiveBookmark ? theme.primary : theme.text,
-                        },
-                      ]}
-                    >
-                      {bookmark?.name || 'ブックマーク'}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-        ) : null}
-
-        {/* モード切り替えタブ（スマホは設定モーダルに集約） */}
-        {!isMobileLayout ? (
-        <View style={[styles.viewModeControlRow, { borderColor: theme.border }]}>
+        {/* モード切り替えタブ - 全デバイス共通化 */}
+        <View style={[styles.viewModeControlRow, { borderColor: theme.border, backgroundColor: theme.surface }]}>
           <TouchableOpacity
             style={[
               styles.viewModeButton,
               {
-                backgroundColor: viewMode === VIEW_MODE.TIMELINE ? theme.primary : theme.surface,
-                borderColor: viewMode === VIEW_MODE.TIMELINE ? theme.primary : theme.border,
-              },
-            ]}
-            onPress={() => handleViewModeChange(VIEW_MODE.TIMELINE)}
-          >
-            <Text
-              style={[
-                styles.viewModeButtonText,
-                {
-                  color: viewMode === VIEW_MODE.TIMELINE ? '#fff' : theme.text,
-                  fontWeight: viewMode === VIEW_MODE.TIMELINE ? '700' : '600',
-                },
-              ]}
-            >
-              時間表
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.viewModeButton,
-              {
-                backgroundColor: viewMode === VIEW_MODE.CARD_LIST ? theme.primary : theme.surface,
-                borderColor: viewMode === VIEW_MODE.CARD_LIST ? theme.primary : theme.border,
+                backgroundColor: viewMode === VIEW_MODE.CARD_LIST ? theme.primary : 'transparent',
+                borderColor: viewMode === VIEW_MODE.CARD_LIST ? theme.primary : 'transparent',
               },
             ]}
             onPress={() => handleViewModeChange(VIEW_MODE.CARD_LIST)}
           >
+            <Ionicons 
+              name="list-outline" 
+              size={18} 
+              color={viewMode === VIEW_MODE.CARD_LIST ? '#fff' : theme.textSecondary} 
+            />
             <Text
               style={[
                 styles.viewModeButtonText,
@@ -2877,88 +2850,73 @@ const TimeScheduleScreen = ({ navigation }) => {
               リスト
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.viewModeButton,
+              {
+                backgroundColor: viewMode === VIEW_MODE.TIMELINE ? theme.primary : 'transparent',
+                borderColor: viewMode === VIEW_MODE.TIMELINE ? theme.primary : 'transparent',
+              },
+            ]}
+            onPress={() => handleViewModeChange(VIEW_MODE.TIMELINE)}
+          >
+            <Ionicons 
+              name="calendar-outline" 
+              size={18} 
+              color={viewMode === VIEW_MODE.TIMELINE ? '#fff' : theme.textSecondary} 
+            />
+            <Text
+              style={[
+                styles.viewModeButtonText,
+                {
+                  color: viewMode === VIEW_MODE.TIMELINE ? '#fff' : theme.text,
+                  fontWeight: viewMode === VIEW_MODE.TIMELINE ? '700' : '600',
+                },
+              ]}
+            >
+              時間表
+            </Text>
+          </TouchableOpacity>
         </View>
-        ) : null}
 
-        {/* タイムライン用ブックマーク選択タブ（タイムラインモードのみ表示） */}
-        {!isMobileLayout && viewMode === VIEW_MODE.TIMELINE && (
-          <View style={styles.timelineControlRow}>
-          <View style={styles.timelineTabRow}>
-            <TouchableOpacity
-              style={[
-                styles.timelineTabButton,
-                {
-                  borderColor:
-                    activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.DEFAULT ? theme.primary : theme.border,
-                  backgroundColor:
-                    activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.DEFAULT
-                      ? toAlphaColor(theme.primary, 0.12)
-                      : theme.surface,
-                },
-              ]}
-              onPress={() => setActiveTimelineBookmarkTab(BOOKMARK_LIST_TABS.DEFAULT)}
-            >
-              <Text
+        {/* 共通の表示対象選択チップバー */}
+        <View style={styles.filterSection}>
+          <View style={styles.tabHeaderRow}>
+            <View style={styles.tabHeaderButtons}>
+              <TouchableOpacity
+                onPress={() => setActiveTimelineBookmarkTab(BOOKMARK_LIST_TABS.DEFAULT)}
                 style={[
-                  styles.timelineTabButtonText,
-                  {
-                    color:
-                      activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.DEFAULT
-                        ? theme.primary
-                        : theme.textSecondary,
-                  },
+                  styles.tabHeaderButton,
+                  activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.DEFAULT && { borderBottomColor: theme.primary }
                 ]}
               >
-                デフォルト
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.timelineTabButton,
-                {
-                  borderColor:
-                    activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.MY_LIST ? theme.primary : theme.border,
-                  backgroundColor:
-                    activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.MY_LIST
-                      ? toAlphaColor(theme.primary, 0.12)
-                      : theme.surface,
-                },
-              ]}
-              onPress={() => setActiveTimelineBookmarkTab(BOOKMARK_LIST_TABS.MY_LIST)}
-            >
-              <Text
+                <Text style={[
+                  styles.tabHeaderText, 
+                  { color: activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.DEFAULT ? theme.primary : theme.textSecondary }
+                ]}>デフォルト</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setActiveTimelineBookmarkTab(BOOKMARK_LIST_TABS.MY_LIST)}
                 style={[
-                  styles.timelineTabButtonText,
-                  {
-                    color:
-                      activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.MY_LIST
-                        ? theme.primary
-                        : theme.textSecondary,
-                  },
+                  styles.tabHeaderButton,
+                  activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.MY_LIST && { borderBottomColor: theme.primary }
                 ]}
               >
-                マイリスト
-              </Text>
-            </TouchableOpacity>
-          </View>
+                <Text style={[
+                  styles.tabHeaderText, 
+                  { color: activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.MY_LIST ? theme.primary : theme.textSecondary }
+                ]}>ブックマーク</Text>
+              </TouchableOpacity>
+            </View>
 
-          {!isMobileLayout ? (
             <TouchableOpacity
-              style={[
-                styles.timelineActionIconButton,
-                {
-                  borderColor: theme.border,
-                  backgroundColor: theme.surface,
-                },
-              ]}
+              style={styles.headerSettingsButton}
               onPress={() => handleOpenBookmarkListModal(activeTimelineBookmarkTab)}
             >
               <Ionicons name="settings-outline" size={18} color={theme.textSecondary} />
             </TouchableOpacity>
-          ) : null}
+          </View>
         </View>
-        )}
       </View>
 
       <View style={styles.content}>
@@ -2980,8 +2938,8 @@ const TimeScheduleScreen = ({ navigation }) => {
             loading={cardListScheduleData.loading}
             error={cardListScheduleData.error}
             activeBookmarkId={cardListActiveBookmarkId}
-            allBookmarks={mergedBookmarks}
-            onActiveBookmarkChange={setCardListActiveBookmarkId}
+            bookmarks={cardListResolvedBookmarks}
+            onBookmarkIdChange={setCardListActiveBookmarkId}
             onRefresh={cardListScheduleData.refetch}
             selectedDate={selectedDate}
             showBookmarkSelector={!isMobileLayout}
@@ -3277,20 +3235,6 @@ const TimeScheduleScreen = ({ navigation }) => {
         onClose={handleCloseModal}
       />
 
-      {isMobileLayout ? (
-        <TouchableOpacity
-          style={[
-            styles.mobileFloatingSettingsButton,
-            {
-              borderColor: theme.border,
-              backgroundColor: theme.surface,
-            },
-          ]}
-          onPress={handleOpenQuickSettingsModal}
-        >
-          <Ionicons name="settings-outline" size={22} color={theme.textSecondary} />
-        </TouchableOpacity>
-      ) : null}
 
       <Modal
         visible={isQuickSettingsModalVisible}
@@ -3313,168 +3257,16 @@ const TimeScheduleScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
 
-            <Text style={[styles.quickSettingsSectionLabel, { color: theme.textSecondary }]}>表示モード</Text>
-            <View style={[styles.viewModeControlRow, { borderColor: theme.border }]}> 
-              <TouchableOpacity
-                style={[
-                  styles.viewModeButton,
-                  {
-                    backgroundColor: viewMode === VIEW_MODE.TIMELINE ? theme.primary : theme.surface,
-                    borderColor: viewMode === VIEW_MODE.TIMELINE ? theme.primary : theme.border,
-                  },
-                ]}
-                onPress={() => handleViewModeChange(VIEW_MODE.TIMELINE)}
-              >
-                <Text
-                  style={[
-                    styles.viewModeButtonText,
-                    {
-                      color: viewMode === VIEW_MODE.TIMELINE ? '#fff' : theme.text,
-                      fontWeight: viewMode === VIEW_MODE.TIMELINE ? '700' : '600',
-                    },
-                  ]}
-                >
-                  時間表
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.viewModeButton,
-                  {
-                    backgroundColor: viewMode === VIEW_MODE.CARD_LIST ? theme.primary : theme.surface,
-                    borderColor: viewMode === VIEW_MODE.CARD_LIST ? theme.primary : theme.border,
-                  },
-                ]}
-                onPress={() => handleViewModeChange(VIEW_MODE.CARD_LIST)}
-              >
-                <Text
-                  style={[
-                    styles.viewModeButtonText,
-                    {
-                      color: viewMode === VIEW_MODE.CARD_LIST ? '#fff' : theme.text,
-                      fontWeight: viewMode === VIEW_MODE.CARD_LIST ? '700' : '600',
-                    },
-                  ]}
-                >
-                  リスト
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {viewMode === VIEW_MODE.TIMELINE ? (
-              <>
-                <Text style={[styles.quickSettingsSectionLabel, { color: theme.textSecondary }]}>時間表の表示対象</Text>
-                <View style={styles.timelineTabRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.timelineTabButton,
-                      {
-                        borderColor:
-                          activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.DEFAULT ? theme.primary : theme.border,
-                        backgroundColor:
-                          activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.DEFAULT
-                            ? toAlphaColor(theme.primary, 0.12)
-                            : theme.surface,
-                      },
-                    ]}
-                    onPress={() => setActiveTimelineBookmarkTab(BOOKMARK_LIST_TABS.DEFAULT)}
-                  >
-                    <Text
-                      style={[
-                        styles.timelineTabButtonText,
-                        {
-                          color:
-                            activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.DEFAULT
-                              ? theme.primary
-                              : theme.textSecondary,
-                        },
-                      ]}
-                    >
-                      デフォルト
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.timelineTabButton,
-                      {
-                        borderColor:
-                          activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.MY_LIST ? theme.primary : theme.border,
-                        backgroundColor:
-                          activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.MY_LIST
-                            ? toAlphaColor(theme.primary, 0.12)
-                            : theme.surface,
-                      },
-                    ]}
-                    onPress={() => setActiveTimelineBookmarkTab(BOOKMARK_LIST_TABS.MY_LIST)}
-                  >
-                    <Text
-                      style={[
-                        styles.timelineTabButtonText,
-                        {
-                          color:
-                            activeTimelineBookmarkTab === BOOKMARK_LIST_TABS.MY_LIST
-                              ? theme.primary
-                              : theme.textSecondary,
-                        },
-                      ]}
-                    >
-                      マイリスト
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : (
-              <>
-                <Text style={[styles.quickSettingsSectionLabel, { color: theme.textSecondary }]}>リストの表示対象</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.quickBookmarkChipRow}
-                >
-                  {(mergedBookmarks || []).map((bookmark) => {
-                    /** ブックマークID */
-                    const bookmarkId = String(bookmark?.id || '');
-                    /** 選択中か */
-                    const isActiveBookmark = bookmarkId === String(cardListActiveBookmarkId || '');
-                    return (
-                      <TouchableOpacity
-                        key={`quick-bookmark-${bookmarkId}`}
-                        style={[
-                          styles.quickBookmarkChip,
-                          {
-                            borderColor: isActiveBookmark ? theme.primary : theme.border,
-                            backgroundColor: isActiveBookmark ? toAlphaColor(theme.primary, 0.12) : theme.surface,
-                          },
-                        ]}
-                        onPress={() => setCardListActiveBookmarkId(bookmarkId)}
-                      >
-                        <Text
-                          numberOfLines={1}
-                          style={[
-                            styles.quickBookmarkChipText,
-                            {
-                              color: isActiveBookmark ? theme.primary : theme.textSecondary,
-                            },
-                          ]}
-                        >
-                          {bookmark?.name || 'ブックマーク'}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              </>
-            )}
-
+            <Text style={[styles.quickSettingsSectionLabel, { color: theme.textSecondary }]}>表示オプション</Text>
             <TouchableOpacity
               style={[styles.quickSettingsAdvancedButton, { borderColor: theme.border, backgroundColor: theme.surface }]}
               onPress={handleOpenAdvancedSettingsFromQuick}
             >
               <Ionicons name="settings-outline" size={16} color={theme.textSecondary} />
-              <Text style={[styles.quickSettingsAdvancedButtonText, { color: theme.text }]}>詳細設定</Text>
+              <Text style={[styles.quickSettingsAdvancedButtonText, { color: theme.text }]}>表示項目の詳細設定・色変更</Text>
               <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
             </TouchableOpacity>
+
           </Pressable>
         </Pressable>
       </Modal>
@@ -3748,7 +3540,7 @@ const TimeScheduleScreen = ({ navigation }) => {
                       },
                     ]}
                   >
-                    マイリスト
+                    ブックマーク
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -3757,7 +3549,7 @@ const TimeScheduleScreen = ({ navigation }) => {
             <Text style={[styles.settingsModalDescription, { color: theme.textSecondary }]}> 
               {activeBookmarkListTab === BOOKMARK_LIST_TABS.DEFAULT
                 ? 'デフォルトは表示/非表示の切り替えとテーマカラー変更ができます。'
-                : 'マイリストでは表示/非表示の切替、並び替え、設定編集、削除、追加ができます。'}
+                : 'ブックマークでは表示/非表示の切替、並び替え、設定編集、削除、追加ができます。'}
             </Text>
 
             <ScrollView
@@ -3915,7 +3707,7 @@ const TimeScheduleScreen = ({ navigation }) => {
 
               {activeBookmarkListTab === BOOKMARK_LIST_TABS.MY_LIST && myListBookmarksForModal.length === 0 ? (
                 <View style={[styles.bookmarkListEmptyWrap, { borderColor: theme.border, backgroundColor: theme.surface }]}> 
-                  <Text style={[styles.bookmarkListEmptyText, { color: theme.textSecondary }]}>マイリストはまだありません。追加から作成できます。</Text>
+                  <Text style={[styles.bookmarkListEmptyText, { color: theme.textSecondary }]}>ブックマークはまだありません。追加から作成できます。</Text>
                 </View>
               ) : null}
             </ScrollView>
@@ -4143,22 +3935,57 @@ const styles = StyleSheet.create({
   },
   viewModeButton: {
     flex: 1,
-    height: 36,
+    height: 38,
+    flexDirection: 'row',
     borderRadius: 8,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
   },
   viewModeButtonText: {
     fontSize: 14,
   },
   quickSettingsModalCard: {
-    width: '92%',
-    maxWidth: 420,
+    width: '94%',
+    maxWidth: 440,
     borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 10,
+    borderRadius: 16,
+    padding: 18,
+    gap: 12,
+  },
+  filterSection: {
+    marginTop: 4,
+    gap: 12,
+  },
+  tabHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  tabHeaderButtons: {
+    flexDirection: 'row',
+  },
+  tabHeaderButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+    marginRight: 4,
+  },
+  tabHeaderText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  headerSettingsButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   quickSettingsSectionLabel: {
     fontSize: 12,

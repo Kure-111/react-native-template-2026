@@ -11,7 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 /**
  * カードリストモード用フック
  * @param {string} selectedDate - 選択日付（YYYY-MM-DD）
- * @param {Object} allBookmarks - 全ブックマーク（デフォルト+マイリスト統合）
+ * @param {Object} allBookmarks - 全ブックマーク（デフォルト+ブックマーク統合）
  * @param {string} activeBookmarkId - アクティブなブックマークID
  * @param {Function} onActiveBookmarkChange - アクティブブックマーク変更時のコールバック
  * @returns {{
